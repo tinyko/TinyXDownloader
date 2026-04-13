@@ -19,11 +19,11 @@ func main() {
 
 	// Create application with options
 	err := wails.Run(&options.App{
-		Title:     "Twitter/X Media Batch Downloader",
-		Width:     1024,
-		Height:    600,
-		MinWidth:  1024,
-		MinHeight: 600,
+		Title:     "TinyXDownloader",
+		Width:     1720,
+		Height:    1080,
+		MinWidth:  1440,
+		MinHeight: 900,
 		Frameless: true,
 		AssetServer: &assetserver.Options{
 			Assets: assets,

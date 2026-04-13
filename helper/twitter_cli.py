@@ -26,13 +26,18 @@ from twitter_common import (  # type: ignore
 )
 
 DEFAULT_AUTH_TOKEN = ""
+WORKER_RETWEETS_DEFAULT = "skip"
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Light-weight CLI wrapper around gallery-dl's Twitter extractor",
     )
-    parser.add_argument("url", help="Any supported Twitter/X URL (timeline, media, likes, ...)")
+    parser.add_argument(
+        "url",
+        nargs="?",
+        help="Any supported Twitter/X URL (timeline, media, likes, ...)",
+    )
     parser.add_argument(
         "--auth-token",
         default=DEFAULT_AUTH_TOKEN,
@@ -121,6 +126,11 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Show progress during fetch",
     )
+    parser.add_argument(
+        "--worker",
+        action="store_true",
+        help="Run persistent JSON worker mode over stdin/stdout",
+    )
     return parser.parse_args()
 
 
@@ -149,8 +159,116 @@ def _progress_callback(count: int, cursor: Optional[str]) -> None:
     print(f"Fetching... {count} media{cursor_info}", file=sys.stderr)
 
 
+def _build_result(
+    *,
+    url: str,
+    auth_token: Optional[str],
+    guest: bool,
+    retweets_mode: str,
+    include_videos: bool,
+    size: str,
+    limit: int,
+    include_metadata: bool,
+    text_tweets: bool,
+    media_type: str,
+    verbose: bool,
+    overrides_entries: Optional[List[str]] = None,
+    resume_cursor: Optional[str] = None,
+    skip_urls: Optional[set] = None,
+):
+    type_filter = None
+    if media_type != "all":
+        type_filter = f"type == '{media_type}'"
+
+    user_overrides = _parse_overrides(overrides_entries or [])
+    if type_filter:
+        existing_filter = user_overrides.get("filter")
+        if existing_filter:
+            user_overrides["filter"] = f"({existing_filter}) and ({type_filter})"
+        else:
+            user_overrides["filter"] = type_filter
+
+    options = merge_options(
+        {
+            "auth_token": None if guest or not (auth_token or "").strip() else auth_token,
+            "retweets": _retweets_value(retweets_mode),
+            "videos": include_videos,
+            "size": size,
+            "text-tweets": text_tweets,
+        },
+        user_overrides,
+    )
+
+    request = TwitterRequest(
+        url=url,
+        limit=limit,
+        metadata=(include_metadata or verbose),
+        options=options,
+        cursor=resume_cursor,
+    )
+
+    progress_cb = _progress_callback if (verbose) else None
+    result = run_request_dict(request, on_progress=progress_cb, skip_urls=skip_urls)
+    if not include_metadata:
+        result.pop("metadata", None)
+    return result
+
+
+def _run_worker() -> None:
+    while True:
+        raw = sys.stdin.readline()
+        if raw == "":
+            break
+
+        raw = raw.strip()
+        if not raw:
+            continue
+
+        request_id = ""
+        try:
+            payload = json.loads(raw)
+            request_id = str(payload.get("id", ""))
+            request = payload.get("request") or {}
+
+            result = _build_result(
+                url=request["url"],
+                auth_token=request.get("auth_token"),
+                guest=bool(request.get("guest", False)),
+                retweets_mode=str(request.get("retweets", WORKER_RETWEETS_DEFAULT)),
+                include_videos=not bool(request.get("no_videos", False)),
+                size=str(request.get("size", "orig")),
+                limit=int(request.get("limit", 0) or 0),
+                include_metadata=bool(request.get("metadata", False)),
+                text_tweets=bool(request.get("text_tweets", False)),
+                media_type=str(request.get("type", "all")),
+                verbose=bool(request.get("verbose", False)),
+                overrides_entries=list(request.get("set", []) or []),
+                resume_cursor=request.get("cursor"),
+            )
+
+            response = {
+                "id": request_id,
+                "ok": True,
+                "result": result,
+            }
+        except Exception as exc:
+            response = {
+                "id": request_id,
+                "ok": False,
+                "error": str(exc),
+            }
+
+        print(json.dumps(response, default=str), flush=True)
+
+
 def main() -> None:
     args = parse_args()
+    if args.worker:
+        _run_worker()
+        return
+    if not args.url:
+        print("Error: URL is required unless --worker is used", file=sys.stderr)
+        sys.exit(2)
     
     # Handle resume from file
     resume_cursor: Optional[str] = None
@@ -158,11 +276,6 @@ def main() -> None:
     previous_metadata: List[Dict] = []
     seen_urls: set = set()
     url = args.url
-    
-    # Convert --type to filter expression
-    type_filter = None
-    if args.type != "all":
-        type_filter = f"type == '{args.type}'"
     
     if args.resume:
         state = load_resume_state(args.resume)
@@ -189,48 +302,24 @@ def main() -> None:
     # Manual cursor override
     if args.cursor:
         resume_cursor = args.cursor
-    
-    include_videos = not args.no_videos
-    auth_token = None if args.guest or not args.auth_token.strip() else args.auth_token
-    
-    # Parse user overrides
-    user_overrides = _parse_overrides(args.set)
-    
-    # Add type filter if specified (merge with existing filter if any)
-    if type_filter:
-        existing_filter = user_overrides.get("filter")
-        if existing_filter:
-            # Combine with AND
-            user_overrides["filter"] = f"({existing_filter}) and ({type_filter})"
-        else:
-            user_overrides["filter"] = type_filter
-    
-    options = merge_options(
-        {
-            "auth_token": auth_token,
-            "retweets": _retweets_value(args.retweets),
-            "videos": include_videos,
-            "size": args.size,
-            "text-tweets": args.text_tweets,
-        },
-        user_overrides,
-    )
-
-    request = TwitterRequest(
-        url=url,
-        limit=args.limit,
-        metadata=(args.metadata or args.verbose),
-        options=options,
-        cursor=resume_cursor,
-    )
-
-    progress_cb = _progress_callback if (args.progress or args.verbose) else None
-    
-    # Pass seen_urls for deduplication if no cursor available
-    skip_urls = seen_urls if (not resume_cursor and seen_urls) else None
 
     try:
-        result = run_request_dict(request, on_progress=progress_cb, skip_urls=skip_urls)
+        result = _build_result(
+            url=url,
+            auth_token=args.auth_token,
+            guest=args.guest,
+            retweets_mode=args.retweets,
+            include_videos=not args.no_videos,
+            size=args.size,
+            limit=args.limit,
+            include_metadata=args.metadata,
+            text_tweets=args.text_tweets,
+            media_type=args.type,
+            verbose=(args.progress or args.verbose),
+            overrides_entries=args.set,
+            resume_cursor=resume_cursor,
+            skip_urls=(seen_urls if (not resume_cursor and seen_urls) else None),
+        )
     except KeyboardInterrupt:
         print("\nInterrupted by user", file=sys.stderr)
         sys.exit(130)

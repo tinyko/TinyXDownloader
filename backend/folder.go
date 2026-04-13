@@ -63,6 +63,18 @@ func CheckFolderExists(basePath, username string) bool {
 	return info.IsDir()
 }
 
+// CheckFoldersExist checks multiple folders in one pass and returns existence by folder name.
+func CheckFoldersExist(basePath string, folderNames []string) map[string]bool {
+	results := make(map[string]bool, len(folderNames))
+	for _, folderName := range folderNames {
+		if _, alreadyChecked := results[folderName]; alreadyChecked {
+			continue
+		}
+		results[folderName] = CheckFolderExists(basePath, folderName)
+	}
+	return results
+}
+
 // CheckGifsFolderExists checks if a gifs subfolder exists for the given username
 func CheckGifsFolderExists(basePath, username string) bool {
 	gifsPath := filepath.Join(basePath, username, "gifs")

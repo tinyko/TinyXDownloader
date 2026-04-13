@@ -1,17 +1,17 @@
 {
   "$schema": "https://wails.io/schemas/config.v2.json",
-  "name": "TwitterXMediaBatchDownloader",
-  "outputfilename": "TwitterXMediaBatchDownloader",
+  "name": "TinyXDownloader",
+  "outputfilename": "TinyXDownloader",
   "frontend:install": "pnpm install",
   "frontend:build": "pnpm run build",
   "frontend:dev:watcher": "pnpm run dev",
   "frontend:dev:serverUrl": "auto",
   "author": {
-    "name": "afkarxyz"
+    "name": "Tiny"
   },
   "info": {
-    "productName": "Twitter/X Media Batch Downloader",
-    "productVersion": "4.3"
+    "productName": "TinyXDownloader",
+    "productVersion": "1.0.0"
   },
   "wailsjsdir": "./frontend",
   "assetdir": "./frontend/dist",

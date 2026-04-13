@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { InputWithContext } from "@/components/ui/input-with-context";
 import { Label } from "@/components/ui/label";
@@ -55,13 +55,13 @@ export type FetchMode = "public" | "private";
 export type PrivateType = "bookmarks" | "likes";
 export type FetchType = "single" | "multiple";
 
-// Local storage keys for auth tokens
-const PUBLIC_AUTH_TOKEN_KEY = "twitter_public_auth_token";
-const PRIVATE_AUTH_TOKEN_KEY = "twitter_private_auth_token";
-
 export interface MultipleAccount {
   id: string;
   username: string;
+  mode?: FetchMode;
+  privateType?: PrivateType;
+  mediaType?: string;
+  retweets?: boolean;
   status: "pending" | "fetching" | "completed" | "incomplete" | "failed";
   accountInfo?: {
     name: string;
@@ -116,6 +116,14 @@ interface SearchBarProps {
   mode?: FetchMode;
   privateType?: PrivateType;
   onModeChange?: (mode: FetchMode, privateType?: PrivateType) => void;
+  publicAuthToken: string;
+  privateAuthToken: string;
+  onPublicAuthTokenChange: (value: string) => void;
+  onPrivateAuthTokenChange: (value: string) => void;
+  rememberPublicToken: boolean;
+  rememberPrivateToken: boolean;
+  onRememberPublicTokenChange: (value: boolean) => void;
+  onRememberPrivateTokenChange: (value: boolean) => void;
 }
 
 export function SearchBar({
@@ -145,55 +153,27 @@ export function SearchBar({
   mode: externalMode,
   privateType: externalPrivateType,
   onModeChange,
+  publicAuthToken,
+  privateAuthToken,
+  onPublicAuthTokenChange,
+  onPrivateAuthTokenChange,
+  rememberPublicToken,
+  rememberPrivateToken,
+  onRememberPublicTokenChange,
+  onRememberPrivateTokenChange,
 }: SearchBarProps) {
   const [useDateRange, setUseDateRange] = useState(false);
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [mediaType, setMediaType] = useState<SettingsMediaType>(getSettings().mediaType);
   const [retweets, setRetweets] = useState(getSettings().includeRetweets);
-  const [mode, setMode] = useState<FetchMode>(externalMode || "public");
-  const [privateType, setPrivateType] = useState<PrivateType>(externalPrivateType || "bookmarks");
-  
-  // Sync with external mode if provided
-  useEffect(() => {
-    if (externalMode !== undefined) {
-      setMode(externalMode);
-    }
-  }, [externalMode]);
-  
-  useEffect(() => {
-    if (externalPrivateType !== undefined) {
-      setPrivateType(externalPrivateType);
-    }
-  }, [externalPrivateType]);
   const [showAuthInput, setShowAuthInput] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [currentFetchMode, setCurrentFetchMode] = useState<SettingsFetchMode>(getSettings().fetchMode);
-
-  // Separate auth tokens for public and private modes
-  const [publicAuthToken, setPublicAuthToken] = useState("");
-  const [privateAuthToken, setPrivateAuthToken] = useState("");
   const [showPublicToken, setShowPublicToken] = useState(false);
   const [showPrivateToken, setShowPrivateToken] = useState(false);
-
-  // Load saved auth tokens on mount
-  useEffect(() => {
-    const savedPublicToken = localStorage.getItem(PUBLIC_AUTH_TOKEN_KEY) || "";
-    const savedPrivateToken = localStorage.getItem(PRIVATE_AUTH_TOKEN_KEY) || "";
-    setPublicAuthToken(savedPublicToken);
-    setPrivateAuthToken(savedPrivateToken);
-  }, []);
-
-  // Save auth tokens when they change
-  const handlePublicTokenChange = (value: string) => {
-    setPublicAuthToken(value);
-    localStorage.setItem(PUBLIC_AUTH_TOKEN_KEY, value);
-  };
-
-  const handlePrivateTokenChange = (value: string) => {
-    setPrivateAuthToken(value);
-    localStorage.setItem(PRIVATE_AUTH_TOKEN_KEY, value);
-  };
+  const mode = externalMode || "public";
+  const privateType = externalPrivateType || "bookmarks";
 
   const handleFetch = () => {
     const authToken = mode === "public" ? publicAuthToken : privateAuthToken;
@@ -208,6 +188,7 @@ export function SearchBar({
   };
 
   const currentAuthToken = mode === "public" ? publicAuthToken : privateAuthToken;
+  const currentRememberToken = mode === "public" ? rememberPublicToken : rememberPrivateToken;
   const hasAuthToken = currentAuthToken.trim().length > 0;
   // Likes needs username (URL is /username/likes), bookmarks doesn't
   const isLikesMode = mode === "private" && privateType === "likes";
@@ -256,7 +237,6 @@ export function SearchBar({
             <button
               type="button"
               onClick={() => {
-                setMode("public");
                 onModeChange?.("public");
               }}
               className={cn(
@@ -272,7 +252,6 @@ export function SearchBar({
             <button
               type="button"
               onClick={() => {
-                setMode("private");
                 onModeChange?.("private");
               }}
               className={cn(
@@ -471,7 +450,6 @@ export function SearchBar({
             <button
               type="button"
               onClick={() => {
-                setPrivateType("bookmarks");
                 onModeChange?.("private", "bookmarks");
               }}
               className={cn(
@@ -487,7 +465,6 @@ export function SearchBar({
             <button
               type="button"
               onClick={() => {
-                setPrivateType("likes");
                 onModeChange?.("private", "likes");
               }}
               className={cn(
@@ -579,8 +556,8 @@ export function SearchBar({
                 value={currentAuthToken}
                 onChange={(e) =>
                   mode === "public"
-                    ? handlePublicTokenChange(e.target.value)
-                    : handlePrivateTokenChange(e.target.value)
+                    ? onPublicAuthTokenChange(e.target.value)
+                    : onPrivateAuthTokenChange(e.target.value)
                 }
                 className="pr-10 bg-background"
               />
@@ -600,6 +577,24 @@ export function SearchBar({
                 )}
               </button>
             </div>
+          </div>
+          <p className="mt-2 text-xs text-muted-foreground">
+            Token is not stored by default. Enable remember to keep it locally on this device.
+          </p>
+          <div className="mt-3 flex items-center gap-2">
+            <Checkbox
+              id="remember-auth-token"
+              checked={currentRememberToken}
+              onCheckedChange={(checked) =>
+                mode === "public"
+                  ? onRememberPublicTokenChange(Boolean(checked))
+                  : onRememberPrivateTokenChange(Boolean(checked))
+              }
+              className="bg-background"
+            />
+            <Label htmlFor="remember-auth-token" className="text-sm cursor-pointer">
+              Remember on this device
+            </Label>
           </div>
         </div>
       )}

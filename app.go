@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"path/filepath"
+	"sync"
 	"twitterxmediabatchdownloader/backend"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
@@ -15,6 +16,8 @@ type App struct {
 	ctx            context.Context
 	downloadCtx    context.Context
 	downloadCancel context.CancelFunc
+	downloadMu     sync.Mutex
+	downloadState  DownloadStateResponse
 }
 
 // NewApp creates a new App application struct
@@ -45,6 +48,11 @@ func (a *App) CleanupExtractorProcesses() {
 	backend.KillAllExtractorProcesses()
 }
 
+// CancelExtractorRequest cancels a specific in-flight extractor request.
+func (a *App) CancelExtractorRequest(requestID string) bool {
+	return backend.CancelExtractorRequest(requestID)
+}
+
 // TimelineRequest represents the request structure for timeline extraction
 type TimelineRequest struct {
 	Username     string `json:"username"`
@@ -54,6 +62,7 @@ type TimelineRequest struct {
 	Page         int    `json:"page"`
 	MediaType    string `json:"media_type"`
 	Retweets     bool   `json:"retweets"`
+	RequestID    string `json:"request_id,omitempty"`
 	Cursor       string `json:"cursor,omitempty"` // Resume from this cursor position
 }
 
@@ -65,6 +74,7 @@ type DateRangeRequest struct {
 	EndDate     string `json:"end_date"`
 	MediaFilter string `json:"media_filter"`
 	Retweets    bool   `json:"retweets"`
+	RequestID   string `json:"request_id,omitempty"`
 }
 
 // ExtractTimeline extracts media from user timeline
@@ -85,6 +95,7 @@ func (a *App) ExtractTimeline(req TimelineRequest) (string, error) {
 		Page:         req.Page,
 		MediaType:    req.MediaType,
 		Retweets:     req.Retweets,
+		RequestID:    req.RequestID,
 		Cursor:       req.Cursor,
 	}
 
@@ -99,6 +110,37 @@ func (a *App) ExtractTimeline(req TimelineRequest) (string, error) {
 	}
 
 	return string(jsonData), nil
+}
+
+// ExtractTimelineStructured extracts media from user timeline and returns
+// the structured response directly for hot-path frontend usage.
+func (a *App) ExtractTimelineStructured(req TimelineRequest) (*backend.TwitterResponse, error) {
+	// Username not required for bookmarks only
+	if req.Username == "" && req.TimelineType != "bookmarks" {
+		return nil, fmt.Errorf("username is required")
+	}
+	if req.AuthToken == "" {
+		return nil, fmt.Errorf("auth token is required")
+	}
+
+	backendReq := backend.TimelineRequest{
+		Username:     req.Username,
+		AuthToken:    req.AuthToken,
+		TimelineType: req.TimelineType,
+		BatchSize:    req.BatchSize,
+		Page:         req.Page,
+		MediaType:    req.MediaType,
+		Retweets:     req.Retweets,
+		RequestID:    req.RequestID,
+		Cursor:       req.Cursor,
+	}
+
+	response, err := backend.ExtractTimeline(backendReq)
+	if err != nil {
+		return nil, fmt.Errorf("failed to extract timeline: %v", err)
+	}
+
+	return response, nil
 }
 
 // ExtractDateRange extracts media based on date range
@@ -123,6 +165,7 @@ func (a *App) ExtractDateRange(req DateRangeRequest) (string, error) {
 		EndDate:     req.EndDate,
 		MediaFilter: req.MediaFilter,
 		Retweets:    req.Retweets,
+		RequestID:   req.RequestID,
 	}
 
 	response, err := backend.ExtractDateRange(backendReq)
@@ -136,6 +179,40 @@ func (a *App) ExtractDateRange(req DateRangeRequest) (string, error) {
 	}
 
 	return string(jsonData), nil
+}
+
+// ExtractDateRangeStructured extracts media by date range and returns the
+// structured response directly for hot-path frontend usage.
+func (a *App) ExtractDateRangeStructured(req DateRangeRequest) (*backend.TwitterResponse, error) {
+	if req.Username == "" {
+		return nil, fmt.Errorf("username is required")
+	}
+	if req.AuthToken == "" {
+		return nil, fmt.Errorf("auth token is required")
+	}
+	if req.StartDate == "" {
+		return nil, fmt.Errorf("start date is required")
+	}
+	if req.EndDate == "" {
+		return nil, fmt.Errorf("end date is required")
+	}
+
+	backendReq := backend.DateRangeRequest{
+		Username:    req.Username,
+		AuthToken:   req.AuthToken,
+		StartDate:   req.StartDate,
+		EndDate:     req.EndDate,
+		MediaFilter: req.MediaFilter,
+		Retweets:    req.Retweets,
+		RequestID:   req.RequestID,
+	}
+
+	response, err := backend.ExtractDateRange(backendReq)
+	if err != nil {
+		return nil, fmt.Errorf("failed to extract date range: %v", err)
+	}
+
+	return response, nil
 }
 
 // OpenFolder opens a folder in the file explorer
@@ -199,6 +276,29 @@ type DownloadMediaWithMetadataRequest struct {
 	Proxy     string             `json:"proxy,omitempty"` // Optional proxy URL (e.g., http://proxy:port or socks5://proxy:port)
 }
 
+type FetchScopeRequest struct {
+	Username     string `json:"username"`
+	MediaType    string `json:"media_type"`
+	TimelineType string `json:"timeline_type"`
+	Retweets     bool   `json:"retweets"`
+	QueryKey     string `json:"query_key"`
+}
+
+type SaveAccountSnapshotChunkRequest struct {
+	Scope       FetchScopeRequest       `json:"scope"`
+	AccountInfo backend.AccountInfo     `json:"account_info"`
+	Entries     []backend.TimelineEntry `json:"entries"`
+	Cursor      string                  `json:"cursor"`
+	Completed   bool                    `json:"completed"`
+	TotalMedia  int                     `json:"total_media"`
+}
+
+type DownloadSavedScopesRequest struct {
+	Scopes    []FetchScopeRequest `json:"scopes"`
+	OutputDir string              `json:"output_dir"`
+	Proxy     string              `json:"proxy,omitempty"`
+}
+
 // DownloadMediaResponse represents the response for download operation
 type DownloadMediaResponse struct {
 	Success    bool   `json:"success"`
@@ -206,6 +306,16 @@ type DownloadMediaResponse struct {
 	Skipped    int    `json:"skipped"`
 	Failed     int    `json:"failed"`
 	Message    string `json:"message"`
+}
+
+func toBackendFetchScope(scope FetchScopeRequest) backend.FetchScopeRecord {
+	return backend.FetchScopeRecord{
+		Username:     scope.Username,
+		MediaType:    scope.MediaType,
+		TimelineType: scope.TimelineType,
+		Retweets:     scope.Retweets,
+		QueryKey:     scope.QueryKey,
+	}
 }
 
 // DownloadMedia downloads media files from URLs (legacy)
@@ -254,6 +364,14 @@ type DownloadProgress struct {
 	Percent int `json:"percent"`
 }
 
+// DownloadStateResponse represents the active download session state.
+type DownloadStateResponse struct {
+	InProgress bool `json:"in_progress"`
+	Current    int  `json:"current"`
+	Total      int  `json:"total"`
+	Percent    int  `json:"percent"`
+}
+
 // DownloadItemStatus represents per-item download status event data
 type DownloadItemStatus struct {
 	TweetID int64  `json:"tweet_id"`
@@ -269,6 +387,14 @@ func (a *App) DownloadMediaWithMetadata(req DownloadMediaWithMetadataRequest) (D
 			Message: "No items provided",
 		}, fmt.Errorf("no items provided")
 	}
+
+	if err := a.beginDownloadSession(len(req.Items)); err != nil {
+		return DownloadMediaResponse{
+			Success: false,
+			Message: err.Error(),
+		}, err
+	}
+	defer a.finishDownloadSession()
 
 	outputDir := req.OutputDir
 	if outputDir == "" {
@@ -303,32 +429,7 @@ func (a *App) DownloadMediaWithMetadata(req DownloadMediaWithMetadataRequest) (D
 		}
 	}
 
-	// Create cancellable context
-	a.downloadCtx, a.downloadCancel = context.WithCancel(context.Background())
-
-	// Progress callback
-	progressCallback := func(current, total int) {
-		percent := 0
-		if total > 0 {
-			percent = (current * 100) / total
-		}
-		runtime.EventsEmit(a.ctx, "download-progress", DownloadProgress{
-			Current: current,
-			Total:   total,
-			Percent: percent,
-		})
-	}
-
-	// Per-item status callback
-	itemStatusCallback := func(tweetID int64, index int, status string) {
-		runtime.EventsEmit(a.ctx, "download-item-status", DownloadItemStatus{
-			TweetID: tweetID,
-			Index:   index,
-			Status:  status,
-		})
-	}
-
-	downloaded, skipped, failed, err := backend.DownloadMediaWithMetadataProgressAndStatus(items, outputDir, req.Username, progressCallback, itemStatusCallback, a.downloadCtx, req.Proxy)
+	downloaded, skipped, failed, err := a.runDownloadGroup(items, outputDir, req.Username, req.Proxy, 0, len(items))
 	if err != nil {
 		return DownloadMediaResponse{
 			Success:    false,
@@ -338,9 +439,141 @@ func (a *App) DownloadMediaWithMetadata(req DownloadMediaWithMetadataRequest) (D
 			Message:    err.Error(),
 		}, err
 	}
+	return DownloadMediaResponse{
+		Success:    true,
+		Downloaded: downloaded,
+		Skipped:    skipped,
+		Failed:     failed,
+		Message:    fmt.Sprintf("Downloaded %d files, %d skipped, %d failed", downloaded, skipped, failed),
+	}, nil
+}
 
-	// Clear cancel function
-	a.downloadCancel = nil
+func (a *App) runDownloadGroup(items []backend.MediaItem, outputDir, username, proxy string, completedOffset, totalItems int) (int, int, int, error) {
+	progressCallback := func(current, _ int) {
+		globalCurrent := completedOffset + current
+		percent := 0
+		if totalItems > 0 {
+			percent = (globalCurrent * 100) / totalItems
+		}
+		a.updateDownloadProgress(globalCurrent, totalItems, percent)
+		runtime.EventsEmit(a.ctx, "download-progress", DownloadProgress{
+			Current: globalCurrent,
+			Total:   totalItems,
+			Percent: percent,
+		})
+	}
+
+	itemStatusCallback := func(tweetID int64, index int, status string) {
+		runtime.EventsEmit(a.ctx, "download-item-status", DownloadItemStatus{
+			TweetID: tweetID,
+			Index:   index,
+			Status:  status,
+		})
+	}
+
+	return backend.DownloadMediaWithMetadataProgressAndStatus(items, outputDir, username, progressCallback, itemStatusCallback, a.downloadCtx, proxy)
+}
+
+func (a *App) SaveAccountSnapshotChunk(req SaveAccountSnapshotChunkRequest) error {
+	return backend.SaveAccountSnapshotChunk(
+		toBackendFetchScope(req.Scope),
+		req.AccountInfo,
+		req.Entries,
+		req.Cursor,
+		req.Completed,
+		req.TotalMedia,
+	)
+}
+
+func (a *App) GetAccountSnapshotStructured(scope FetchScopeRequest) (*backend.TwitterResponse, error) {
+	return backend.GetAccountResponseByScopeStructured(
+		scope.Username,
+		scope.MediaType,
+		scope.TimelineType,
+		scope.Retweets,
+		scope.QueryKey,
+	)
+}
+
+func (a *App) DownloadSavedScopes(req DownloadSavedScopesRequest) (DownloadMediaResponse, error) {
+	if len(req.Scopes) == 0 {
+		return DownloadMediaResponse{
+			Success: false,
+			Message: "No scopes provided",
+		}, fmt.Errorf("no scopes provided")
+	}
+
+	outputDir := req.OutputDir
+	if outputDir == "" {
+		outputDir = backend.GetDefaultDownloadPath()
+	}
+
+	payloads := make([]*backend.ScopeMediaDownloadPayload, 0, len(req.Scopes))
+	totalItems := 0
+	for _, scope := range req.Scopes {
+		payload, err := backend.LoadScopeMediaDownloadPayload(toBackendFetchScope(scope))
+		if err != nil {
+			return DownloadMediaResponse{
+				Success: false,
+				Message: err.Error(),
+			}, err
+		}
+		if payload == nil || len(payload.Items) == 0 {
+			continue
+		}
+		payloads = append(payloads, payload)
+		totalItems += len(payload.Items)
+	}
+
+	if totalItems == 0 {
+		return DownloadMediaResponse{
+			Success: false,
+			Message: "No saved media is ready to download",
+		}, fmt.Errorf("no saved media is ready to download")
+	}
+
+	if err := a.beginDownloadSession(totalItems); err != nil {
+		return DownloadMediaResponse{
+			Success: false,
+			Message: err.Error(),
+		}, err
+	}
+	defer a.finishDownloadSession()
+
+	downloaded := 0
+	skipped := 0
+	failed := 0
+	completedOffset := 0
+
+	for _, payload := range payloads {
+		groupOutputDir := outputDir
+		if payload.RootSubdirectory != "" {
+			groupOutputDir = filepath.Join(groupOutputDir, payload.RootSubdirectory)
+		}
+
+		groupDownloaded, groupSkipped, groupFailed, err := a.runDownloadGroup(
+			payload.Items,
+			groupOutputDir,
+			payload.Username,
+			req.Proxy,
+			completedOffset,
+			totalItems,
+		)
+		downloaded += groupDownloaded
+		skipped += groupSkipped
+		failed += groupFailed
+		completedOffset += len(payload.Items)
+
+		if err != nil {
+			return DownloadMediaResponse{
+				Success:    false,
+				Downloaded: downloaded,
+				Skipped:    skipped,
+				Failed:     failed,
+				Message:    err.Error(),
+			}, err
+		}
+	}
 
 	return DownloadMediaResponse{
 		Success:    true,
@@ -353,12 +586,70 @@ func (a *App) DownloadMediaWithMetadata(req DownloadMediaWithMetadataRequest) (D
 
 // StopDownload cancels the current download operation
 func (a *App) StopDownload() bool {
-	if a.downloadCancel != nil {
-		a.downloadCancel()
-		a.downloadCancel = nil
-		return true
+	a.downloadMu.Lock()
+	cancel := a.downloadCancel
+	a.downloadMu.Unlock()
+
+	if cancel == nil {
+		return false
 	}
-	return false
+
+	cancel()
+	return true
+}
+
+func (a *App) beginDownloadSession(total int) error {
+	a.downloadMu.Lock()
+	defer a.downloadMu.Unlock()
+
+	if a.downloadState.InProgress {
+		return fmt.Errorf("download already in progress")
+	}
+
+	a.downloadCtx, a.downloadCancel = context.WithCancel(context.Background())
+	a.downloadState = DownloadStateResponse{
+		InProgress: true,
+		Current:    0,
+		Total:      total,
+		Percent:    0,
+	}
+	a.emitDownloadStateLocked()
+	return nil
+}
+
+func (a *App) updateDownloadProgress(current, total, percent int) {
+	a.downloadMu.Lock()
+	a.downloadState = DownloadStateResponse{
+		InProgress: true,
+		Current:    current,
+		Total:      total,
+		Percent:    percent,
+	}
+	a.emitDownloadStateLocked()
+	a.downloadMu.Unlock()
+}
+
+func (a *App) finishDownloadSession() {
+	a.downloadMu.Lock()
+	a.downloadCtx = nil
+	a.downloadCancel = nil
+	a.downloadState = DownloadStateResponse{}
+	a.emitDownloadStateLocked()
+	a.downloadMu.Unlock()
+}
+
+func (a *App) emitDownloadStateLocked() {
+	if a.ctx == nil {
+		return
+	}
+	runtime.EventsEmit(a.ctx, "download-state", a.downloadState)
+}
+
+// GetDownloadStatus returns the current download session state.
+func (a *App) GetDownloadStatus() DownloadStateResponse {
+	a.downloadMu.Lock()
+	defer a.downloadMu.Unlock()
+	return a.downloadState
 }
 
 // Database functions
@@ -369,13 +660,18 @@ func (a *App) SaveAccountToDB(username, name, profileImage string, totalMedia in
 }
 
 // SaveAccountToDBWithStatus saves account data with cursor and completion status for resume capability
-func (a *App) SaveAccountToDBWithStatus(username, name, profileImage string, totalMedia int, responseJSON string, mediaType string, cursor string, completed bool) error {
-	return backend.SaveAccountWithStatus(username, name, profileImage, totalMedia, responseJSON, mediaType, cursor, completed)
+func (a *App) SaveAccountToDBWithStatus(username, name, profileImage string, totalMedia int, responseJSON string, mediaType string, timelineType string, retweets bool, queryKey string, cursor string, completed bool) error {
+	return backend.SaveAccountWithStatus(username, name, profileImage, totalMedia, responseJSON, mediaType, timelineType, retweets, queryKey, cursor, completed)
 }
 
 // GetAllAccountsFromDB returns all saved accounts
 func (a *App) GetAllAccountsFromDB() ([]backend.AccountListItem, error) {
 	return backend.GetAllAccounts()
+}
+
+// GetAccountSnapshotFromDB returns saved response JSON for an exact fetch scope.
+func (a *App) GetAccountSnapshotFromDB(username, mediaType, timelineType string, retweets bool, queryKey string) (string, error) {
+	return backend.GetAccountResponseByScope(username, mediaType, timelineType, retweets, queryKey)
 }
 
 // GetAccountFromDB returns account data by ID
@@ -455,6 +751,18 @@ type ConvertGIFsResponse struct {
 	Message   string `json:"message"`
 }
 
+// CheckDownloadIntegrityRequest represents request for validating downloaded files.
+type CheckDownloadIntegrityRequest struct {
+	DownloadPath string `json:"download_path"`
+	Proxy        string `json:"proxy,omitempty"`
+}
+
+// StoredAuthTokensResponse represents locally persisted auth tokens for this device.
+type StoredAuthTokensResponse struct {
+	PublicToken  string `json:"public_token"`
+	PrivateToken string `json:"private_token"`
+}
+
 // ConvertGIFs converts MP4 files in gifs folder to actual GIF format
 func (a *App) ConvertGIFs(req ConvertGIFsRequest) (ConvertGIFsResponse, error) {
 	if !backend.IsFFmpegInstalled() {
@@ -490,6 +798,32 @@ func (a *App) ConvertGIFs(req ConvertGIFsRequest) (ConvertGIFsResponse, error) {
 	}, nil
 }
 
+// CheckDownloadIntegrity scans the current download directory for partial and truncated files.
+func (a *App) CheckDownloadIntegrity(req CheckDownloadIntegrityRequest) (backend.DownloadIntegrityReport, error) {
+	return backend.CheckDownloadIntegrity(req.DownloadPath, req.Proxy)
+}
+
+// GetStoredAuthTokens returns locally persisted auth tokens for this device.
+func (a *App) GetStoredAuthTokens() (StoredAuthTokensResponse, error) {
+	tokens, err := backend.LoadStoredAuthTokens()
+	if err != nil {
+		return StoredAuthTokensResponse{}, err
+	}
+
+	return StoredAuthTokensResponse{
+		PublicToken:  tokens.PublicToken,
+		PrivateToken: tokens.PrivateToken,
+	}, nil
+}
+
+// SaveStoredAuthTokens updates locally persisted auth tokens for this device.
+func (a *App) SaveStoredAuthTokens(tokens StoredAuthTokensResponse) error {
+	return backend.SaveStoredAuthTokens(backend.StoredAuthTokens{
+		PublicToken:  tokens.PublicToken,
+		PrivateToken: tokens.PrivateToken,
+	})
+}
+
 // ImportAccountResponse represents the response for import operation
 type ImportAccountResponse struct {
 	Success  bool   `json:"success"`
@@ -500,6 +834,11 @@ type ImportAccountResponse struct {
 // CheckFolderExists checks if a folder exists for the given username
 func (a *App) CheckFolderExists(basePath, username string) bool {
 	return backend.CheckFolderExists(basePath, username)
+}
+
+// CheckFoldersExist checks if multiple folders exist under the given base path.
+func (a *App) CheckFoldersExist(basePath string, folderNames []string) map[string]bool {
+	return backend.CheckFoldersExist(basePath, folderNames)
 }
 
 // CheckGifsFolderExists checks if a gifs subfolder exists for the given username

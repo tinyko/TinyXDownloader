@@ -3,6 +3,11 @@ import { Trash2, Copy, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { logger, type LogEntry } from "@/lib/logger";
 
+interface DebugLoggerPageProps {
+  embedded?: boolean;
+  fillHeight?: boolean;
+}
+
 const levelColors: Record<string, string> = {
   info: "text-blue-500",
   success: "text-green-500",
@@ -20,8 +25,11 @@ function formatTime(date: Date): string {
   });
 }
 
-export function DebugLoggerPage() {
-  const [logs, setLogs] = useState<LogEntry[]>([]);
+export function DebugLoggerPage({
+  embedded = false,
+  fillHeight = false,
+}: DebugLoggerPageProps) {
+  const [logs, setLogs] = useState<LogEntry[]>(() => logger.getLogs());
   const [copied, setCopied] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -29,7 +37,6 @@ export function DebugLoggerPage() {
     const unsubscribe = logger.subscribe(() => {
       setLogs(logger.getLogs());
     });
-    setLogs(logger.getLogs());
     return () => {
       unsubscribe();
     };
@@ -60,9 +67,17 @@ export function DebugLoggerPage() {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Debug Logs</h1>
+    <div
+      className={
+        embedded
+          ? fillHeight
+            ? "flex h-full min-h-0 flex-col gap-4"
+            : "space-y-4"
+          : "space-y-6"
+      }
+    >
+      <div className={`flex items-center ${embedded ? "justify-end" : "justify-between"}`}>
+        {!embedded ? <h1 className="text-2xl font-bold">Debug Logs</h1> : null}
         <div className="flex items-center gap-2">
           <Button
             variant="outline"
@@ -88,7 +103,11 @@ export function DebugLoggerPage() {
 
       <div
         ref={scrollRef}
-        className="h-[calc(100vh-220px)] overflow-y-auto bg-muted/50 rounded-md p-3 font-mono text-xs"
+        className={embedded
+          ? fillHeight
+            ? "min-h-0 flex-1 overflow-y-auto rounded-md border bg-muted/50 p-3 font-mono text-xs"
+            : "h-72 overflow-y-auto rounded-md border bg-muted/50 p-3 font-mono text-xs"
+          : "h-[calc(100vh-220px)] overflow-y-auto rounded-md bg-muted/50 p-3 font-mono text-xs"}
       >
         {logs.length === 0 ? (
           <p className="text-muted-foreground lowercase">no logs yet...</p>

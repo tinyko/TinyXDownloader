@@ -1,16 +1,22 @@
 package backend
 
 import (
+	"bufio"
+	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 )
 
 // getExecutableName returns the appropriate executable name for the current OS
@@ -21,9 +27,94 @@ func getExecutableName() string {
 	return "extractor"
 }
 
+var (
+	ErrExtractorCanceled = errors.New("extractor canceled")
+	errExtractorWorker   = errors.New("extractor worker failure")
+
+	extractorRequestsMu sync.Mutex
+	extractorCancels    = make(map[string]func())
+	extractorCanceled   = make(map[string]struct{})
+
+	extractorPoolMu sync.Mutex
+	extractorPool   *extractorWorkerPool
+)
+
+func registerExtractorRequest(requestID string, cancel func()) func() {
+	if strings.TrimSpace(requestID) == "" {
+		return func() {}
+	}
+
+	extractorRequestsMu.Lock()
+	delete(extractorCanceled, requestID)
+	extractorCancels[requestID] = cancel
+	extractorRequestsMu.Unlock()
+
+	return func() {
+		extractorRequestsMu.Lock()
+		if _, ok := extractorCancels[requestID]; ok {
+			delete(extractorCancels, requestID)
+		}
+		extractorRequestsMu.Unlock()
+	}
+}
+
+func consumeExtractorRequestCanceled(requestID string) bool {
+	if strings.TrimSpace(requestID) == "" {
+		return false
+	}
+
+	extractorRequestsMu.Lock()
+	_, ok := extractorCanceled[requestID]
+	if ok {
+		delete(extractorCanceled, requestID)
+	}
+	extractorRequestsMu.Unlock()
+
+	return ok
+}
+
+func cancelRegisteredExtractorRequests() {
+	extractorRequestsMu.Lock()
+	cancels := make([]func(), 0, len(extractorCancels))
+	for requestID, cancel := range extractorCancels {
+		cancels = append(cancels, cancel)
+		extractorCanceled[requestID] = struct{}{}
+		delete(extractorCancels, requestID)
+	}
+	extractorRequestsMu.Unlock()
+
+	for _, cancel := range cancels {
+		cancel()
+	}
+}
+
+// CancelExtractorRequest cancels a specific in-flight extractor request.
+func CancelExtractorRequest(requestID string) bool {
+	if strings.TrimSpace(requestID) == "" {
+		return false
+	}
+
+	extractorRequestsMu.Lock()
+	cancel, ok := extractorCancels[requestID]
+	if ok {
+		delete(extractorCancels, requestID)
+		extractorCanceled[requestID] = struct{}{}
+	}
+	extractorRequestsMu.Unlock()
+
+	if ok {
+		cancel()
+	}
+
+	return ok
+}
+
 // KillAllExtractorProcesses kills all running extractor processes
 // This is useful for cleanup when starting fresh or when user stops fetch
 func KillAllExtractorProcesses() {
+	cancelRegisteredExtractorRequests()
+	shutdownExtractorWorkerPool()
+
 	exeName := getExecutableName()
 
 	var cmd *exec.Cmd
@@ -39,6 +130,327 @@ func KillAllExtractorProcesses() {
 	cmd.CombinedOutput() // Ignore errors - it's okay if no processes found
 }
 
+const extractorWorkerPoolSize = 2
+
+type extractorWorkerPayload struct {
+	URL        string   `json:"url"`
+	AuthToken  string   `json:"auth_token,omitempty"`
+	Guest      bool     `json:"guest,omitempty"`
+	Retweets   string   `json:"retweets,omitempty"`
+	NoVideos   bool     `json:"no_videos,omitempty"`
+	Size       string   `json:"size,omitempty"`
+	Limit      int      `json:"limit,omitempty"`
+	Metadata   bool     `json:"metadata,omitempty"`
+	TextTweets bool     `json:"text_tweets,omitempty"`
+	Type       string   `json:"type,omitempty"`
+	Verbose    bool     `json:"verbose,omitempty"`
+	Set        []string `json:"set,omitempty"`
+	Cursor     string   `json:"cursor,omitempty"`
+}
+
+type extractorWorkerRequest struct {
+	ID      string                 `json:"id"`
+	Request extractorWorkerPayload `json:"request"`
+}
+
+type extractorWorkerResponse struct {
+	ID     string          `json:"id"`
+	OK     bool            `json:"ok"`
+	Result json.RawMessage `json:"result,omitempty"`
+	Error  string          `json:"error,omitempty"`
+}
+
+type extractorWorker struct {
+	exePath string
+
+	mu     sync.Mutex
+	cmd    *exec.Cmd
+	stdin  io.WriteCloser
+	stdout *bufio.Reader
+	dead   bool
+}
+
+type extractorWorkerPool struct {
+	exePath string
+	maxSize int
+
+	available chan *extractorWorker
+
+	mu           sync.Mutex
+	active       int
+	shuttingDown bool
+}
+
+func newExtractorWorker(exePath string) (*extractorWorker, error) {
+	cmd := exec.Command(exePath, "--worker")
+	cmd.Env = append(os.Environ(),
+		"PYTHONIOENCODING=utf-8",
+		"PYTHONUTF8=1",
+	)
+	hideWindow(cmd)
+
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		return nil, fmt.Errorf("failed to open worker stdin: %w", err)
+	}
+
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, fmt.Errorf("failed to open worker stdout: %w", err)
+	}
+
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		return nil, fmt.Errorf("failed to open worker stderr: %w", err)
+	}
+
+	if err := cmd.Start(); err != nil {
+		return nil, fmt.Errorf("failed to start extractor worker: %w", err)
+	}
+
+	go func() {
+		_, _ = io.Copy(io.Discard, stderr)
+	}()
+
+	return &extractorWorker{
+		exePath: exePath,
+		cmd:     cmd,
+		stdin:   stdin,
+		stdout:  bufio.NewReader(stdout),
+	}, nil
+}
+
+func (w *extractorWorker) markDead() {
+	w.mu.Lock()
+	w.dead = true
+	w.mu.Unlock()
+}
+
+func (w *extractorWorker) isDead() bool {
+	w.mu.Lock()
+	dead := w.dead
+	w.mu.Unlock()
+	return dead
+}
+
+func (w *extractorWorker) stop() {
+	w.mu.Lock()
+	if w.dead {
+		w.mu.Unlock()
+		return
+	}
+	w.dead = true
+	cmd := w.cmd
+	stdin := w.stdin
+	w.mu.Unlock()
+
+	if stdin != nil {
+		_ = stdin.Close()
+	}
+	if cmd != nil && cmd.Process != nil {
+		_ = cmd.Process.Kill()
+	}
+	if cmd != nil {
+		_, _ = cmd.Process.Wait()
+	}
+}
+
+func (w *extractorWorker) execute(requestID string, payload extractorWorkerPayload) ([]byte, error) {
+	request := extractorWorkerRequest{
+		ID:      requestID,
+		Request: payload,
+	}
+
+	requestLine, err := json.Marshal(request)
+	if err != nil {
+		return nil, fmt.Errorf("%w: failed to encode worker request: %v", errExtractorWorker, err)
+	}
+
+	cleanup := registerExtractorRequest(requestID, func() {
+		w.stop()
+	})
+	defer cleanup()
+
+	w.mu.Lock()
+	if w.dead || w.stdin == nil || w.stdout == nil {
+		w.mu.Unlock()
+		return nil, fmt.Errorf("%w: worker unavailable", errExtractorWorker)
+	}
+	stdin := w.stdin
+	stdout := w.stdout
+	w.mu.Unlock()
+
+	requestLine = append(requestLine, '\n')
+	if _, err := stdin.Write(requestLine); err != nil {
+		w.markDead()
+		if consumeExtractorRequestCanceled(requestID) {
+			return nil, ErrExtractorCanceled
+		}
+		return nil, fmt.Errorf("%w: failed to write worker request: %v", errExtractorWorker, err)
+	}
+
+	responseLine, err := stdout.ReadBytes('\n')
+	if err != nil {
+		w.markDead()
+		if consumeExtractorRequestCanceled(requestID) {
+			return nil, ErrExtractorCanceled
+		}
+		return nil, fmt.Errorf("%w: failed to read worker response: %v", errExtractorWorker, err)
+	}
+
+	var response extractorWorkerResponse
+	if err := json.Unmarshal(bytes.TrimSpace(responseLine), &response); err != nil {
+		w.markDead()
+		return nil, fmt.Errorf("%w: invalid worker response: %v", errExtractorWorker, err)
+	}
+
+	if response.ID != "" && response.ID != requestID {
+		w.markDead()
+		return nil, fmt.Errorf("%w: mismatched worker response id %q", errExtractorWorker, response.ID)
+	}
+
+	if !response.OK {
+		if response.Error == "" {
+			response.Error = "extractor worker returned an unknown error"
+		}
+		return nil, fmt.Errorf("%s", response.Error)
+	}
+
+	return response.Result, nil
+}
+
+func getExtractorWorkerPool(exePath string) *extractorWorkerPool {
+	extractorPoolMu.Lock()
+	defer extractorPoolMu.Unlock()
+
+	if extractorPool == nil || extractorPool.exePath != exePath {
+		if extractorPool != nil {
+			extractorPool.shutdown()
+		}
+		extractorPool = &extractorWorkerPool{
+			exePath:      exePath,
+			maxSize:      extractorWorkerPoolSize,
+			available:    make(chan *extractorWorker, extractorWorkerPoolSize),
+			shuttingDown: false,
+		}
+	}
+
+	return extractorPool
+}
+
+func shutdownExtractorWorkerPool() {
+	extractorPoolMu.Lock()
+	pool := extractorPool
+	extractorPool = nil
+	extractorPoolMu.Unlock()
+
+	if pool != nil {
+		pool.shutdown()
+	}
+}
+
+func (p *extractorWorkerPool) acquire() (*extractorWorker, error) {
+	for {
+		select {
+		case worker := <-p.available:
+			if worker == nil || worker.isDead() {
+				if worker != nil {
+					worker.stop()
+				}
+				p.mu.Lock()
+				if p.active > 0 {
+					p.active--
+				}
+				p.mu.Unlock()
+				continue
+			}
+			return worker, nil
+		default:
+		}
+
+		p.mu.Lock()
+		if p.shuttingDown {
+			p.mu.Unlock()
+			return nil, fmt.Errorf("%w: worker pool is shutting down", errExtractorWorker)
+		}
+		if p.active < p.maxSize {
+			p.active++
+			p.mu.Unlock()
+
+			worker, err := newExtractorWorker(p.exePath)
+			if err != nil {
+				p.mu.Lock()
+				if p.active > 0 {
+					p.active--
+				}
+				p.mu.Unlock()
+				return nil, fmt.Errorf("%w: %v", errExtractorWorker, err)
+			}
+			return worker, nil
+		}
+		p.mu.Unlock()
+
+		worker := <-p.available
+		if worker == nil {
+			continue
+		}
+		if worker.isDead() {
+			worker.stop()
+			p.mu.Lock()
+			if p.active > 0 {
+				p.active--
+			}
+			p.mu.Unlock()
+			continue
+		}
+		return worker, nil
+	}
+}
+
+func (p *extractorWorkerPool) release(worker *extractorWorker) {
+	if worker == nil {
+		return
+	}
+
+	p.mu.Lock()
+	shuttingDown := p.shuttingDown
+	p.mu.Unlock()
+
+	if shuttingDown || worker.isDead() {
+		worker.stop()
+		p.mu.Lock()
+		if p.active > 0 {
+			p.active--
+		}
+		p.mu.Unlock()
+		return
+	}
+
+	p.available <- worker
+}
+
+func (p *extractorWorkerPool) shutdown() {
+	p.mu.Lock()
+	p.shuttingDown = true
+	p.mu.Unlock()
+
+	for {
+		select {
+		case worker := <-p.available:
+			if worker != nil {
+				worker.stop()
+				p.mu.Lock()
+				if p.active > 0 {
+					p.active--
+				}
+				p.mu.Unlock()
+			}
+		default:
+			return
+		}
+	}
+}
+
 // parseExtractorError parses the extractor output and returns a user-friendly error message
 // while preserving the original error from gallery-dl
 func parseExtractorError(output string, username string) string {
@@ -48,14 +460,42 @@ func parseExtractorError(output string, username string) string {
 	lines := strings.Split(output, "\n")
 	var errorLine string
 	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+
 		lineLower := strings.ToLower(line)
+
+		// Ignore noisy Python warnings so they don't mask the real failure reason.
+		if strings.Contains(lineLower, "notopensslwarning") ||
+			strings.Contains(lineLower, "urllib3 v2 only supports openssl") {
+			continue
+		}
+
 		if strings.Contains(lineLower, "error:") || strings.Contains(lineLower, "exception") {
-			errorLine = strings.TrimSpace(line)
+			errorLine = line
 			break
 		}
 	}
 	if errorLine == "" {
-		errorLine = strings.TrimSpace(output)
+		filtered := make([]string, 0, len(lines))
+		for _, line := range lines {
+			line = strings.TrimSpace(line)
+			if line == "" {
+				continue
+			}
+			lineLower := strings.ToLower(line)
+			if strings.Contains(lineLower, "notopensslwarning") ||
+				strings.Contains(lineLower, "urllib3 v2 only supports openssl") {
+				continue
+			}
+			filtered = append(filtered, line)
+		}
+		errorLine = strings.Join(filtered, " ")
+	}
+	if strings.TrimSpace(errorLine) == "" {
+		errorLine = "extractor terminated before returning data"
 	}
 
 	// Truncate if too long
@@ -197,24 +637,24 @@ type CLIResponse struct {
 
 // TimelineEntry represents a single media entry for frontend (converted from MediaItem)
 type TimelineEntry struct {
-	URL           string        `json:"url"`
-	Date          string        `json:"date"`
-	TweetID       TweetIDString `json:"tweet_id"`
-	Type          string        `json:"type"`
-	IsRetweet     bool          `json:"is_retweet"`
-	Extension     string        `json:"extension"`
-	Width         int           `json:"width"`
-	Height        int           `json:"height"`
-	Content       string        `json:"content,omitempty"`
-	ViewCount     int           `json:"view_count,omitempty"`
-	BookmarkCount int           `json:"bookmark_count,omitempty"`
-	FavoriteCount int           `json:"favorite_count,omitempty"`
-	RetweetCount  int           `json:"retweet_count,omitempty"`
-	ReplyCount    int           `json:"reply_count,omitempty"`
-	Source        string        `json:"source,omitempty"`
-	Verified      bool          `json:"verified,omitempty"`
-	OriginalFilename string     `json:"original_filename,omitempty"` // Original filename from API
-	AuthorUsername string       `json:"author_username,omitempty"`   // Username of tweet author (for bookmarks and likes)
+	URL              string        `json:"url"`
+	Date             string        `json:"date"`
+	TweetID          TweetIDString `json:"tweet_id"`
+	Type             string        `json:"type"`
+	IsRetweet        bool          `json:"is_retweet"`
+	Extension        string        `json:"extension"`
+	Width            int           `json:"width"`
+	Height           int           `json:"height"`
+	Content          string        `json:"content,omitempty"`
+	ViewCount        int           `json:"view_count,omitempty"`
+	BookmarkCount    int           `json:"bookmark_count,omitempty"`
+	FavoriteCount    int           `json:"favorite_count,omitempty"`
+	RetweetCount     int           `json:"retweet_count,omitempty"`
+	ReplyCount       int           `json:"reply_count,omitempty"`
+	Source           string        `json:"source,omitempty"`
+	Verified         bool          `json:"verified,omitempty"`
+	OriginalFilename string        `json:"original_filename,omitempty"` // Original filename from API
+	AuthorUsername   string        `json:"author_username,omitempty"`   // Username of tweet author (for bookmarks and likes)
 }
 
 // AccountInfo represents Twitter account information (derived from metadata)
@@ -257,6 +697,7 @@ type TimelineRequest struct {
 	Page         int    `json:"page"`
 	MediaType    string `json:"media_type"` // all, image, video, gif
 	Retweets     bool   `json:"retweets"`
+	RequestID    string `json:"request_id,omitempty"`
 	Cursor       string `json:"cursor,omitempty"` // Resume from this cursor position
 }
 
@@ -268,6 +709,7 @@ type DateRangeRequest struct {
 	EndDate     string `json:"end_date"`   // YYYY-MM-DD
 	MediaFilter string `json:"media_filter"`
 	Retweets    bool   `json:"retweets"`
+	RequestID   string `json:"request_id,omitempty"`
 }
 
 // buildTwitterURL constructs the Twitter URL based on username and timeline type
@@ -383,20 +825,20 @@ func buildSearchURL(username, startDate, endDate, mediaFilter string, includeRet
 // convertMetadataToTimelineEntry converts metadata-only tweets to timeline entries
 func convertMetadataToTimelineEntry(meta TweetMetadata) TimelineEntry {
 	return TimelineEntry{
-		URL:           "",
-		Date:          meta.Date,
-		TweetID:       meta.TweetID,
-		Type:          "text",
-		IsRetweet:     meta.RetweetID != 0,
-		Extension:     "txt",
-		Width:         0,
-		Height:        0,
-		Content:       meta.Content,
-		ViewCount:     meta.ViewCount,
-		BookmarkCount: meta.BookmarkCount,
-		FavoriteCount: meta.FavoriteCount,
-		RetweetCount:  meta.RetweetCount,
-		ReplyCount:    meta.ReplyCount,
+		URL:            "",
+		Date:           meta.Date,
+		TweetID:        meta.TweetID,
+		Type:           "text",
+		IsRetweet:      meta.RetweetID != 0,
+		Extension:      "txt",
+		Width:          0,
+		Height:         0,
+		Content:        meta.Content,
+		ViewCount:      meta.ViewCount,
+		BookmarkCount:  meta.BookmarkCount,
+		FavoriteCount:  meta.FavoriteCount,
+		RetweetCount:   meta.RetweetCount,
+		ReplyCount:     meta.ReplyCount,
 		AuthorUsername: meta.Author.Name,
 	}
 }
@@ -413,22 +855,22 @@ func convertToTimelineEntry(media CLIMediaItem) TimelineEntry {
 	}
 
 	entry := TimelineEntry{
-		URL:              media.URL,
-		TweetID:          media.TweetID,
-		Date:             media.Date,
-		Extension:        media.Extension,
-		Width:            media.Width,
-		Height:           media.Height,
-		IsRetweet:        media.RetweetID != 0,
-		Content:          media.Content,
-		ViewCount:        media.ViewCount,
-		BookmarkCount:    media.BookmarkCount,
-		FavoriteCount:    media.FavoriteCount,
-		RetweetCount:     media.RetweetCount,
-		ReplyCount:       media.ReplyCount,
-		Source:           media.Source,
-		Verified:         media.Author.Verified,
-		AuthorUsername:   authorUsername,
+		URL:            media.URL,
+		TweetID:        media.TweetID,
+		Date:           media.Date,
+		Extension:      media.Extension,
+		Width:          media.Width,
+		Height:         media.Height,
+		IsRetweet:      media.RetweetID != 0,
+		Content:        media.Content,
+		ViewCount:      media.ViewCount,
+		BookmarkCount:  media.BookmarkCount,
+		FavoriteCount:  media.FavoriteCount,
+		RetweetCount:   media.RetweetCount,
+		ReplyCount:     media.ReplyCount,
+		Source:         media.Source,
+		Verified:       media.Author.Verified,
+		AuthorUsername: authorUsername,
 		// OriginalFilename will be extracted from URL in download.go
 	}
 
@@ -511,6 +953,59 @@ func ensureExtractor() (string, error) {
 	return exePath, nil
 }
 
+func runExtractorCommand(exePath string, args []string, username string, requestID string) ([]byte, error) {
+	ctx := context.Background()
+	cleanup := func() {}
+	if strings.TrimSpace(requestID) != "" {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithCancel(context.Background())
+		cleanup = registerExtractorRequest(requestID, cancel)
+	}
+	defer cleanup()
+
+	cmd := exec.CommandContext(ctx, exePath, args...)
+	cmd.Env = append(os.Environ(),
+		"PYTHONIOENCODING=utf-8",
+		"PYTHONUTF8=1",
+	)
+	hideWindow(cmd)
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		if errors.Is(ctx.Err(), context.Canceled) || consumeExtractorRequestCanceled(requestID) {
+			return nil, ErrExtractorCanceled
+		}
+
+		outputStr := string(output)
+		errorMsg := parseExtractorError(outputStr, username)
+		return nil, fmt.Errorf("%s", errorMsg)
+	}
+
+	return output, nil
+}
+
+func executeExtractorRequest(
+	exePath string,
+	requestID string,
+	payload extractorWorkerPayload,
+	args []string,
+	username string,
+) ([]byte, error) {
+	pool := getExtractorWorkerPool(exePath)
+	if pool != nil {
+		worker, err := pool.acquire()
+		if err == nil {
+			output, execErr := worker.execute(requestID, payload)
+			pool.release(worker)
+			if execErr == nil || errors.Is(execErr, ErrExtractorCanceled) || !errors.Is(execErr, errExtractorWorker) {
+				return output, execErr
+			}
+		}
+	}
+
+	return runExtractorCommand(exePath, args, username, requestID)
+}
+
 // ExtractTimeline extracts media from user timeline using the new CLI
 func ExtractTimeline(req TimelineRequest) (*TwitterResponse, error) {
 	// Get or extract extractor binary (persistent, not temp)
@@ -545,6 +1040,17 @@ func ExtractTimeline(req TimelineRequest) (*TwitterResponse, error) {
 	// Build command arguments for new CLI format
 	// Format: extractor.exe URL --auth-token TOKEN --json [options]
 	args := []string{url}
+	payload := extractorWorkerPayload{
+		URL:       url,
+		AuthToken: req.AuthToken,
+		Guest:     req.AuthToken == "",
+		Retweets:  "skip",
+		Size:      "orig",
+		Limit:     req.BatchSize,
+		Metadata:  true,
+		Type:      "all",
+		Cursor:    req.Cursor,
+	}
 
 	// Add auth token
 	if req.AuthToken != "" {
@@ -565,14 +1071,17 @@ func ExtractTimeline(req TimelineRequest) (*TwitterResponse, error) {
 	if timelineType == "tweets" || timelineType == "timeline" {
 		if req.Retweets {
 			args = append(args, "--retweets", "include")
+			payload.Retweets = "include"
 		} else {
 			args = append(args, "--retweets", "skip")
+			payload.Retweets = "skip"
 		}
 	}
 
 	// Only add --text-tweets when explicitly requesting text content
 	if isTextOnly {
 		args = append(args, "--text-tweets")
+		payload.TextTweets = true
 	}
 
 	// Handle media type filter using --type parameter
@@ -580,10 +1089,13 @@ func ExtractTimeline(req TimelineRequest) (*TwitterResponse, error) {
 		switch req.MediaType {
 		case "image":
 			args = append(args, "--type", "photo")
+			payload.Type = "photo"
 		case "video":
 			args = append(args, "--type", "video")
+			payload.Type = "video"
 		case "gif":
 			args = append(args, "--type", "animated_gif")
+			payload.Type = "animated_gif"
 		}
 	}
 
@@ -592,24 +1104,9 @@ func ExtractTimeline(req TimelineRequest) (*TwitterResponse, error) {
 		args = append(args, "--cursor", req.Cursor)
 	}
 
-	// Execute command with UTF-8 encoding
-	cmd := exec.Command(exePath, args...)
-	cmd.Env = append(os.Environ(),
-		"PYTHONIOENCODING=utf-8",
-		"PYTHONUTF8=1",
-	)
-	hideWindow(cmd) // Hide console window on Windows
-	output, err := cmd.CombinedOutput()
-
-	// Ensure process is killed after completion
-	if cmd.Process != nil {
-		cmd.Process.Kill()
-	}
-
+	output, err := executeExtractorRequest(exePath, req.RequestID, payload, args, req.Username)
 	if err != nil {
-		outputStr := string(output)
-		errorMsg := parseExtractorError(outputStr, req.Username)
-		return nil, fmt.Errorf("%s", errorMsg)
+		return nil, err
 	}
 
 	// Find JSON in output (skip any info messages)
@@ -713,20 +1210,20 @@ func ExtractTimeline(req TimelineRequest) (*TwitterResponse, error) {
 		timeline = make([]TimelineEntry, 0, len(cliResponse.Metadata))
 		for _, meta := range cliResponse.Metadata {
 			entry := TimelineEntry{
-				URL:           "", // No media URL for text tweets
-				TweetID:       meta.TweetID,
-				Date:          meta.Date,
-				Type:          "text",
-				IsRetweet:     meta.RetweetID != 0,
-				Extension:     "txt",
-				Width:         0,
-				Height:        0,
-				Content:       meta.Content,
-				ViewCount:     meta.ViewCount,
-				BookmarkCount: meta.BookmarkCount,
-				FavoriteCount: meta.FavoriteCount,
-				RetweetCount:  meta.RetweetCount,
-				ReplyCount:    meta.ReplyCount,
+				URL:            "", // No media URL for text tweets
+				TweetID:        meta.TweetID,
+				Date:           meta.Date,
+				Type:           "text",
+				IsRetweet:      meta.RetweetID != 0,
+				Extension:      "txt",
+				Width:          0,
+				Height:         0,
+				Content:        meta.Content,
+				ViewCount:      meta.ViewCount,
+				BookmarkCount:  meta.BookmarkCount,
+				FavoriteCount:  meta.FavoriteCount,
+				RetweetCount:   meta.RetweetCount,
+				ReplyCount:     meta.ReplyCount,
 				AuthorUsername: meta.Author.Name,
 			}
 			timeline = append(timeline, entry)
@@ -774,6 +1271,16 @@ func ExtractDateRange(req DateRangeRequest) (*TwitterResponse, error) {
 
 	// Build command arguments
 	args := []string{url}
+	payload := extractorWorkerPayload{
+		URL:        url,
+		AuthToken:  req.AuthToken,
+		Guest:      req.AuthToken == "",
+		Retweets:   "skip",
+		Size:       "orig",
+		Metadata:   true,
+		TextTweets: mediaFilter == "text",
+		Type:       "all",
+	}
 
 	// Add auth token
 	if req.AuthToken != "" {
@@ -787,33 +1294,29 @@ func ExtractDateRange(req DateRangeRequest) (*TwitterResponse, error) {
 
 	if req.Retweets {
 		args = append(args, "--retweets", "include")
+		payload.Retweets = "include"
 	} else {
 		args = append(args, "--retweets", "skip")
+		payload.Retweets = "skip"
 	}
 
 	isTextOnly := mediaFilter == "text"
 	if isTextOnly {
 		args = append(args, "--text-tweets")
+	} else {
+		switch mediaFilter {
+		case "image":
+			payload.Type = "photo"
+		case "video":
+			payload.Type = "video"
+		case "gif":
+			payload.Type = "animated_gif"
+		}
 	}
 
-	// Execute command with UTF-8 encoding
-	cmd := exec.Command(exePath, args...)
-	cmd.Env = append(os.Environ(),
-		"PYTHONIOENCODING=utf-8",
-		"PYTHONUTF8=1",
-	)
-	hideWindow(cmd)
-	output, err := cmd.CombinedOutput()
-
-	// Ensure process is killed after completion
-	if cmd.Process != nil {
-		cmd.Process.Kill()
-	}
-
+	output, err := executeExtractorRequest(exePath, req.RequestID, payload, args, req.Username)
 	if err != nil {
-		outputStr := string(output)
-		errorMsg := parseExtractorError(outputStr, req.Username)
-		return nil, fmt.Errorf("%s", errorMsg)
+		return nil, err
 	}
 
 	// Find JSON in output (skip any info messages)
@@ -895,24 +1398,44 @@ func ExtractDateRange(req DateRangeRequest) (*TwitterResponse, error) {
 
 // extractJSON finds and extracts JSON object from output string
 func extractJSON(output string) string {
-	// Find the start of JSON object
-	start := strings.Index(output, "{")
-	if start == -1 {
+	trimmed := strings.TrimSpace(output)
+	trimmed = strings.TrimPrefix(trimmed, "\ufeff")
+	trimmed = strings.TrimSpace(trimmed)
+	if trimmed == "" {
 		return ""
 	}
 
-	// Find the matching closing brace
-	depth := 0
-	for i := start; i < len(output); i++ {
-		if output[i] == '{' {
-			depth++
-		} else if output[i] == '}' {
-			depth--
-			if depth == 0 {
-				return output[start : i+1]
+	// Fast path for the common case where stdout already contains only JSON.
+	if json.Valid([]byte(trimmed)) {
+		return trimmed
+	}
+
+	for i := 0; i < len(output); i++ {
+		switch output[i] {
+		case '{', '[':
+			candidate, ok := decodeJSONValue(output[i:])
+			if ok {
+				return candidate
 			}
 		}
 	}
 
 	return ""
+}
+
+func decodeJSONValue(input string) (string, bool) {
+	input = strings.TrimLeft(input, " \t\r\n")
+	if input == "" {
+		return "", false
+	}
+
+	decoder := json.NewDecoder(strings.NewReader(input))
+	decoder.UseNumber()
+
+	var raw json.RawMessage
+	if err := decoder.Decode(&raw); err != nil || len(raw) == 0 {
+		return "", false
+	}
+
+	return string(raw), true
 }

@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef } from "react";
+import { startTransition, useCallback, useState, useEffect, useRef, useMemo } from "react";
+import { VList } from "virtua";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -34,33 +35,29 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Trash2, FileInput, FileOutput, Pencil, Tag, Shuffle, X, XCircle, Download, StopCircle, Globe, Lock, Bookmark, Heart, Image, Images, Video, Film, FileText, Filter, AlertCircle, MoreVertical, FileBraces, CloudBackup, Search, LayoutGrid, Grid3X3, List, ArrowUpDown, ArrowUp, FolderOpen, Users, MessageSquare } from "lucide-react";
+import { Trash2, FileInput, FileOutput, Pencil, Tag, Shuffle, X, XCircle, Download, StopCircle, Globe, Lock, Bookmark, Heart, Image, Images, Video, Film, FileText, Filter, AlertCircle, MoreVertical, FileBraces, CloudBackup, Search, LayoutGrid, List, ArrowUpDown, ArrowUp, FolderOpen } from "lucide-react";
 import { toastWithSound as toast } from "@/lib/toast-with-sound";
 import { getSettings } from "@/lib/settings";
 import { openExternal } from "@/lib/utils";
+import { useSavedAccountsModel } from "@/hooks/useSavedAccountsModel";
+import type {
+  GlobalDownloadSessionMeta,
+  GlobalDownloadState,
+} from "@/components/GlobalDownloadPanel";
 import {
   GetAllAccountsFromDB,
-  GetAccountFromDB,
   DeleteAccountFromDB,
   SaveAccountToDB,
   ExportAccountJSON,
   ExportAccountsTXT,
   UpdateAccountGroup,
   GetAllGroups,
-  DownloadMediaWithMetadata,
-  StopDownload,
-  CheckFolderExists,
+  DownloadSavedScopes,
+  CheckFoldersExist,
   OpenFolder,
   GetFolderPath,
 } from "../../wailsjs/go/main/App";
-import { EventsOn, EventsOff } from "../../wailsjs/runtime/runtime";
-import { main } from "../../wailsjs/go/models";
-
-interface DownloadProgress {
-  current: number;
-  total: number;
-  percent: number;
-}
+import type { HistoryItem } from "@/components/FetchHistory";
 
 
 
@@ -95,7 +92,7 @@ function getRelativeTime(dateStr: string): string {
 }
 
 // Using backend.AccountListItem from wailsjs/go/models
-import { backend } from "../../wailsjs/go/models";
+import { backend, main } from "../../wailsjs/go/models";
 type AccountListItem = backend.AccountListItem;
 
 interface GroupInfo {
@@ -104,15 +101,44 @@ interface GroupInfo {
 }
 
 interface DatabaseViewProps {
-  onBack: () => void;
-  onLoadAccount: (responseJSON: string, username: string) => void;
+  onLoadAccount: (account: AccountListItem) => void | Promise<void>;
   onUpdateSelected?: (usernames: string[]) => void;
+  downloadState?: GlobalDownloadState | null;
+  downloadMeta?: GlobalDownloadSessionMeta | null;
+  onStopDownload?: () => void | Promise<void>;
+  onDownloadSessionStart?: (meta: GlobalDownloadSessionMeta) => void;
+  recentFetches?: HistoryItem[];
+  onSelectRecentFetch?: (item: HistoryItem) => void;
+  onRemoveRecentFetch?: (id: string) => void;
+  onClearRecentFetches?: () => void;
 }
 
 const INITIAL_LOAD_COUNT = 12;
 const LOAD_MORE_COUNT = 12;
 
-export function DatabaseView({ onLoadAccount, onUpdateSelected }: DatabaseViewProps) {
+function buildScopeRequest(account: AccountListItem) {
+  return {
+    username: account.username,
+    media_type: account.media_type || "all",
+    timeline_type: account.timeline_type || "timeline",
+    retweets: account.retweets ?? false,
+    query_key: account.query_key || "",
+  };
+}
+
+export function DatabaseView({
+  onLoadAccount,
+  onUpdateSelected,
+  downloadState = null,
+  downloadMeta = null,
+  onStopDownload,
+  onDownloadSessionStart,
+  recentFetches = [],
+  onSelectRecentFetch,
+  onRemoveRecentFetch,
+  onClearRecentFetches,
+}: DatabaseViewProps) {
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [accounts, setAccounts] = useState<AccountListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
@@ -124,178 +150,169 @@ export function DatabaseView({ onLoadAccount, onUpdateSelected }: DatabaseViewPr
   const [accountViewMode, setAccountViewMode] = useState<"public" | "private">("public");
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [sortOrder, setSortOrder] = useState<"newest" | "oldest" | "username-asc" | "username-desc" | "followers-high" | "followers-low" | "posts-high" | "posts-low" | "media-high" | "media-low">("newest");
-  const [gridView, setGridView] = useState<"large" | "small" | "list">("list");
+  const [gridView, setGridView] = useState<"gallery" | "list">("list");
   const [editingAccount, setEditingAccount] = useState<AccountListItem | null>(null);
   const [editGroupName, setEditGroupName] = useState("");
   const [editGroupColor, setEditGroupColor] = useState("");
   const [clearAllDialogOpen, setClearAllDialogOpen] = useState(false);
-  const [isDownloading, setIsDownloading] = useState(false);
-  const [downloadingAccountId, setDownloadingAccountId] = useState<number | null>(null);
-  const [downloadProgress, setDownloadProgress] = useState<DownloadProgress | null>(null);
   const [isBulkDownloading, setIsBulkDownloading] = useState(false);
   const [bulkDownloadCurrent, setBulkDownloadCurrent] = useState(0);
   const [bulkDownloadTotal, setBulkDownloadTotal] = useState(0);
   const stopBulkDownloadRef = useRef(false);
   const loadMoreRef = useRef<HTMLDivElement>(null);
   const [folderExistence, setFolderExistence] = useState<Map<number, boolean>>(new Map());
+  const isDownloading = Boolean(downloadState?.in_progress);
+  const downloadingAccountId = downloadState?.in_progress ? downloadMeta?.accountId ?? null : null;
+  const downloadProgress = isDownloading ? downloadState : null;
+
+  const resolveAccountFolderName = useCallback((account: AccountListItem) => {
+    if (account.username === "bookmarks") {
+      return "My Bookmarks";
+    }
+    if (account.username === "likes") {
+      return "My Likes";
+    }
+    return account.username;
+  }, []);
 
   // Check folder existence for all accounts
-  const checkFolderExistence = async (accountsList: AccountListItem[]) => {
+  const checkFolderExistence = useCallback(async (accountsList: AccountListItem[]) => {
     const settings = getSettings();
     const basePath = settings.downloadPath;
-    if (!basePath) return;
+    if (!basePath || accountsList.length === 0) {
+      setFolderExistence(new Map());
+      return;
+    }
+
+    const folderNames = [...new Set(accountsList.map(resolveAccountFolderName))];
+    const existenceByFolder = await CheckFoldersExist(basePath, folderNames);
 
     const folderMap = new Map<number, boolean>();
-
     for (const account of accountsList) {
-      // For bookmarks/likes, check special folder names
-      let folderName = account.username;
-      if (account.username === "bookmarks") {
-        folderName = "My Bookmarks";
-      } else if (account.username === "likes") {
-        folderName = "My Likes";
-      }
-
-      const exists = await CheckFolderExists(basePath, folderName);
-      folderMap.set(account.id, exists);
+      const folderName = resolveAccountFolderName(account);
+      folderMap.set(account.id, Boolean(existenceByFolder[folderName]));
     }
 
     setFolderExistence(folderMap);
-  };
+  }, [resolveAccountFolderName]);
 
-  const loadAccounts = async () => {
-    setLoading(true);
+  const loadSecondaryData = useCallback(async (accountsList: AccountListItem[]) => {
     try {
-      const data = await GetAllAccountsFromDB();
-      setAccounts(data || []);
       const groupsData = await GetAllGroups();
       if (groupsData) {
         setGroups(groupsData.map((g) => ({ name: g.name || "", color: g.color || "" })));
       }
-      // Check folder existence for all accounts
-      if (data && data.length > 0) {
-        checkFolderExistence(data);
-      }
+    } catch (error) {
+      console.error("Failed to load groups:", error);
+    }
+
+    try {
+      const initialAccounts = accountsList.slice(0, INITIAL_LOAD_COUNT);
+      await checkFolderExistence(initialAccounts);
+
+      window.setTimeout(() => {
+        void checkFolderExistence(accountsList);
+      }, 0);
+    } catch (error) {
+      console.error("Failed to check folder existence:", error);
+    }
+  }, [checkFolderExistence]);
+
+  const loadAccounts = useCallback(async () => {
+    setLoading(true);
+    setFolderExistence(new Map());
+    try {
+      const data = await GetAllAccountsFromDB();
+      const accountList = data || [];
+      startTransition(() => {
+        setAccounts(accountList);
+        setLoading(false);
+      });
+
+      window.setTimeout(() => {
+        void loadSecondaryData(accountList);
+      }, 0);
     } catch (error) {
       console.error("Failed to load accounts:", error);
       toast.error("Failed to load accounts");
-    } finally {
       setLoading(false);
     }
-  };
+  }, [loadSecondaryData]);
 
   useEffect(() => {
-    loadAccounts();
-  }, []);
+    const timer = window.setTimeout(() => {
+      void loadAccounts();
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [loadAccounts]);
 
   // Reset visible count when grid view or filters change
   useEffect(() => {
-    setVisibleCount(INITIAL_LOAD_COUNT);
+    const timer = window.setTimeout(() => {
+      setVisibleCount(INITIAL_LOAD_COUNT);
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [gridView, searchQuery, filterGroup, filterMediaType, accountViewMode, sortOrder]);
 
   // Listen for scroll to show/hide scroll-to-top button
-  // Listen for scroll to show/hide scroll-to-top button
   useEffect(() => {
-    const handleScroll = () => {
-      setShowScrollTop(window.scrollY > 300);
-    };
-    window.addEventListener("scroll", handleScroll);
-    return () => window.removeEventListener("scroll", handleScroll);
-  }, []);
+    const container = scrollContainerRef.current;
+    if (!container) {
+      return;
+    }
 
-  // Intersection Observer for lazy loading
-  // Listen for download progress events
-  useEffect(() => {
-    const unsubscribe = EventsOn("download-progress", (progress: DownloadProgress) => {
-      setDownloadProgress(progress);
-    });
-    return () => {
-      EventsOff("download-progress");
-      unsubscribe();
+    const handleScroll = () => {
+      setShowScrollTop(container.scrollTop > 300);
     };
+
+    container.addEventListener("scroll", handleScroll, { passive: true });
+    handleScroll();
+
+    return () => container.removeEventListener("scroll", handleScroll);
   }, []);
 
   const scrollToTop = () => {
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    scrollContainerRef.current?.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  // Separate accounts into public and private
-  const isPrivateAccount = (username: string) => 
-    username === "bookmarks" || username === "likes";
+  const isPrivateAccount = useCallback(
+    (username: string) => username === "bookmarks" || username === "likes",
+    []
+  );
 
-  const publicAccounts = accounts.filter((acc) => !isPrivateAccount(acc.username));
-  const privateAccounts = accounts.filter((acc) => isPrivateAccount(acc.username));
+  const {
+    publicAccounts,
+    privateAccounts,
+    filteredAccounts,
+  } = useSavedAccountsModel({
+    accounts,
+    accountViewMode,
+    searchQuery,
+    filterGroup,
+    filterMediaType,
+    sortOrder,
+  });
 
-  const baseAccounts = accountViewMode === "public" ? publicAccounts : privateAccounts;
+  const selectedAccounts = useMemo(
+    () => filteredAccounts.filter((account) => selectedIds.has(account.id)),
+    [filteredAccounts, selectedIds]
+  );
 
-  const filteredAccounts = baseAccounts
-    .filter((acc) => {
-      // Filter by search query
-      if (searchQuery) {
-        const query = searchQuery.toLowerCase();
-        const matchesUsername = acc.username.toLowerCase().includes(query);
-        const matchesName = acc.name.toLowerCase().includes(query);
-        if (!matchesUsername && !matchesName) return false;
-      }
-      // Filter by group
-      if (filterGroup !== "all") {
-        if (filterGroup === "ungrouped" && acc.group_name) return false;
-        if (filterGroup !== "ungrouped" && acc.group_name !== filterGroup) return false;
-      }
-      // Filter by media type
-      if (filterMediaType !== "all") {
-        const accMediaType = acc.media_type || "all";
-        // "all-media" in filter matches "all" in database (fetched with All Media option)
-        if (filterMediaType === "all-media") {
-          if (accMediaType !== "all") return false;
-        } else {
-          if (accMediaType !== filterMediaType) return false;
-        }
-      }
-      return true;
-    })
-    .sort((a, b) => {
-      switch (sortOrder) {
-        case "newest": {
-          const dateA = new Date(a.last_fetched).getTime();
-          const dateB = new Date(b.last_fetched).getTime();
-          return dateB - dateA;
-        }
-        case "oldest": {
-          const dateA = new Date(a.last_fetched).getTime();
-          const dateB = new Date(b.last_fetched).getTime();
-          return dateA - dateB;
-        }
-        case "username-asc":
-          return a.username.toLowerCase().localeCompare(b.username.toLowerCase());
-        case "username-desc":
-          return b.username.toLowerCase().localeCompare(a.username.toLowerCase());
-        case "followers-high":
-          return (b.followers_count || 0) - (a.followers_count || 0);
-        case "followers-low":
-          return (a.followers_count || 0) - (b.followers_count || 0);
-        case "posts-high":
-          return (b.statuses_count || 0) - (a.statuses_count || 0);
-        case "posts-low":
-          return (a.statuses_count || 0) - (b.statuses_count || 0);
-        case "media-high":
-          return (b.total_media || 0) - (a.total_media || 0);
-        case "media-low":
-          return (a.total_media || 0) - (b.total_media || 0);
-        default:
-          return 0;
-      }
-    });
+  const focusedAccount = selectedAccounts.length === 1 ? selectedAccounts[0] : null;
 
   // Intersection Observer for lazy loading
   useEffect(() => {
+    if (gridView !== "gallery") {
+      return;
+    }
+
     const currentRef = loadMoreRef.current;
     if (!currentRef) return;
 
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries[0].isIntersecting) {
-          setVisibleCount((prev) => prev + LOAD_MORE_COUNT);
+          setVisibleCount((prev) => Math.min(prev + LOAD_MORE_COUNT, filteredAccounts.length));
         }
       },
       { threshold: 0.1, rootMargin: "100px" }
@@ -306,7 +323,7 @@ export function DatabaseView({ onLoadAccount, onUpdateSelected }: DatabaseViewPr
     return () => {
       observer.unobserve(currentRef);
     };
-  }, [filteredAccounts.length, visibleCount, loading]);
+  }, [filteredAccounts.length, gridView, loading]);
 
   const handleEditGroup = (account: AccountListItem) => {
     setEditingAccount(account);
@@ -321,7 +338,7 @@ export function DatabaseView({ onLoadAccount, onUpdateSelected }: DatabaseViewPr
       toast.success(`Updated group for @${editingAccount.username}`);
       setEditingAccount(null);
       loadAccounts();
-    } catch (error) {
+    } catch {
       toast.error("Failed to update group");
     }
   };
@@ -331,16 +348,15 @@ export function DatabaseView({ onLoadAccount, onUpdateSelected }: DatabaseViewPr
       await DeleteAccountFromDB(id);
       toast.success(`Deleted @${username}`);
       loadAccounts();
-    } catch (error) {
+    } catch {
       toast.error("Failed to delete account");
     }
   };
 
-  const handleView = async (id: number, username: string) => {
+  const handleView = async (account: AccountListItem) => {
     try {
-      const responseJSON = await GetAccountFromDB(id);
-      onLoadAccount(responseJSON, username);
-    } catch (error) {
+      await onLoadAccount(account);
+    } catch {
       toast.error("Failed to load account data");
     }
   };
@@ -356,56 +372,33 @@ export function DatabaseView({ onLoadAccount, onUpdateSelected }: DatabaseViewPr
     const folderPath = await GetFolderPath(settings.downloadPath, folderName);
     try {
       await OpenFolder(folderPath);
-    } catch (error) {
+    } catch {
       toast.error("Failed to open folder");
     }
   };
 
   const handleDownload = async (id: number, username: string) => {
     try {
-      const responseJSON = await GetAccountFromDB(id);
-      const data = JSON.parse(responseJSON);
-      const timeline = data.timeline || [];
-      
-      if (timeline.length === 0) {
+      const account = accounts.find((entry) => entry.id === id);
+      if (!account || account.total_media === 0) {
         toast.error("No media to download");
         return;
       }
 
       const settings = getSettings();
-      // Check if it's bookmarks or likes by checking account_info.nick or username (for backward compatibility)
-      const isBookmarks = data.account_info?.nick === "My Bookmarks" || username === "bookmarks";
-      const isLikes = data.account_info?.nick === "My Likes" || username === "likes";
-      let outputDir = settings.downloadPath;
-      if (isBookmarks) {
-        const separator = settings.downloadPath.includes("/") ? "/" : "\\";
-        outputDir = `${settings.downloadPath}${separator}My Bookmarks`;
-      } else if (isLikes) {
-        const separator = settings.downloadPath.includes("/") ? "/" : "\\";
-        outputDir = `${settings.downloadPath}${separator}My Likes`;
-      }
-      // Use actual username from account_info if available, otherwise use stored username
-      const actualUsername = data.account_info?.name || username;
-
-      setIsDownloading(true);
-      setDownloadingAccountId(id);
-      setDownloadProgress({ current: 0, total: timeline.length, percent: 0 });
-
-      const request = new main.DownloadMediaWithMetadataRequest({
-        items: timeline.map((item: { url: string; date: string; tweet_id: string; type: string; original_filename?: string; author_username?: string }) => new main.MediaItemRequest({
-          url: item.url,
-          date: item.date,
-          tweet_id: item.tweet_id,
-          type: item.type,
-          original_filename: item.original_filename || "",
-          author_username: item.author_username || "",
-        })),
-        output_dir: outputDir,
-        username: actualUsername,
-        proxy: settings.proxy || "",
+      onDownloadSessionStart?.({
+        source: "database-single",
+        title: `Downloading @${account.username}`,
+        subtitle: `${formatNumberWithComma(account.total_media)} saved item(s)`,
+        accountId: id,
+        accountName: account.username,
       });
 
-      const response = await DownloadMediaWithMetadata(request);
+      const response = await DownloadSavedScopes(new main.DownloadSavedScopesRequest({
+        scopes: [buildScopeRequest(account)],
+        output_dir: settings.downloadPath || "",
+        proxy: settings.proxy || "",
+      }));
 
       if (response.success) {
         const parts: string[] = [];
@@ -432,21 +425,6 @@ export function DatabaseView({ onLoadAccount, onUpdateSelected }: DatabaseViewPr
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
       toast.error(`Download failed: ${errorMsg}`);
-    } finally {
-      setIsDownloading(false);
-      setDownloadingAccountId(null);
-      setDownloadProgress(null);
-    }
-  };
-
-  const handleStopDownload = async () => {
-    try {
-      const stopped = await StopDownload();
-      if (stopped) {
-        toast.info("Download stopped");
-      }
-    } catch (error) {
-      console.error("Failed to stop download:", error);
     }
   };
 
@@ -463,106 +441,68 @@ export function DatabaseView({ onLoadAccount, onUpdateSelected }: DatabaseViewPr
     stopBulkDownloadRef.current = false;
 
     const settings = getSettings();
-    let totalDownloaded = 0;
-    let totalSkipped = 0;
-    let downloadedAccounts = 0;
+    const selectedAccounts = idsToDownload
+      .map((id) => accounts.find((account) => account.id === id))
+      .filter((account): account is AccountListItem => account !== undefined && account.total_media > 0);
 
-    for (let i = 0; i < idsToDownload.length; i++) {
-      // Check stop flag using ref (works inside async loop)
-      if (stopBulkDownloadRef.current) {
-        toast.info("Bulk download stopped");
-        break;
-      }
+    if (selectedAccounts.length === 0) {
+      setIsBulkDownloading(false);
+      setBulkDownloadCurrent(0);
+      setBulkDownloadTotal(0);
+      toast.error("No media to download");
+      return;
+    }
 
-      const id = idsToDownload[i];
-      const account = accounts.find((a) => a.id === id);
-      if (!account) continue;
+    const totalItems = selectedAccounts.reduce(
+      (sum, account) => sum + account.total_media,
+      0
+    );
 
-      setBulkDownloadCurrent(i + 1);
-      setDownloadingAccountId(id);
+    onDownloadSessionStart?.({
+      source: "database-bulk",
+      title: `Bulk downloading ${selectedAccounts.length} accounts`,
+      subtitle: `${formatNumberWithComma(totalItems)} saved item(s)`,
+    });
 
-      try {
-        const responseJSON = await GetAccountFromDB(id);
-        const data = JSON.parse(responseJSON);
-        const timeline = data.timeline || [];
-
-        if (timeline.length === 0) continue;
-
-        // Check again before starting download
-        if (stopBulkDownloadRef.current) {
-          toast.info("Bulk download stopped");
-          break;
-        }
-
-        setDownloadProgress({ current: 0, total: timeline.length, percent: 0 });
-
-        // Check if it's bookmarks or likes by checking account_info.nick or username (for backward compatibility)
-        const isBookmarks = data.account_info?.nick === "My Bookmarks" || account.username === "bookmarks";
-        const isLikes = data.account_info?.nick === "My Likes" || account.username === "likes";
-        let outputDir = settings.downloadPath;
-        if (isBookmarks) {
-          const separator = settings.downloadPath.includes("/") ? "/" : "\\";
-          outputDir = `${settings.downloadPath}${separator}My Bookmarks`;
-        } else if (isLikes) {
-          const separator = settings.downloadPath.includes("/") ? "/" : "\\";
-          outputDir = `${settings.downloadPath}${separator}My Likes`;
-        }
-        // Use actual username from account_info if available, otherwise use stored username
-        const actualUsername = data.account_info?.name || account.username;
-
-        const request = new main.DownloadMediaWithMetadataRequest({
-          items: timeline.map((item: { url: string; date: string; tweet_id: string; type: string; author_username?: string; original_filename?: string }) => new main.MediaItemRequest({
-            url: item.url,
-            date: item.date,
-            tweet_id: item.tweet_id,
-            type: item.type,
-            author_username: item.author_username || "",
-            original_filename: item.original_filename || "",
-          })),
-          output_dir: outputDir,
-          username: actualUsername,
-          proxy: settings.proxy || "",
-        });
-
-        const response = await DownloadMediaWithMetadata(request);
-        if (response.success) {
-          totalDownloaded += response.downloaded;
-          totalSkipped += response.skipped || 0;
-          downloadedAccounts++;
-        }
-      } catch (error) {
-        console.error(`Failed to download @${account.username}:`, error);
-      }
+    let response: Awaited<ReturnType<typeof DownloadSavedScopes>> | null = null;
+    try {
+      response = await DownloadSavedScopes(new main.DownloadSavedScopesRequest({
+        scopes: selectedAccounts.map((account) => buildScopeRequest(account)),
+        output_dir: settings.downloadPath || "",
+        proxy: settings.proxy || "",
+      }));
+    } catch (error) {
+      console.error("Bulk download failed:", error);
     }
 
     setIsBulkDownloading(false);
-    setDownloadingAccountId(null);
-    setDownloadProgress(null);
     setBulkDownloadCurrent(0);
     setBulkDownloadTotal(0);
 
-    if ((totalDownloaded > 0 || totalSkipped > 0) && !stopBulkDownloadRef.current) {
+    if (response?.success && (response.downloaded > 0 || response.skipped > 0) && !stopBulkDownloadRef.current) {
       const parts: string[] = [];
-      if (totalDownloaded > 0) {
-        parts.push(`${totalDownloaded} file${totalDownloaded !== 1 ? 's' : ''} downloaded`);
+      if (response.downloaded > 0) {
+        parts.push(`${response.downloaded} file${response.downloaded !== 1 ? 's' : ''} downloaded`);
       }
-      if (totalSkipped > 0) {
-        parts.push(`${totalSkipped} file${totalSkipped !== 1 ? 's' : ''} already exist${totalSkipped !== 1 ? '' : 's'}`);
+      if (response.skipped > 0) {
+        parts.push(`${response.skipped} file${response.skipped !== 1 ? 's' : ''} already exist${response.skipped !== 1 ? '' : 's'}`);
       }
-      const message = parts.length > 0 ? `${parts.join(', ')} from ${downloadedAccounts} account${downloadedAccounts !== 1 ? 's' : ''}` : `Download completed from ${downloadedAccounts} account${downloadedAccounts !== 1 ? 's' : ''}`;
+      const message = parts.length > 0 ? `${parts.join(', ')} from ${selectedAccounts.length} account${selectedAccounts.length !== 1 ? 's' : ''}` : `Download completed from ${selectedAccounts.length} account${selectedAccounts.length !== 1 ? 's' : ''}`;
       
       // Use info toast if only skipped files (no downloaded)
-      if (totalDownloaded === 0 && totalSkipped > 0) {
+      if (response.downloaded === 0 && response.skipped > 0) {
         toast.info(message);
       } else {
         toast.success(message);
       }
+    } else if (response && !response.success && !stopBulkDownloadRef.current) {
+      toast.error(response.message || "Bulk download failed");
     }
   };
 
   const handleStopBulkDownload = async () => {
     stopBulkDownloadRef.current = true;
-    await handleStopDownload();
+    await onStopDownload?.();
   };
 
   const toggleSelect = (id: number) => {
@@ -603,7 +543,7 @@ export function DatabaseView({ onLoadAccount, onUpdateSelected }: DatabaseViewPr
         exported++;
       }
       toast.success(`Exported ${exported} account(s) to ${outputDir}\\twitterxmediabatchdownloader_backups`);
-    } catch (error) {
+    } catch {
       toast.error("Failed to export");
     }
   };
@@ -622,7 +562,7 @@ export function DatabaseView({ onLoadAccount, onUpdateSelected }: DatabaseViewPr
     try {
       await ExportAccountsTXT(idsToExport, outputDir);
       toast.success(`Exported ${formatNumberWithComma(idsToExport.length)} account(s) to ${outputDir}\\twitterxmediabatchdownloader_backups\\twitterxmediabatchdownloader_multiple.txt`);
-    } catch (error) {
+    } catch {
       toast.error("Failed to export");
     }
   };
@@ -755,8 +695,10 @@ export function DatabaseView({ onLoadAccount, onUpdateSelected }: DatabaseViewPr
   };
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
+    <div className="flex h-full min-h-0 flex-col">
+      <div ref={scrollContainerRef} className="min-h-0 flex-1 overflow-y-auto pr-1">
+        <div className="space-y-4 pb-4">
+          <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <h2 className="text-2xl font-bold">Saved Accounts</h2>
           {/* Public/Private Toggle */}
@@ -787,7 +729,7 @@ export function DatabaseView({ onLoadAccount, onUpdateSelected }: DatabaseViewPr
             </button>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
           <Tooltip>
             <TooltipTrigger asChild>
               <Button variant="outline" size="icon" onClick={handleImport}>
@@ -913,7 +855,7 @@ export function DatabaseView({ onLoadAccount, onUpdateSelected }: DatabaseViewPr
                       setClearAllDialogOpen(false);
                       setSelectedIds(new Set());
                       loadAccounts();
-                    } catch (error) {
+                    } catch {
                       toast.error("Failed to delete accounts");
                     }
                   }}
@@ -923,17 +865,84 @@ export function DatabaseView({ onLoadAccount, onUpdateSelected }: DatabaseViewPr
               </DialogFooter>
             </DialogContent>
           </Dialog>
-        </div>
-      </div>
+            </div>
+          </div>
 
-      {loading ? (
-        <div className="text-center py-12 text-muted-foreground">Loading...</div>
-      ) : accounts.length === 0 ? (
-        <div className="text-center py-12 text-muted-foreground">
-          No saved accounts yet. Fetch a user's media to save it here.
-        </div>
-      ) : (
-        <div className="space-y-2">
+          {recentFetches.length > 0 ? (
+            <div className="rounded-2xl border border-border/70 bg-muted/20 p-3">
+              <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+                <div className="space-y-1">
+                  <h3 className="text-sm font-semibold">Recent Fetches</h3>
+                  <p className="text-xs text-muted-foreground">
+                    Reopen a recent username in the fetch workspace without retyping.
+                  </p>
+                </div>
+                {onClearRecentFetches ? (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 rounded-lg px-2 text-xs"
+                    onClick={onClearRecentFetches}
+                  >
+                    Clear All
+                  </Button>
+                ) : null}
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                {recentFetches.map((item) => (
+                  <div
+                    key={item.id}
+                    className="flex items-center gap-2 rounded-full border border-border/70 bg-card px-2.5 py-1.5 shadow-sm"
+                  >
+                    {item.image ? (
+                      <img
+                        src={item.image}
+                        alt={item.name}
+                        className="h-6 w-6 rounded-full"
+                        loading="lazy"
+                      />
+                    ) : (
+                      <div className="flex h-6 w-6 items-center justify-center rounded-full bg-muted text-[11px] font-semibold uppercase text-muted-foreground">
+                        {item.username.charAt(0)}
+                      </div>
+                    )}
+
+                    <button
+                      type="button"
+                      className="min-w-0 text-left"
+                      onClick={() => onSelectRecentFetch?.(item)}
+                    >
+                      <p className="truncate text-sm font-medium leading-none">@{item.username}</p>
+                      <p className="mt-1 text-[11px] leading-none text-muted-foreground">
+                        {formatNumberWithComma(item.mediaCount)} items
+                      </p>
+                    </button>
+
+                    {onRemoveRecentFetch ? (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6 rounded-full"
+                        onClick={() => onRemoveRecentFetch(item.id)}
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </Button>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          {loading ? (
+            <div className="py-12 text-center text-muted-foreground">Loading...</div>
+          ) : accounts.length === 0 ? (
+            <div className="py-12 text-center text-muted-foreground">
+              No saved accounts yet. Fetch a user's media to save it here.
+            </div>
+          ) : (
+            <div className="space-y-2">
           {/* Row 1: Select All + Search Bar (Search only for public) */}
           <div className="flex items-center gap-4 py-2">
             <div className="flex items-center gap-2">
@@ -1073,32 +1082,135 @@ export function DatabaseView({ onLoadAccount, onUpdateSelected }: DatabaseViewPr
             {accountViewMode === "public" && (
               <div className="flex items-center border rounded-md">
                 <Button
-                  variant={gridView === "large" ? "secondary" : "ghost"}
+                  variant={gridView === "gallery" ? "secondary" : "ghost"}
                   size="icon"
-                  className="h-9 w-9 rounded-r-none"
-                  onClick={() => setGridView("large")}
+                  className="h-10 w-10 rounded-r-none"
+                  onClick={() => setGridView("gallery")}
+                  aria-label="Show gallery view"
                 >
                   <LayoutGrid className="h-4 w-4" />
                 </Button>
                 <Button
-                  variant={gridView === "small" ? "secondary" : "ghost"}
-                  size="icon"
-                  className="h-9 w-9 rounded-none border-x"
-                  onClick={() => setGridView("small")}
-                >
-                  <Grid3X3 className="h-4 w-4" />
-                </Button>
-                <Button
                   variant={gridView === "list" ? "secondary" : "ghost"}
                   size="icon"
-                  className="h-9 w-9 rounded-l-none"
+                  className="h-10 w-10 rounded-l-none border-l"
                   onClick={() => setGridView("list")}
+                  aria-label="Show list view"
                 >
                   <List className="h-4 w-4" />
                 </Button>
               </div>
             )}
           </div>
+
+          {selectedAccounts.length > 0 ? (
+            <div className="rounded-2xl border border-border/70 bg-muted/20 p-4">
+              {focusedAccount ? (
+                <div className="flex flex-wrap items-center justify-between gap-4">
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                      Selected Account
+                    </p>
+                    <div className="mt-2 flex items-center gap-3">
+                      {isPrivateAccount(focusedAccount.username) ? (
+                        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
+                          {focusedAccount.username === "bookmarks" ? (
+                            <Bookmark className="h-5 w-5 text-primary" />
+                          ) : (
+                            <Heart className="h-5 w-5 text-primary" />
+                          )}
+                        </div>
+                      ) : (
+                        <img
+                          src={focusedAccount.profile_image}
+                          alt={focusedAccount.name}
+                          className="h-12 w-12 rounded-full"
+                          loading="lazy"
+                        />
+                      )}
+                      <div className="min-w-0">
+                        <p className="truncate text-lg font-semibold">{focusedAccount.name}</p>
+                        <p className="truncate text-sm text-muted-foreground">
+                          @{focusedAccount.username}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <Badge variant="secondary">
+                        {formatNumberWithComma(focusedAccount.total_media)} items
+                      </Badge>
+                      <Badge variant="secondary">
+                        {focusedAccount.media_type || "all"}
+                      </Badge>
+                      {!focusedAccount.completed ? (
+                        <Badge className="bg-yellow-500/20 text-yellow-700 dark:text-yellow-300">
+                          Incomplete
+                        </Badge>
+                      ) : null}
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      variant="outline"
+                      className="h-10 rounded-xl"
+                      onClick={() => handleView(focusedAccount)}
+                    >
+                      View
+                    </Button>
+                    <Button
+                      className="h-10 rounded-xl"
+                      onClick={() => handleDownload(focusedAccount.id, focusedAccount.username)}
+                      disabled={isDownloading}
+                    >
+                      <Download className="h-4 w-4" />
+                      Download
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className="h-10 rounded-xl"
+                      onClick={() => handleOpenFolder(focusedAccount.username)}
+                      disabled={!folderExistence.get(focusedAccount.id)}
+                    >
+                      <FolderOpen className="h-4 w-4" />
+                      Open Folder
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                      Selection Summary
+                    </p>
+                    <p className="mt-1 text-lg font-semibold">
+                      {formatNumberWithComma(selectedAccounts.length)} account(s) selected
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      Bulk download, export, and update actions will use this selection.
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      variant="outline"
+                      className="h-10 rounded-xl"
+                      onClick={handleExportJSON}
+                    >
+                      <FileOutput className="h-4 w-4" />
+                      Export JSON
+                    </Button>
+                    <Button
+                      className="h-10 rounded-xl"
+                      onClick={handleBulkDownload}
+                      disabled={isDownloading}
+                    >
+                      <Download className="h-4 w-4" />
+                      Download Selected
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : null}
 
           {/* Bulk Download Progress */}
           {isBulkDownloading && (
@@ -1114,7 +1226,7 @@ export function DatabaseView({ onLoadAccount, onUpdateSelected }: DatabaseViewPr
           )}
 
           {/* Grid View: Large */}
-          {gridView === "large" && (
+          {gridView === "gallery" && (
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
               {filteredAccounts
                 .slice(0, visibleCount)
@@ -1160,7 +1272,7 @@ export function DatabaseView({ onLoadAccount, onUpdateSelected }: DatabaseViewPr
                     {isPrivateAccount(account.username) ? (
                       <div 
                         className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center cursor-pointer hover:bg-primary/20 transition-colors"
-                        onClick={() => handleView(account.id, account.username)}
+                        onClick={() => handleView(account)}
                       >
                         {account.username === "bookmarks" ? (
                           <Bookmark className="h-10 w-10 text-primary" />
@@ -1173,7 +1285,7 @@ export function DatabaseView({ onLoadAccount, onUpdateSelected }: DatabaseViewPr
                         src={account.profile_image}
                         alt={account.name}
                         className="w-20 h-20 rounded-full cursor-pointer hover:opacity-80 transition-opacity"
-                        onClick={() => handleView(account.id, account.username)}
+                        onClick={() => handleView(account)}
                       />
                     )}
                     <div className="w-full min-w-0">
@@ -1197,7 +1309,7 @@ export function DatabaseView({ onLoadAccount, onUpdateSelected }: DatabaseViewPr
                           variant="outline"
                           size="icon"
                           className="h-8 w-8"
-                          onClick={handleStopDownload}
+                          onClick={onStopDownload}
                         >
                           <StopCircle className="h-4 w-4 text-destructive" />
                         </Button>
@@ -1241,7 +1353,7 @@ export function DatabaseView({ onLoadAccount, onUpdateSelected }: DatabaseViewPr
                               try {
                                 await ExportAccountJSON(account.id, outputDir);
                                 toast.success(`Exported @${account.username}`);
-                              } catch (error) {
+                              } catch {
                                 toast.error("Failed to export");
                               }
                             }}
@@ -1277,299 +1389,108 @@ export function DatabaseView({ onLoadAccount, onUpdateSelected }: DatabaseViewPr
             </div>
           )}
 
-          {/* Grid View: Small */}
-          {gridView === "small" && (
-            <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
-              {filteredAccounts
-                .slice(0, visibleCount)
-                .map((account) => (
+          {/* List View */}
+          {gridView === "list" && (
+            <VList
+              data={filteredAccounts}
+              style={{ height: "68vh" }}
+              className="rounded-2xl border border-border/70 bg-background/40"
+            >
+              {(account, index) => (
                 <div
                   key={account.id}
-                  className={`relative rounded-lg border transition-colors p-3 ${
-                    selectedIds.has(account.id) ? "border-primary bg-primary/5" : "bg-card hover:bg-muted/50"
-                  }`}
+                  className={cn(
+                    "border-b border-border/60 px-4 py-3 transition-colors",
+                    selectedIds.has(account.id) ? "bg-primary/6" : "hover:bg-muted/35"
+                  )}
                 >
-                  {/* Checkbox - Top Left */}
-                  <Checkbox
-                    checked={selectedIds.has(account.id)}
-                    onCheckedChange={() => toggleSelect(account.id)}
-                    className="absolute top-1.5 left-1.5 z-10"
-                  />
-                  {/* Media Type Badge & Incomplete - Top Right */}
-                  <div className="absolute top-1.5 right-1.5 z-10 flex gap-1">
-                    <Badge
-                      variant="secondary"
-                      className={cn(
-                        "text-xs p-1",
-                        account.media_type === "text" && "bg-orange-500/20 text-orange-600 dark:text-orange-400",
-                        account.media_type === "image" && "bg-blue-500/20 text-blue-600 dark:text-blue-400",
-                        account.media_type === "video" && "bg-purple-500/20 text-purple-600 dark:text-purple-400",
-                        account.media_type === "gif" && "bg-green-500/20 text-green-600 dark:text-green-400",
-                        (!account.media_type || account.media_type === "all") && "bg-indigo-500/20 text-indigo-600 dark:text-indigo-400"
-                      )}
+                  <div className="flex items-center gap-4">
+                    <Checkbox
+                      checked={selectedIds.has(account.id)}
+                      onCheckedChange={() => toggleSelect(account.id)}
+                    />
+                    <span className="w-8 shrink-0 text-center text-sm text-muted-foreground">
+                      {index + 1}
+                    </span>
+                    <Button
+                      variant="ghost"
+                      className="h-auto rounded-full p-0 hover:bg-transparent"
+                      onClick={() => handleView(account)}
+                      aria-label={`Open saved account ${account.username}`}
                     >
-                      {account.media_type === "text" ? <FileText className="h-3 w-3" /> :
-                       account.media_type === "image" ? <Image className="h-3 w-3" /> :
-                       account.media_type === "video" ? <Video className="h-3 w-3" /> :
-                       account.media_type === "gif" ? <Film className="h-3 w-3" /> :
-                       <Images className="h-3 w-3" />}
-                    </Badge>
-                    {!account.completed && (
-                      <Badge variant="secondary" className="text-xs p-1 bg-yellow-500/20 text-yellow-600 dark:text-yellow-400">
-                        <AlertCircle className="h-3 w-3" />
-                      </Badge>
-                    )}
-                  </div>
-                  <div className="flex flex-col items-center text-center gap-2 pt-4">
-                    {isPrivateAccount(account.username) ? (
-                      <div 
-                        className="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center cursor-pointer hover:bg-primary/20 transition-colors"
-                        onClick={() => handleView(account.id, account.username)}
-                      >
-                        {account.username === "bookmarks" ? (
-                          <Bookmark className="h-7 w-7 text-primary" />
-                        ) : (
-                          <Heart className="h-7 w-7 text-primary" />
-                        )}
+                      {isPrivateAccount(account.username) ? (
+                        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
+                          {account.username === "bookmarks" ? (
+                            <Bookmark className="h-6 w-6 text-primary" />
+                          ) : (
+                            <Heart className="h-6 w-6 text-primary" />
+                          )}
+                        </div>
+                      ) : (
+                        <img
+                          src={account.profile_image}
+                          alt={account.name}
+                          className="h-12 w-12 rounded-full"
+                          loading="lazy"
+                        />
+                      )}
+                    </Button>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="truncate font-medium">{account.name}</span>
+                        <Badge variant="secondary" className="text-xs flex items-center gap-1">
+                          <Images className="h-3 w-3" />
+                          {formatNumberWithComma(account.total_media)}
+                        </Badge>
+                        {!account.completed ? (
+                          <Badge className="bg-yellow-500/20 text-yellow-700 dark:text-yellow-300">
+                            Incomplete
+                          </Badge>
+                        ) : null}
+                        {account.group_name ? (
+                          <Badge
+                            variant="outline"
+                            className="text-xs"
+                            style={{ borderColor: account.group_color, color: account.group_color }}
+                          >
+                            {account.group_name}
+                          </Badge>
+                        ) : null}
                       </div>
-                    ) : (
-                      <img
-                        src={account.profile_image}
-                        alt={account.name}
-                        className="w-14 h-14 rounded-full cursor-pointer hover:opacity-80 transition-opacity"
-                        onClick={() => handleView(account.id, account.username)}
-                      />
-                    )}
-                    <div className="w-full min-w-0">
-                      <div className="text-xs font-medium truncate">{account.name}</div>
-                      {!isPrivateAccount(account.username) && (
+                      {!isPrivateAccount(account.username) ? (
                         <button
                           type="button"
                           onClick={() => openExternal(`https://x.com/${account.username}`)}
-                          className="text-xs text-muted-foreground hover:text-primary hover:underline truncate block w-full"
+                          className="text-sm text-muted-foreground hover:text-primary hover:underline"
                         >
                           @{account.username}
                         </button>
+                      ) : (
+                        <p className="text-sm text-muted-foreground">
+                          {account.username === "bookmarks" ? "My Bookmarks" : "My Likes"}
+                        </p>
                       )}
-                      <div className="text-xs text-muted-foreground">
-                        {formatNumberWithComma(account.total_media)} media
-                      </div>
+                      <p className="text-sm text-muted-foreground">
+                        {account.last_fetched} {getRelativeTime(account.last_fetched)}
+                      </p>
                     </div>
-                    <div className="flex gap-1">
+                    <div className="flex shrink-0 items-center gap-2">
                       {downloadingAccountId === account.id ? (
                         <Button
                           variant="outline"
                           size="icon"
-                          className="h-7 w-7"
-                          onClick={handleStopDownload}
+                          onClick={onStopDownload}
+                          aria-label={`Stop download for ${account.username}`}
                         >
-                          <StopCircle className="h-3 w-3 text-destructive" />
+                          <StopCircle className="h-4 w-4 text-destructive" />
                         </Button>
                       ) : (
                         <Button
                           variant="default"
                           size="icon"
-                          className="h-7 w-7"
                           onClick={() => handleDownload(account.id, account.username)}
                           disabled={isDownloading}
-                        >
-                          <Download className="h-3 w-3" />
-                        </Button>
-                      )}
-                      <Button
-                        variant="outline"
-                        size="icon"
-                        className="h-7 w-7"
-                        onClick={() => handleOpenFolder(account.username)}
-                        disabled={!folderExistence.get(account.id)}
-                      >
-                        <FolderOpen className="h-3 w-3" />
-                      </Button>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="outline" size="icon" className="h-7 w-7">
-                            <MoreVertical className="h-3 w-3" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          {!isPrivateAccount(account.username) && (
-                            <DropdownMenuItem onClick={() => handleEditGroup(account)}>
-                              <Pencil className="h-4 w-4 mr-2" />
-                              Edit Group
-                            </DropdownMenuItem>
-                          )}
-                          <DropdownMenuItem
-                            onClick={async () => {
-                              const settings = getSettings();
-                              const outputDir = settings.downloadPath || "";
-                              try {
-                                await ExportAccountJSON(account.id, outputDir);
-                                toast.success(`Exported @${account.username}`);
-                              } catch (error) {
-                                toast.error("Failed to export");
-                              }
-                            }}
-                          >
-                            <FileOutput className="h-4 w-4 mr-2" />
-                            Export JSON
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onClick={() => handleDelete(account.id, account.username)}
-                            className="text-destructive focus:text-destructive"
-                          >
-                            <Trash2 className="h-4 w-4 mr-2" />
-                            Delete
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
-                  </div>
-                  {/* Progress bar */}
-                  {downloadingAccountId === account.id && downloadProgress && (
-                    <div className="mt-2 space-y-1">
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="text-muted-foreground">
-                          {downloadProgress.current}/{downloadProgress.total}
-                        </span>
-                        <span className="font-medium">{downloadProgress.percent}%</span>
-                      </div>
-                      <Progress value={downloadProgress.percent} className="h-1" />
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* List View */}
-          {gridView === "list" && filteredAccounts
-            .slice(0, visibleCount)
-            .map((account, index) => (
-            <div
-              key={account.id}
-              className={`rounded-lg border transition-colors ${
-                selectedIds.has(account.id) ? "border-primary bg-primary/5" : "bg-card hover:bg-muted/50"
-              }`}
-            >
-              <div className="flex items-center gap-4 p-4">
-                <Checkbox
-                  checked={selectedIds.has(account.id)}
-                  onCheckedChange={() => toggleSelect(account.id)}
-                />
-                <span className="text-sm text-muted-foreground w-8 text-center shrink-0">
-                  {index + 1}
-                </span>
-                {isPrivateAccount(account.username) ? (
-                  <div 
-                    className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center cursor-pointer hover:bg-primary/20 transition-colors"
-                    onClick={() => handleView(account.id, account.username)}
-                  >
-                    {account.username === "bookmarks" ? (
-                      <Bookmark className="h-6 w-6 text-primary" />
-                    ) : (
-                      <Heart className="h-6 w-6 text-primary" />
-                    )}
-                  </div>
-                ) : (
-                  <img
-                    src={account.profile_image}
-                    alt={account.name}
-                    className="w-12 h-12 rounded-full cursor-pointer hover:opacity-80 transition-opacity"
-                    onClick={() => handleView(account.id, account.username)}
-                  />
-                )}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="truncate">{account.name}</span>
-                    {/* Stats Badges: Followers, Posts, Media */}
-                    {!isPrivateAccount(account.username) && (account.followers_count > 0 || account.statuses_count > 0) && (
-                      <>
-                        <Badge variant="secondary" className="text-xs flex items-center gap-1">
-                          <Users className="h-3 w-3" />
-                          {formatNumberWithComma(account.followers_count)}
-                        </Badge>
-                        <Badge variant="secondary" className="text-xs flex items-center gap-1">
-                          <MessageSquare className="h-3 w-3" />
-                          {formatNumberWithComma(account.statuses_count)}
-                        </Badge>
-                      </>
-                    )}
-                    <Badge variant="secondary" className="text-xs flex items-center gap-1">
-                      <Images className="h-3 w-3" />
-                      {formatNumberWithComma(account.total_media)}
-                    </Badge>
-                    {/* Media Type Badge */}
-                    <Badge
-                      variant="secondary"
-                      className={cn(
-                        "text-xs flex items-center gap-1",
-                        account.media_type === "text" && "bg-orange-500/20 text-orange-600 dark:text-orange-400",
-                        account.media_type === "image" && "bg-blue-500/20 text-blue-600 dark:text-blue-400",
-                        account.media_type === "video" && "bg-purple-500/20 text-purple-600 dark:text-purple-400",
-                        account.media_type === "gif" && "bg-green-500/20 text-green-600 dark:text-green-400",
-                        (!account.media_type || account.media_type === "all") && "bg-indigo-500/20 text-indigo-600 dark:text-indigo-400"
-                      )}
-                    >
-                      {account.media_type === "text" ? <><FileText className="h-3 w-3" /> Text</> :
-                       account.media_type === "image" ? <><Image className="h-3 w-3" /> Images</> :
-                       account.media_type === "video" ? <><Video className="h-3 w-3" /> Videos</> :
-                       account.media_type === "gif" ? <><Film className="h-3 w-3" /> GIFs</> :
-                       <><Images className="h-3 w-3" /> All Media</>}
-                    </Badge>
-                    {!account.completed && (
-                      <Badge
-                        variant="secondary"
-                        className="text-xs flex items-center gap-1 bg-yellow-500/20 text-yellow-600 dark:text-yellow-400"
-                      >
-                        <AlertCircle className="h-3 w-3" />
-                        Incomplete
-                      </Badge>
-                    )}
-                    {account.group_name && (
-                      <Badge
-                        variant="outline"
-                        className="text-xs"
-                        style={{ borderColor: account.group_color, color: account.group_color }}
-                      >
-                        {account.group_name}
-                      </Badge>
-                    )}
-                  </div>
-                  {!isPrivateAccount(account.username) && (
-                    <button
-                      type="button"
-                      onClick={() => openExternal(`https://x.com/${account.username}`)}
-                      className="text-sm text-muted-foreground hover:text-primary hover:underline"
-                    >
-                      @{account.username}
-                    </button>
-                  )}
-                  <div className="text-sm text-muted-foreground">
-                    {account.last_fetched} {getRelativeTime(account.last_fetched)}
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  {downloadingAccountId === account.id ? (
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          variant="outline"
-                          size="icon"
-                          onClick={handleStopDownload}
-                        >
-                          <StopCircle className="h-4 w-4 text-destructive" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>Stop Download</TooltipContent>
-                    </Tooltip>
-                  ) : (
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          variant="default"
-                          size="icon"
-                          onClick={() => handleDownload(account.id, account.username)}
-                          disabled={isDownloading}
+                          aria-label={`Download saved media for ${account.username}`}
                         >
                           {isDownloading && downloadingAccountId === account.id ? (
                             <Spinner className="h-4 w-4" />
@@ -1577,120 +1498,80 @@ export function DatabaseView({ onLoadAccount, onUpdateSelected }: DatabaseViewPr
                             <Download className="h-4 w-4" />
                           )}
                         </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>Download All Media</TooltipContent>
-                    </Tooltip>
-                  )}
-                  <Tooltip>
-                    <TooltipTrigger asChild>
+                      )}
                       <Button
                         variant="outline"
                         size="icon"
                         onClick={() => handleOpenFolder(account.username)}
                         disabled={!folderExistence.get(account.id)}
+                        aria-label={`Open download folder for ${account.username}`}
                       >
                         <FolderOpen className="h-4 w-4" />
                       </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>Open Folder</TooltipContent>
-                  </Tooltip>
-                  <DropdownMenu>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
+                      <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <Button variant="outline" size="icon">
+                          <Button variant="outline" size="icon" aria-label={`More actions for ${account.username}`}>
                             <MoreVertical className="h-4 w-4" />
                           </Button>
                         </DropdownMenuTrigger>
-                      </TooltipTrigger>
-                      <TooltipContent>More Options</TooltipContent>
-                    </Tooltip>
-                    <DropdownMenuContent align="end">
-                      {!isPrivateAccount(account.username) && (
-                        <DropdownMenuItem onClick={() => handleEditGroup(account)}>
-                          <Pencil className="h-4 w-4 mr-2" />
-                          Edit Group
-                        </DropdownMenuItem>
-                      )}
-                      <DropdownMenuItem
-                        onClick={async () => {
-                          const settings = getSettings();
-                          const outputDir = settings.downloadPath || "";
-                          try {
-                            await ExportAccountJSON(account.id, outputDir);
-                            toast.success(`Exported @${account.username} to ${outputDir}\\twitterxmediabatchdownloader_backups`);
-                          } catch (error) {
-                            toast.error("Failed to export");
-                          }
-                        }}
-                      >
-                        <FileOutput className="h-4 w-4 mr-2" />
-                        Export JSON
-                      </DropdownMenuItem>
-                      <Dialog>
-                        <DialogTrigger asChild>
+                        <DropdownMenuContent align="end">
+                          {!isPrivateAccount(account.username) ? (
+                            <DropdownMenuItem onClick={() => handleEditGroup(account)}>
+                              <Pencil className="mr-2 h-4 w-4" />
+                              Edit Group
+                            </DropdownMenuItem>
+                          ) : null}
                           <DropdownMenuItem
-                            onSelect={(e: Event) => {
-                              e.preventDefault();
+                            onClick={async () => {
+                              const settings = getSettings();
+                              const outputDir = settings.downloadPath || "";
+                              try {
+                                await ExportAccountJSON(account.id, outputDir);
+                                toast.success(`Exported @${account.username}`);
+                              } catch {
+                                toast.error("Failed to export");
+                              }
                             }}
-                            className="text-destructive focus:text-destructive"
                           >
-                            <Trash2 className="h-4 w-4 mr-2" />
+                            <FileOutput className="mr-2 h-4 w-4" />
+                            Export JSON
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            className="text-destructive focus:text-destructive"
+                            onClick={() => handleDelete(account.id, account.username)}
+                          >
+                            <Trash2 className="mr-2 h-4 w-4" />
                             Delete
                           </DropdownMenuItem>
-                        </DialogTrigger>
-                        <DialogContent className="[&>button]:hidden">
-                          <div className="absolute right-4 top-4">
-                            <DialogTrigger asChild>
-                              <Button variant="ghost" size="icon" className="h-6 w-6 opacity-70 hover:opacity-100">
-                                <X className="h-4 w-4" />
-                              </Button>
-                            </DialogTrigger>
-                          </div>
-                          <DialogHeader>
-                            <DialogTitle>Delete @{account.username}?</DialogTitle>
-                            <DialogDescription>
-                              This will permanently delete the saved data for this account.
-                            </DialogDescription>
-                          </DialogHeader>
-                          <DialogFooter>
-                            <Button
-                              variant="destructive"
-                              onClick={() => handleDelete(account.id, account.username)}
-                            >
-                              Delete
-                            </Button>
-                          </DialogFooter>
-                        </DialogContent>
-                      </Dialog>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
-              </div>
-              {/* Progress bar for this account */}
-              {downloadingAccountId === account.id && downloadProgress && (
-                <div className="px-4 pb-3 space-y-1">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-muted-foreground">
-                      Downloading {downloadProgress.current} of {downloadProgress.total}
-                    </span>
-                    <span className="font-medium">{downloadProgress.percent}%</span>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
                   </div>
-                  <Progress value={downloadProgress.percent} className="h-1.5" />
+                  {downloadingAccountId === account.id && downloadProgress ? (
+                    <div className="mt-3 space-y-1">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-muted-foreground">
+                          Downloading {downloadProgress.current} of {downloadProgress.total}
+                        </span>
+                        <span className="font-medium">{downloadProgress.percent}%</span>
+                      </div>
+                      <Progress value={downloadProgress.percent} className="h-1.5" />
+                    </div>
+                  ) : null}
                 </div>
               )}
-            </div>
-          ))}
+            </VList>
+          )}
 
           {/* Load More Trigger (invisible) */}
-          <div 
-            ref={loadMoreRef} 
-            className={`h-4 ${visibleCount >= filteredAccounts.length ? 'hidden' : ''}`} 
+          <div
+            ref={loadMoreRef}
+            className={`h-4 ${gridView !== "gallery" || visibleCount >= filteredAccounts.length ? "hidden" : ""}`}
           />
-
-
+            </div>
+          )}
         </div>
-      )}
+      </div>
 
       {/* Scroll to Top Button */}
       {showScrollTop && (

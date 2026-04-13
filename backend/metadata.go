@@ -9,6 +9,12 @@ import (
 	"regexp"
 	"runtime"
 	"strings"
+	"sync"
+)
+
+var (
+	exifToolPathCache string
+	exifToolPathMu    sync.RWMutex
 )
 
 // ExtractOriginalFilename extracts the original filename from Twitter media URL
@@ -84,7 +90,7 @@ func ExtractOriginalFilename(mediaURL string) string {
 // Only supports JPG (images) and MP4 (videos)
 func EmbedMetadata(filePath string, tweetContent string, tweetURL string, originalFilename string) error {
 	ext := strings.ToLower(filepath.Ext(filePath))
-	
+
 	switch ext {
 	case ".jpg", ".jpeg":
 		return embedImageMetadata(filePath, tweetContent, tweetURL, originalFilename)
@@ -167,31 +173,39 @@ func embedVideoMetadataWithExifTool(exiftoolPath string, filePath string, tweetC
 	return nil
 }
 
-
 // buildMetadataComment builds a formatted metadata comment string
 func buildMetadataComment(tweetContent string, tweetURL string, originalFilename string) string {
 	var parts []string
-	
+
 	if tweetURL != "" {
 		parts = append(parts, tweetURL)
 	}
 	if originalFilename != "" {
 		parts = append(parts, originalFilename)
 	}
-	
+
 	// If no original filename, just return URL (don't add empty part)
 	if len(parts) == 0 {
 		return ""
 	}
-	
+
 	return strings.Join(parts, " | ")
 }
 
 // findExifTool searches for exiftool, prioritizing the installed version in .twitterxmediabatchdownloader
 func findExifTool() string {
+	exifToolPathMu.RLock()
+	cachedPath := exifToolPathCache
+	exifToolPathMu.RUnlock()
+	if cachedPath != "" {
+		return cachedPath
+	}
+
 	// First, check if exiftool is installed in .twitterxmediabatchdownloader
 	if IsExifToolInstalled() {
-		return GetExifToolPath()
+		path := GetExifToolPath()
+		cacheExifToolPath(path)
+		return path
 	}
 
 	// Fallback: check common system locations
@@ -207,11 +221,13 @@ func findExifTool() string {
 		if runtime.GOOS == "windows" {
 			// On Windows, try .exe extension
 			if _, err := exec.LookPath(path); err == nil {
+				cacheExifToolPath(path)
 				return path
 			}
 		} else {
 			// On Unix, check if executable
 			if _, err := os.Stat(path); err == nil {
+				cacheExifToolPath(path)
 				return path
 			}
 		}
@@ -219,9 +235,18 @@ func findExifTool() string {
 
 	// Try to find in PATH
 	if path, err := exec.LookPath("exiftool"); err == nil {
+		cacheExifToolPath(path)
 		return path
 	}
 
 	return ""
 }
 
+func cacheExifToolPath(path string) {
+	if path == "" {
+		return
+	}
+	exifToolPathMu.Lock()
+	exifToolPathCache = path
+	exifToolPathMu.Unlock()
+}

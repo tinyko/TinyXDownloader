@@ -19,6 +19,8 @@ export interface Settings {
   fetchMode: FetchMode; // Fetch mode: single (all at once) or batch (200 per request). Default: batch.
   mediaType: MediaType; // Media type filter. Default: all.
   includeRetweets: boolean; // Include retweets in fetch. Default: false.
+  rememberPublicToken: boolean;
+  rememberPrivateToken: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -34,6 +36,8 @@ export const DEFAULT_SETTINGS: Settings = {
   fetchMode: "batch", // Default: batch mode (200 per request)
   mediaType: "all", // Default: all media
   includeRetweets: false, // Default: don't include retweets
+  rememberPublicToken: false,
+  rememberPrivateToken: false,
 };
 
 export const FONT_OPTIONS: { value: FontFamily; label: string; fontFamily: string }[] = [

@@ -1,4 +1,4 @@
-// Twitter/X Media Batch Downloader Types
+// TinyXDownloader types
 
 export interface AccountInfo {
   name: string;      // username/handle from extractor

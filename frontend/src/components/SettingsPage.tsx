@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { InputWithContext } from "@/components/ui/input-with-context";
 import { Label } from "@/components/ui/label";
 import {
@@ -10,7 +11,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { FolderOpen, Save, RotateCcw, Info, Download, Check } from "lucide-react";
+import { FolderOpen, Save, RotateCcw, Info, Download, Check, FileCheck, Eye, EyeOff, Globe, KeyRound, Lock } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -23,10 +24,102 @@ import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
 import { getSettings, getSettingsWithDefaults, saveSettings, resetToDefaultSettings, applyThemeMode, applyFont, FONT_OPTIONS, type Settings as SettingsType, type FontFamily, type GifQuality, type GifResolution } from "@/lib/settings";
 import { themes, applyTheme } from "@/lib/themes";
-import { SelectFolder, IsFFmpegInstalled, DownloadFFmpeg, IsExifToolInstalled, DownloadExifTool } from "../../wailsjs/go/main/App";
+import { SelectFolder, IsFFmpegInstalled, DownloadFFmpeg, IsExifToolInstalled, DownloadExifTool, CheckDownloadIntegrity, OpenFolder } from "../../wailsjs/go/main/App";
 import { toastWithSound as toast } from "@/lib/toast-with-sound";
+import type { FetchMode, PrivateType } from "@/components/SearchBar";
 
-export function SettingsPage() {
+interface DownloadIntegrityIssue {
+  path: string;
+  relative_path: string;
+  reason: string;
+  local_size: number;
+  remote_size: number;
+  url?: string;
+}
+
+interface DownloadIntegrityReport {
+  download_path: string;
+  scanned_files: number;
+  checked_files: number;
+  complete_files: number;
+  partial_files: number;
+  incomplete_files: number;
+  untracked_files: number;
+  unverifiable_files: number;
+  issues: DownloadIntegrityIssue[];
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes <= 0) {
+    return "0 B";
+  }
+
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let value = bytes;
+  let unitIndex = 0;
+
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex++;
+  }
+
+  return `${value.toFixed(value >= 10 || unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`;
+}
+
+function formatIntegrityReason(reason: string): string {
+  switch (reason) {
+    case "partial_file":
+      return "Leftover partial file";
+    case "size_mismatch":
+      return "Local file is smaller than remote file";
+    case "empty_text_file":
+      return "Text export is empty";
+    case "empty_file":
+      return "Downloaded file is empty";
+    default:
+      return reason.replace(/_/g, " ");
+  }
+}
+
+interface SettingsPageProps {
+  embedded?: boolean;
+  mode?: FetchMode;
+  privateType?: PrivateType;
+  publicAuthToken?: string;
+  privateAuthToken?: string;
+  onPublicAuthTokenChange?: (value: string) => void;
+  onPrivateAuthTokenChange?: (value: string) => void;
+  rememberPublicToken?: boolean;
+  rememberPrivateToken?: boolean;
+  onRememberPublicTokenChange?: (value: boolean) => void;
+  onRememberPrivateTokenChange?: (value: boolean) => void;
+  useDateRange?: boolean;
+  startDate?: string;
+  endDate?: string;
+  onUseDateRangeChange?: (value: boolean) => void;
+  onStartDateChange?: (value: string) => void;
+  onEndDateChange?: (value: string) => void;
+}
+
+export function SettingsPage({
+  embedded = false,
+  mode = "public",
+  privateType = "bookmarks",
+  publicAuthToken = "",
+  privateAuthToken = "",
+  onPublicAuthTokenChange,
+  onPrivateAuthTokenChange,
+  rememberPublicToken = false,
+  rememberPrivateToken = false,
+  onRememberPublicTokenChange,
+  onRememberPrivateTokenChange,
+  useDateRange = false,
+  startDate = "",
+  endDate = "",
+  onUseDateRangeChange,
+  onStartDateChange,
+  onEndDateChange,
+}: SettingsPageProps) {
   const [savedSettings, setSavedSettings] = useState<SettingsType>(getSettings());
   const [tempSettings, setTempSettings] = useState<SettingsType>(savedSettings);
   const [isDark, setIsDark] = useState(document.documentElement.classList.contains('dark'));
@@ -35,6 +128,23 @@ export function SettingsPage() {
   const [exiftoolInstalled, setExiftoolInstalled] = useState(false);
   const [downloadingExifTool, setDownloadingExifTool] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [checkingIntegrity, setCheckingIntegrity] = useState(false);
+  const [integrityReport, setIntegrityReport] = useState<DownloadIntegrityReport | null>(null);
+  const [showIntegrityReport, setShowIntegrityReport] = useState(false);
+  const [showPublicToken, setShowPublicToken] = useState(false);
+  const [showPrivateToken, setShowPrivateToken] = useState(false);
+
+  const showFetchControls =
+    embedded &&
+    typeof onPublicAuthTokenChange === "function" &&
+    typeof onPrivateAuthTokenChange === "function";
+  const dateRangeAvailable = mode === "public";
+  const currentContextLabel =
+    mode === "private"
+      ? privateType === "likes"
+        ? "Private Likes"
+        : "Private Bookmarks"
+      : "Public Fetch";
 
   useEffect(() => {
     applyThemeMode(savedSettings.themeMode);
@@ -70,11 +180,11 @@ export function SettingsPage() {
       }
     };
     loadDefaults();
-    
+
     // Check FFmpeg and ExifTool status
     IsFFmpegInstalled().then(setFfmpegInstalled);
     IsExifToolInstalled().then(setExiftoolInstalled);
-  }, []);
+  }, [savedSettings.downloadPath]);
 
   const handleSave = () => {
     saveSettings(tempSettings);
@@ -133,9 +243,247 @@ export function SettingsPage() {
     }
   };
 
+  const handleCheckIntegrity = async () => {
+    const downloadPath = (tempSettings.downloadPath || savedSettings.downloadPath || "").trim();
+    if (!downloadPath) {
+      toast.error("Download path is empty");
+      return;
+    }
+
+    setCheckingIntegrity(true);
+    try {
+      const report = await CheckDownloadIntegrity({
+        download_path: downloadPath,
+        proxy: tempSettings.proxy || "",
+      });
+      setIntegrityReport(report);
+      setShowIntegrityReport(true);
+
+      const issueCount = report.partial_files + report.incomplete_files;
+      if (issueCount > 0) {
+        toast.warning(`Found ${issueCount} incomplete item(s)`);
+      } else {
+        toast.success(`Checked ${report.checked_files} tracked file(s), no incomplete files found`);
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      toast.error(`Integrity check failed: ${message}`);
+    } finally {
+      setCheckingIntegrity(false);
+    }
+  };
+
+  const handleOpenIntegrityFolder = async () => {
+    if (!integrityReport?.download_path) {
+      return;
+    }
+
+    try {
+      await OpenFolder(integrityReport.download_path);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      toast.error(`Could not open folder: ${message}`);
+    }
+  };
+
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold">Settings</h1>
+      {!embedded ? <h1 className="text-2xl font-bold">Settings</h1> : null}
+
+      {showFetchControls ? (
+        <section className="rounded-[24px] border border-border/70 bg-card/70 p-5 shadow-sm">
+          <div className="mb-4 flex flex-col gap-1">
+            <h2 className="text-sm font-semibold tracking-tight">Fetch Controls</h2>
+            <p className="text-xs text-muted-foreground">
+              Auth tokens and fetch defaults for the current workspace. Current context: {currentContextLabel}.
+            </p>
+          </div>
+
+          <div className="grid gap-5 xl:grid-cols-2">
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="settings-public-auth" className="flex items-center gap-2">
+                  <Globe className="h-4 w-4 text-muted-foreground" />
+                  Public Auth Token
+                </Label>
+                <div className="relative">
+                  <InputWithContext
+                    id="settings-public-auth"
+                    type={showPublicToken ? "text" : "password"}
+                    placeholder="Enter public auth_token cookie value"
+                    value={publicAuthToken}
+                    onChange={(event) => onPublicAuthTokenChange?.(event.target.value)}
+                    className="h-11 pr-10"
+                    spellCheck={false}
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    className="absolute right-1 top-1/2 -translate-y-1/2"
+                    onClick={() => setShowPublicToken((value) => !value)}
+                    aria-label={showPublicToken ? "Hide public auth token" : "Show public auth token"}
+                  >
+                    {showPublicToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </Button>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="remember-public-token"
+                    checked={rememberPublicToken}
+                    onCheckedChange={(checked) => onRememberPublicTokenChange?.(Boolean(checked))}
+                  />
+                  <Label htmlFor="remember-public-token" className="cursor-pointer">
+                    Remember public token on this device
+                  </Label>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="settings-private-auth" className="flex items-center gap-2">
+                  <Lock className="h-4 w-4 text-muted-foreground" />
+                  Private Auth Token
+                </Label>
+                <div className="relative">
+                  <InputWithContext
+                    id="settings-private-auth"
+                    type={showPrivateToken ? "text" : "password"}
+                    placeholder="Enter private auth_token cookie value"
+                    value={privateAuthToken}
+                    onChange={(event) => onPrivateAuthTokenChange?.(event.target.value)}
+                    className="h-11 pr-10"
+                    spellCheck={false}
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    className="absolute right-1 top-1/2 -translate-y-1/2"
+                    onClick={() => setShowPrivateToken((value) => !value)}
+                    aria-label={showPrivateToken ? "Hide private auth token" : "Show private auth token"}
+                  >
+                    {showPrivateToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </Button>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="remember-private-token"
+                    checked={rememberPrivateToken}
+                    onCheckedChange={(checked) => onRememberPrivateTokenChange?.(Boolean(checked))}
+                  />
+                  <Label htmlFor="remember-private-token" className="cursor-pointer">
+                    Remember private token on this device
+                  </Label>
+                </div>
+                <p className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <KeyRound className="h-3.5 w-3.5" />
+                  Public fetch uses the public token. Bookmarks and likes use the private token.
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="fetch-mode">Fetch Mode</Label>
+                <Select
+                  value={tempSettings.fetchMode}
+                  onValueChange={(value: "single" | "batch") =>
+                    setTempSettings((prev) => ({ ...prev, fetchMode: value }))
+                  }
+                >
+                  <SelectTrigger id="fetch-mode" className="h-11 rounded-xl">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="batch">Batch</SelectItem>
+                    <SelectItem value="single">Single</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="fetch-media-type">Media Type</Label>
+                <Select
+                  value={tempSettings.mediaType}
+                  onValueChange={(value: SettingsType["mediaType"]) =>
+                    setTempSettings((prev) => ({ ...prev, mediaType: value }))
+                  }
+                >
+                  <SelectTrigger id="fetch-media-type" className="h-11 rounded-xl">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Media</SelectItem>
+                    <SelectItem value="image">Images</SelectItem>
+                    <SelectItem value="video">Videos</SelectItem>
+                    <SelectItem value="gif">GIFs</SelectItem>
+                    <SelectItem value="text">Text (No Media)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="flex items-center gap-2 rounded-xl bg-muted/50 p-3">
+                <Checkbox
+                  id="settings-retweets"
+                  checked={tempSettings.includeRetweets}
+                  onCheckedChange={(checked) =>
+                    setTempSettings((prev) => ({
+                      ...prev,
+                      includeRetweets: Boolean(checked),
+                    }))
+                  }
+                />
+                <Label htmlFor="settings-retweets" className="cursor-pointer">
+                  Include Retweets
+                </Label>
+              </div>
+
+              <div className="space-y-3 rounded-2xl border border-border/70 bg-muted/20 p-3">
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="settings-date-range"
+                    checked={dateRangeAvailable ? useDateRange : false}
+                    disabled={!dateRangeAvailable}
+                    onCheckedChange={(checked) => onUseDateRangeChange?.(Boolean(checked))}
+                  />
+                  <Label htmlFor="settings-date-range" className="cursor-pointer">
+                    Limit by date range
+                  </Label>
+                </div>
+
+                {dateRangeAvailable ? (
+                  useDateRange ? (
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      <InputWithContext
+                        id="settings-start-date"
+                        type="date"
+                        value={startDate}
+                        onChange={(event) => onStartDateChange?.(event.target.value)}
+                        className="h-11 rounded-xl"
+                      />
+                      <InputWithContext
+                        id="settings-end-date"
+                        type="date"
+                        value={endDate}
+                        onChange={(event) => onEndDateChange?.(event.target.value)}
+                        className="h-11 rounded-xl"
+                      />
+                    </div>
+                  ) : null
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    Date range is only available for public fetches.
+                  </p>
+                )}
+              </div>
+
+              <p className="text-xs text-muted-foreground">
+                Fetch defaults follow the normal settings flow. Click <span className="font-medium text-foreground">Save Changes</span> to apply them.
+              </p>
+            </div>
+          </div>
+        </section>
+      ) : null}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Left Column */}
@@ -429,6 +777,51 @@ export function SettingsPage() {
             />
           </div>
 
+          {/* Download Integrity */}
+          <div className="space-y-2">
+            <Label className="flex items-center gap-2">
+              Download Integrity
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                </TooltipTrigger>
+                <TooltipContent side="top">
+                  <p>Checks leftover .part files and validates tracked media against remote file sizes</p>
+                </TooltipContent>
+              </Tooltip>
+            </Label>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-9"
+                onClick={handleCheckIntegrity}
+                disabled={checkingIntegrity}
+              >
+                {checkingIntegrity ? (
+                  <>
+                    <Spinner />
+                    Checking...
+                  </>
+                ) : (
+                  <>
+                    <FileCheck className="h-4 w-4" />
+                    Check Current Folder
+                  </>
+                )}
+              </Button>
+              {integrityReport && (
+                <span className="text-xs text-muted-foreground">
+                  Last scan: {integrityReport.partial_files + integrityReport.incomplete_files} issue(s),
+                  {" "} {integrityReport.checked_files} checked
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Files that are no longer in the database can be counted but may not be fully verifiable.
+            </p>
+          </div>
+
         </div>
       </div>
 
@@ -456,6 +849,90 @@ export function SettingsPage() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowResetConfirm(false)}>Cancel</Button>
             <Button onClick={handleReset}>Reset</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showIntegrityReport} onOpenChange={setShowIntegrityReport}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>Download Integrity Report</DialogTitle>
+            <DialogDescription>
+              Checked {integrityReport?.checked_files ?? 0} tracked file(s) under {integrityReport?.download_path || tempSettings.downloadPath}
+            </DialogDescription>
+          </DialogHeader>
+
+          {integrityReport && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                <div className="rounded-lg border p-3">
+                  <div className="text-xs text-muted-foreground">Scanned</div>
+                  <div className="text-lg font-semibold">{integrityReport.scanned_files}</div>
+                </div>
+                <div className="rounded-lg border p-3">
+                  <div className="text-xs text-muted-foreground">Checked</div>
+                  <div className="text-lg font-semibold">{integrityReport.checked_files}</div>
+                </div>
+                <div className="rounded-lg border p-3">
+                  <div className="text-xs text-muted-foreground">Incomplete</div>
+                  <div className="text-lg font-semibold">{integrityReport.incomplete_files}</div>
+                </div>
+                <div className="rounded-lg border p-3">
+                  <div className="text-xs text-muted-foreground">Partial</div>
+                  <div className="text-lg font-semibold">{integrityReport.partial_files}</div>
+                </div>
+                <div className="rounded-lg border p-3">
+                  <div className="text-xs text-muted-foreground">Complete</div>
+                  <div className="text-lg font-semibold">{integrityReport.complete_files}</div>
+                </div>
+                <div className="rounded-lg border p-3">
+                  <div className="text-xs text-muted-foreground">Untracked</div>
+                  <div className="text-lg font-semibold">{integrityReport.untracked_files}</div>
+                </div>
+                <div className="rounded-lg border p-3">
+                  <div className="text-xs text-muted-foreground">Unverifiable</div>
+                  <div className="text-lg font-semibold">{integrityReport.unverifiable_files}</div>
+                </div>
+              </div>
+
+              {integrityReport.issues.length > 0 ? (
+                <div className="space-y-2">
+                  <div className="text-sm font-medium">Problems Found</div>
+                  <div className="max-h-[360px] overflow-y-auto rounded-lg border">
+                    {integrityReport.issues.map((issue) => (
+                      <div key={`${issue.relative_path}-${issue.reason}`} className="border-b p-3 last:border-b-0">
+                        <div className="font-mono text-xs break-all">{issue.relative_path}</div>
+                        <div className="mt-1 text-sm">{formatIntegrityReason(issue.reason)}</div>
+                        <div className="mt-1 text-xs text-muted-foreground">
+                          Local: {formatBytes(issue.local_size)}
+                          {issue.remote_size > 0 ? ` • Remote: ${formatBytes(issue.remote_size)}` : ""}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div className="rounded-lg border p-4 text-sm text-green-600 dark:text-green-400">
+                  No incomplete files found in the tracked media set.
+                </div>
+              )}
+
+              {(integrityReport.untracked_files > 0 || integrityReport.unverifiable_files > 0) && (
+                <div className="rounded-lg border p-3 text-xs text-muted-foreground">
+                  {integrityReport.untracked_files > 0 && (
+                    <div>{integrityReport.untracked_files} file(s) could not be matched back to saved database entries.</div>
+                  )}
+                  {integrityReport.unverifiable_files > 0 && (
+                    <div>{integrityReport.unverifiable_files} tracked file(s) could not be verified because remote size was unavailable.</div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={handleOpenIntegrityFolder}>Open Folder</Button>
+            <Button onClick={() => setShowIntegrityReport(false)}>Close</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
