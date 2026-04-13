@@ -31,6 +31,16 @@ export interface TimelineEntry {
   author_username?: string; // Username of tweet author (for bookmarks and likes)
 }
 
+export interface SavedTimelineItem {
+  url: string;
+  date: string;
+  tweet_id: string;
+  type: string;
+  content?: string;
+  author_username?: string;
+  original_filename?: string;
+}
+
 export interface ExtractMetadata {
   new_entries: number;
   page: number;
@@ -47,6 +57,29 @@ export interface TwitterResponse {
   metadata: ExtractMetadata;
   cursor?: string;      // Cursor for next fetch (from CLI)
   completed?: boolean;  // True if fetch completed
+}
+
+export interface SnapshotSummary {
+  account_info: AccountInfo;
+  total_urls: number;
+  cursor?: string;
+  completed: boolean;
+}
+
+export interface MediaTypeCounts {
+  photo: number;
+  video: number;
+  gif: number;
+  text: number;
+}
+
+export interface AccountTimelinePage {
+  summary: SnapshotSummary;
+  media_counts: MediaTypeCounts;
+  items: SavedTimelineItem[];
+  total_items: number;
+  has_more: boolean;
+  next_offset: number;
 }
 
 export interface TimelineRequest {
@@ -67,12 +100,4 @@ export interface DateRangeRequest {
   end_date: string; // YYYY-MM-DD
   media_filter: string;
   retweets: boolean;
-}
-
-// Settings types
-export interface Settings {
-  downloadPath: string;
-  theme: string;
-  themeMode: "auto" | "light" | "dark";
-  sfxEnabled: boolean;
 }

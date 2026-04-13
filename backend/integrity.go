@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -92,8 +93,11 @@ func CheckDownloadIntegrity(downloadPath, customProxy string) (DownloadIntegrity
 
 func loadTrackedMediaIndex(downloadPath string) (map[string]MediaItem, error) {
 	rows, err := db.Query(`
-		SELECT username, COALESCE(media_type, 'all'), COALESCE(timeline_type, 'timeline'),
-		       COALESCE(retweets, 0), COALESCE(query_key, '')
+		SELECT id, username, name, profile_image, COALESCE(account_info_json, ''), total_media, last_fetched,
+		       COALESCE(response_json, ''), COALESCE(media_type, 'all'), COALESCE(timeline_type, 'timeline'),
+		       COALESCE(retweets, 0), COALESCE(query_key, ''), COALESCE(cursor, ''),
+		       COALESCE(completed, 1), COALESCE(followers_count, 0), COALESCE(statuses_count, 0),
+		       fetch_key, COALESCE(storage_version, 1)
 		FROM accounts
 		ORDER BY last_fetched DESC
 	`)
@@ -104,37 +108,73 @@ func loadTrackedMediaIndex(downloadPath string) (map[string]MediaItem, error) {
 
 	tracked := make(map[string]MediaItem)
 	for rows.Next() {
-		var scope FetchScopeRecord
+		var summary accountSummaryRecord
+		var lastFetched time.Time
 		var retweetsInt int
-		if err := rows.Scan(&scope.Username, &scope.MediaType, &scope.TimelineType, &retweetsInt, &scope.QueryKey); err != nil {
+		var completedInt int
+		if err := rows.Scan(
+			&summary.ID,
+			&summary.Username,
+			&summary.Name,
+			&summary.ProfileImage,
+			&summary.AccountInfoJSON,
+			&summary.TotalMedia,
+			&lastFetched,
+			&summary.ResponseJSON,
+			&summary.MediaType,
+			&summary.TimelineType,
+			&retweetsInt,
+			&summary.QueryKey,
+			&summary.Cursor,
+			&completedInt,
+			&summary.FollowersCount,
+			&summary.StatusesCount,
+			&summary.FetchKey,
+			&summary.StorageVersion,
+		); err != nil {
 			continue
 		}
-		scope.Retweets = retweetsInt == 1
+		summary.LastFetched = lastFetched
+		summary.Retweets = retweetsInt == 1
+		summary.Completed = completedInt == 1
 
-		payload, err := LoadScopeMediaDownloadPayload(scope)
-		if err != nil || payload == nil || len(payload.Items) == 0 {
+		if err := ensureScopeDownloadMediaIndex(&summary); err != nil {
 			continue
 		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 
-		tweetMediaCount := make(map[string]map[int64]int)
-		baseDir := downloadPath
-		if payload.RootSubdirectory != "" {
-			baseDir = filepath.Join(baseDir, payload.RootSubdirectory)
+	indexRows, err := db.Query(`
+		SELECT relative_path, url, tweet_id, media_type, download_username
+		FROM download_media_index
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer indexRows.Close()
+
+	for indexRows.Next() {
+		var relativePath string
+		var mediaURL string
+		var tweetIDValue string
+		var mediaType string
+		var downloadUsername string
+		if err := indexRows.Scan(&relativePath, &mediaURL, &tweetIDValue, &mediaType, &downloadUsername); err != nil {
+			return nil, err
 		}
-		for _, item := range payload.Items {
-			itemUsername := resolveDownloadUsername(item, payload.Username)
-			if itemUsername == "" {
-				continue
-			}
-
-			mediaIndex := nextMediaIndex(tweetMediaCount, itemUsername, item.TweetID)
-			filename := buildMediaFilename(item, itemUsername, mediaIndex)
-			outputPath := filepath.Join(baseDir, itemUsername, mediaSubfolder(item.Type), filename)
-			tracked[filepath.Clean(outputPath)] = item
+		tweetID, _ := strconv.ParseInt(strings.TrimSpace(tweetIDValue), 10, 64)
+		outputPath := filepath.Join(downloadPath, relativePath)
+		tracked[filepath.Clean(outputPath)] = MediaItem{
+			URL:      mediaURL,
+			TweetID:  tweetID,
+			Type:     mediaType,
+			Username: downloadUsername,
 		}
 	}
 
-	return tracked, rows.Err()
+	return tracked, indexRows.Err()
 }
 
 func checkDownloadDirectoryIntegrity(ctx context.Context, downloadPath string, tracked map[string]MediaItem, client *http.Client) (DownloadIntegrityReport, error) {

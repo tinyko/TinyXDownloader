@@ -299,6 +299,14 @@ type DownloadSavedScopesRequest struct {
 	Proxy     string              `json:"proxy,omitempty"`
 }
 
+type AccountTimelinePageRequest struct {
+	Scope      FetchScopeRequest `json:"scope"`
+	Offset     int               `json:"offset"`
+	Limit      int               `json:"limit"`
+	FilterType string            `json:"filter_type"`
+	SortBy     string            `json:"sort_by"`
+}
+
 // DownloadMediaResponse represents the response for download operation
 type DownloadMediaResponse struct {
 	Success    bool   `json:"success"`
@@ -355,13 +363,6 @@ func (a *App) DownloadMedia(req DownloadMediaRequest) (DownloadMediaResponse, er
 		Failed:     failed,
 		Message:    fmt.Sprintf("Downloaded %d files, %d failed", downloaded, failed),
 	}, nil
-}
-
-// DownloadProgress represents download progress event data
-type DownloadProgress struct {
-	Current int `json:"current"`
-	Total   int `json:"total"`
-	Percent int `json:"percent"`
 }
 
 // DownloadStateResponse represents the active download session state.
@@ -456,11 +457,6 @@ func (a *App) runDownloadGroup(items []backend.MediaItem, outputDir, username, p
 			percent = (globalCurrent * 100) / totalItems
 		}
 		a.updateDownloadProgress(globalCurrent, totalItems, percent)
-		runtime.EventsEmit(a.ctx, "download-progress", DownloadProgress{
-			Current: globalCurrent,
-			Total:   totalItems,
-			Percent: percent,
-		})
 	}
 
 	itemStatusCallback := func(tweetID int64, index int, status string) {
@@ -492,6 +488,30 @@ func (a *App) GetAccountSnapshotStructured(scope FetchScopeRequest) (*backend.Tw
 		scope.TimelineType,
 		scope.Retweets,
 		scope.QueryKey,
+	)
+}
+
+func (a *App) GetAccountSnapshotSummaryStructured(scope FetchScopeRequest) (*backend.AccountSnapshotSummary, error) {
+	return backend.GetAccountSnapshotSummaryStructured(
+		scope.Username,
+		scope.MediaType,
+		scope.TimelineType,
+		scope.Retweets,
+		scope.QueryKey,
+	)
+}
+
+func (a *App) GetAccountSnapshotTweetIDs(scope FetchScopeRequest) ([]string, error) {
+	return backend.GetAccountSnapshotTweetIDs(toBackendFetchScope(scope))
+}
+
+func (a *App) GetAccountTimelinePage(req AccountTimelinePageRequest) (*backend.AccountTimelinePage, error) {
+	return backend.GetAccountTimelinePage(
+		toBackendFetchScope(req.Scope),
+		req.Offset,
+		req.Limit,
+		req.FilterType,
+		req.SortBy,
 	)
 }
 
@@ -839,6 +859,11 @@ func (a *App) CheckFolderExists(basePath, username string) bool {
 // CheckFoldersExist checks if multiple folders exist under the given base path.
 func (a *App) CheckFoldersExist(basePath string, folderNames []string) map[string]bool {
 	return backend.CheckFoldersExist(basePath, folderNames)
+}
+
+// GetDownloadDirectorySnapshot returns the top-level directory names in the current download path.
+func (a *App) GetDownloadDirectorySnapshot(basePath string) ([]string, error) {
+	return backend.GetDownloadDirectorySnapshot(basePath)
 }
 
 // CheckGifsFolderExists checks if a gifs subfolder exists for the given username

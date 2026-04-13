@@ -1,0 +1,59 @@
+import type {
+  FontFamily,
+  GifQuality,
+  GifResolution,
+  Settings,
+  FetchMode as SettingsFetchMode,
+  MediaType as SettingsMediaType,
+} from "@/lib/settings";
+import type { FetchMode, PrivateType } from "@/types/fetch";
+
+export type {
+  FontFamily,
+  GifQuality,
+  GifResolution,
+  Settings,
+  SettingsFetchMode,
+  SettingsMediaType,
+};
+
+export interface DownloadIntegrityIssue {
+  path: string;
+  relative_path: string;
+  reason: string;
+  local_size: number;
+  remote_size: number;
+  url?: string;
+}
+
+export interface DownloadIntegrityReport {
+  download_path: string;
+  scanned_files: number;
+  checked_files: number;
+  complete_files: number;
+  partial_files: number;
+  incomplete_files: number;
+  untracked_files: number;
+  unverifiable_files: number;
+  issues: DownloadIntegrityIssue[];
+}
+
+export interface SettingsPanelProps {
+  embedded?: boolean;
+  mode?: FetchMode;
+  privateType?: PrivateType;
+  publicAuthToken?: string;
+  privateAuthToken?: string;
+  onPublicAuthTokenChange?: (value: string) => void;
+  onPrivateAuthTokenChange?: (value: string) => void;
+  rememberPublicToken?: boolean;
+  rememberPrivateToken?: boolean;
+  onRememberPublicTokenChange?: (value: boolean) => void;
+  onRememberPrivateTokenChange?: (value: boolean) => void;
+  useDateRange?: boolean;
+  startDate?: string;
+  endDate?: string;
+  onUseDateRangeChange?: (value: boolean) => void;
+  onStartDateChange?: (value: string) => void;
+  onEndDateChange?: (value: string) => void;
+}

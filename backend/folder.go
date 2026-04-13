@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 
 	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
@@ -73,6 +74,30 @@ func CheckFoldersExist(basePath string, folderNames []string) map[string]bool {
 		results[folderName] = CheckFolderExists(basePath, folderName)
 	}
 	return results
+}
+
+// GetDownloadDirectorySnapshot returns the current top-level directory names under the download path.
+func GetDownloadDirectorySnapshot(basePath string) ([]string, error) {
+	if strings.TrimSpace(basePath) == "" {
+		return []string{}, nil
+	}
+
+	entries, err := os.ReadDir(basePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return []string{}, nil
+		}
+		return nil, err
+	}
+
+	directories := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		if entry.IsDir() {
+			directories = append(directories, entry.Name())
+		}
+	}
+
+	return directories, nil
 }
 
 // CheckGifsFolderExists checks if a gifs subfolder exists for the given username
