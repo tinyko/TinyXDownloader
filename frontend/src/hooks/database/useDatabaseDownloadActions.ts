@@ -12,23 +12,30 @@ import type { UseDatabaseActionsOptions } from "@/hooks/database/databaseActionT
 import { DownloadSavedScopes, GetFolderPath, OpenFolder } from "../../../wailsjs/go/main/App";
 import { main } from "../../../wailsjs/go/models";
 
-interface UseDatabaseDownloadActionsArgs
-  extends Pick<
-    UseDatabaseActionsOptions,
-    | "accounts"
-    | "selectedIds"
-    | "refreshFolderExistence"
-    | "onStopDownload"
-    | "onDownloadSessionStart"
-    | "downloadState"
-  > {}
+type UseDatabaseDownloadActionsArgs = Pick<
+  UseDatabaseActionsOptions,
+  | "accounts"
+  | "accountRefs"
+  | "selectedIds"
+  | "resolveAccountsByIds"
+  | "refreshFolderExistence"
+  | "onStopDownload"
+  | "onDownloadSessionStart"
+  | "onDownloadSessionFinish"
+  | "onDownloadSessionFail"
+  | "downloadState"
+>;
 
 export function useDatabaseDownloadActions({
   accounts,
+  accountRefs,
   selectedIds,
+  resolveAccountsByIds,
   refreshFolderExistence,
   onStopDownload,
   onDownloadSessionStart,
+  onDownloadSessionFinish,
+  onDownloadSessionFail,
   downloadState = null,
 }: UseDatabaseDownloadActionsArgs) {
   const [isBulkDownloading, setIsBulkDownloading] = useState(false);
@@ -42,11 +49,12 @@ export function useDatabaseDownloadActions({
     if (selectedIds.size === 0) {
       return false;
     }
+    const refsById = new Map(accountRefs.map((account) => [account.id, account.username]));
     return Array.from(selectedIds).some((id) => {
-      const account = accounts.find((entry) => entry.id === id);
-      return account ? isPrivateAccount(account.username) : false;
+      const username = refsById.get(id);
+      return username ? isPrivateAccount(username) : false;
     });
-  }, [accounts, selectedIds]);
+  }, [accountRefs, selectedIds]);
 
   const handleOpenFolder = async (username: string) => {
     const settings = getSettings();
@@ -90,6 +98,7 @@ export function useDatabaseDownloadActions({
       );
 
       if (!response.success) {
+        onDownloadSessionFail?.();
         toast.error(response.message || "Download failed");
         return;
       }
@@ -120,8 +129,10 @@ export function useDatabaseDownloadActions({
       } else {
         toast.success(message);
       }
+      onDownloadSessionFinish?.(response.failed > 0 ? "failed" : "completed");
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
+      onDownloadSessionFail?.();
       toast.error(`Download failed: ${errorMsg}`);
     }
   };
@@ -139,12 +150,9 @@ export function useDatabaseDownloadActions({
     stopBulkDownloadRef.current = false;
 
     const settings = getSettings();
-    const selectedAccounts = idsToDownload
-      .map((id) => accounts.find((account) => account.id === id))
-      .filter(
-        (account): account is AccountListItem =>
-          account !== undefined && account.total_media > 0
-      );
+    const selectedAccounts = (await resolveAccountsByIds(idsToDownload)).filter(
+      (account): account is AccountListItem => account.total_media > 0
+    );
 
     if (selectedAccounts.length === 0) {
       setIsBulkDownloading(false);
@@ -172,6 +180,7 @@ export function useDatabaseDownloadActions({
       );
     } catch (error) {
       console.error("Bulk download failed:", error);
+      onDownloadSessionFail?.();
     }
 
     setIsBulkDownloading(false);
@@ -209,7 +218,9 @@ export function useDatabaseDownloadActions({
       } else {
         toast.success(message);
       }
+      onDownloadSessionFinish?.(response.failed > 0 ? "failed" : "completed");
     } else if (response && !response.success && !stopBulkDownloadRef.current) {
+      onDownloadSessionFail?.();
       toast.error(response.message || "Bulk download failed");
     }
   };

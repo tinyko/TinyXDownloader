@@ -47,6 +47,7 @@ export function Header({
                 variant={workspaceTab === "fetch" ? "secondary" : "ghost"}
                 className="h-10 min-w-0 rounded-lg px-4 text-xs leading-none sm:px-5 sm:text-[13px]"
                 onClick={() => onWorkspaceTabChange("fetch")}
+                data-testid="workspace-tab-fetch"
               >
                 <span className="truncate">Fetch</span>
               </Button>
@@ -54,6 +55,7 @@ export function Header({
                 variant={workspaceTab === "saved" ? "secondary" : "ghost"}
                 className="h-10 min-w-0 rounded-lg px-4 text-xs leading-none sm:px-5 sm:text-[13px]"
                 onClick={() => onWorkspaceTabChange("saved")}
+                data-testid="workspace-tab-saved"
               >
                 <span className="truncate">Saved Accounts</span>
               </Button>
@@ -65,11 +67,17 @@ export function Header({
             variant="outline"
             className="h-10 gap-2 rounded-xl px-4"
             onClick={onOpenDiagnostics}
+            data-testid="open-diagnostics"
           >
             <Activity className="h-[18px] w-[18px]" />
             Diagnostics
           </Button>
-          <Button variant="outline" className="h-10 gap-2 rounded-xl px-4" onClick={onOpenSettings}>
+          <Button
+            variant="outline"
+            className="h-10 gap-2 rounded-xl px-4"
+            onClick={onOpenSettings}
+            data-testid="open-settings"
+          >
             <SettingsIcon size={18} />
             Settings
           </Button>

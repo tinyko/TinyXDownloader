@@ -36,7 +36,7 @@ export function openExternal(url: string) {
   if (!url) return;
   try {
     BrowserOpenURL(url);
-  } catch (error) {
+  } catch {
     if (typeof window !== "undefined") {
       window.open(url, "_blank", "noopener,noreferrer");
     }

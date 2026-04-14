@@ -68,7 +68,7 @@ export function useMultiFetchController() {
 
     stopAllRef.current = true;
     setIsFetchingAll(false);
-    setActiveSessionStatus("stopped");
+    setActiveSessionStatus("cancelling");
     await cancelAllActiveAccountRequests();
     try {
       await currentQueuePromiseRef.current;
@@ -77,7 +77,7 @@ export function useMultiFetchController() {
     } finally {
       currentQueuePromiseRef.current = null;
     }
-  }, [cancelAllActiveAccountRequests, isFetchingAll, setActiveSessionStatus]);
+  }, [cancelAllActiveAccountRequests, isFetchingAll, setActiveSessionStatus, stopAllRef]);
 
   const createPendingSession = useCallback(
     (
@@ -177,7 +177,7 @@ export function useMultiFetchController() {
           }
 
           if (!completed) {
-            setActiveSessionStatus("stopped");
+            setActiveSessionStatus("cancelled");
             return;
           }
 
@@ -227,6 +227,7 @@ export function useMultiFetchController() {
       replaceActiveSession,
       setActiveSessionStatus,
       setMultipleAccountsState,
+      stopAllRef,
       stopCurrentQueueForReplacement,
     ]
   );
@@ -234,7 +235,7 @@ export function useMultiFetchController() {
   const handleStopAll = useCallback(() => {
     stopAllRef.current = true;
     setIsFetchingAll(false);
-    setActiveSessionStatus("stopped");
+    setActiveSessionStatus("cancelling");
 
     accountStartTimesRef.current.clear();
     accountTimeoutSecondsRef.current.clear();
@@ -261,6 +262,7 @@ export function useMultiFetchController() {
     diffVisibilityRef,
     setActiveSessionStatus,
     setMultipleAccountsState,
+    stopAllRef,
   ]);
 
   return {

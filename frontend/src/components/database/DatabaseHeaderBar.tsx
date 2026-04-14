@@ -67,6 +67,7 @@ export function DatabaseHeaderBar({
           <button
             type="button"
             onClick={() => onAccountViewModeChange("public")}
+            data-testid="saved-account-view-public"
             className={`flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition-all ${
               accountViewMode === "public"
                 ? "bg-background text-foreground shadow-sm"
@@ -79,6 +80,7 @@ export function DatabaseHeaderBar({
           <button
             type="button"
             onClick={() => onAccountViewModeChange("private")}
+            data-testid="saved-account-view-private"
             className={`flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition-all ${
               accountViewMode === "private"
                 ? "bg-background text-foreground shadow-sm"

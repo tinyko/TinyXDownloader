@@ -1,4 +1,12 @@
-import { ChevronLeft, ChevronRight, ExternalLink, Heart } from "lucide-react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  CheckCircle,
+  ExternalLink,
+  FileCheck,
+  Heart,
+  XCircle,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
@@ -6,7 +14,6 @@ import type { TimelineEntry } from "@/types/api";
 import {
   formatDate,
   formatNumberWithComma,
-  getDownloadStatusIcon,
   getMediaWorkspaceStats,
   getPreviewUrl,
   getRelativeTime,
@@ -41,8 +48,6 @@ export function MediaPreviewOverlay({
   onDownload,
   onOpenTweet,
 }: MediaPreviewOverlayProps) {
-  const StatusIcon = getDownloadStatusIcon(downloadStatus);
-
   return (
     <div
       className="fixed inset-0 z-40 flex flex-col items-center justify-center bg-black/80 pt-8"
@@ -126,8 +131,12 @@ export function MediaPreviewOverlay({
         >
           {downloadingItem ? (
             <Spinner className="mr-1" />
-          ) : StatusIcon ? (
-            <StatusIcon className="mr-1 h-4 w-4" />
+          ) : downloadStatus === "downloaded" ? (
+            <CheckCircle className="mr-1 h-4 w-4" />
+          ) : downloadStatus === "failed" ? (
+            <XCircle className="mr-1 h-4 w-4" />
+          ) : downloadStatus === "skipped" ? (
+            <FileCheck className="mr-1 h-4 w-4" />
           ) : (
             <Heart className="mr-1 h-4 w-4 opacity-0" />
           )}

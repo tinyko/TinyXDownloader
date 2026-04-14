@@ -84,11 +84,13 @@ function getSessionBadgeTone(
     return "border-blue-500/20 bg-blue-500/10 text-blue-300";
   }
   switch (status) {
+    case "cancelling":
+      return "border-amber-500/20 bg-amber-500/10 text-amber-300";
     case "completed":
       return "border-emerald-500/20 bg-emerald-500/10 text-emerald-300";
     case "failed":
       return "border-red-500/20 bg-red-500/10 text-red-300";
-    case "stopped":
+    case "cancelled":
       return "border-amber-500/20 bg-amber-500/10 text-amber-300";
     case "ready":
     default:
@@ -104,12 +106,14 @@ function formatSessionStatusLabel(
     return "Queue Running";
   }
   switch (status) {
+    case "cancelling":
+      return "Queue Cancelling";
     case "completed":
       return "Queue Complete";
     case "failed":
       return "Completed With Issues";
-    case "stopped":
-      return "Queue Stopped";
+    case "cancelled":
+      return "Queue Cancelled";
     case "ready":
     default:
       return "Ready To Run";

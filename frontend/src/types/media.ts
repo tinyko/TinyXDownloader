@@ -1,5 +1,9 @@
 import type { AccountInfo, TimelineEntry } from "@/types/api";
-import type { GlobalDownloadSessionMeta, GlobalDownloadState } from "@/types/download";
+import type {
+  DownloadSessionResultStatus,
+  GlobalDownloadSessionMeta,
+  GlobalDownloadState,
+} from "@/types/download";
 
 export interface MediaWorkspaceProps {
   accountInfo: AccountInfo;
@@ -10,6 +14,8 @@ export interface MediaWorkspaceProps {
   downloadState?: GlobalDownloadState | null;
   downloadMeta?: GlobalDownloadSessionMeta | null;
   onDownloadSessionStart?: (meta: GlobalDownloadSessionMeta) => void;
+  onDownloadSessionFinish?: (status?: DownloadSessionResultStatus) => void;
+  onDownloadSessionFail?: () => void;
 }
 
 export type MediaWorkspaceViewMode = "gallery" | "list";

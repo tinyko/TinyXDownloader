@@ -69,11 +69,7 @@ export function useSavedTimelinePager(
     [
       filterType,
       pageSize,
-      scope.mediaType,
-      scope.queryKey,
-      scope.retweets,
-      scope.timelineType,
-      scope.username,
+      scope,
       sortBy,
     ]
   );

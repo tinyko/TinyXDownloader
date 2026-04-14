@@ -22,7 +22,14 @@ export function useIndexedTimelinePreview<T extends MediaKeyItem>(
   options: UseIndexedTimelinePreviewOptions = {}
 ) {
   const { resetKey } = options;
-  const [previewKey, setPreviewKey] = useState<string | null>(null);
+  const currentResetKey = resetKey ?? "";
+  const [previewState, setPreviewState] = useState<{
+    resetKey: string;
+    previewKey: string | null;
+  }>({
+    resetKey: currentResetKey,
+    previewKey: null,
+  });
 
   const indexedItems = useMemo<IndexedTimelineItem<T>[]>(
     () => items.map((item, index) => ({ item, index, key: getTimelineItemKey(item) })),
@@ -37,31 +44,41 @@ export function useIndexedTimelinePreview<T extends MediaKeyItem>(
     return map;
   }, [indexedItems]);
 
+  const previewKey =
+    previewState.resetKey === currentResetKey ? previewState.previewKey : null;
   const previewIndex = previewKey ? timelineIndexByKey.get(previewKey) ?? null : null;
 
   const openPreview = useCallback((itemKey: string) => {
-    setPreviewKey(itemKey);
-  }, []);
+    setPreviewState({
+      resetKey: currentResetKey,
+      previewKey: itemKey,
+    });
+  }, [currentResetKey]);
 
   const closePreview = useCallback(() => {
-    setPreviewKey(null);
-  }, []);
+    setPreviewState({
+      resetKey: currentResetKey,
+      previewKey: null,
+    });
+  }, [currentResetKey]);
 
   const goToPrevious = useCallback(() => {
     if (previewIndex !== null && previewIndex > 0) {
-      setPreviewKey(indexedItems[previewIndex - 1].key);
+      setPreviewState({
+        resetKey: currentResetKey,
+        previewKey: indexedItems[previewIndex - 1].key,
+      });
     }
-  }, [indexedItems, previewIndex]);
+  }, [currentResetKey, indexedItems, previewIndex]);
 
   const goToNext = useCallback(() => {
     if (previewIndex !== null && previewIndex < indexedItems.length - 1) {
-      setPreviewKey(indexedItems[previewIndex + 1].key);
+      setPreviewState({
+        resetKey: currentResetKey,
+        previewKey: indexedItems[previewIndex + 1].key,
+      });
     }
-  }, [indexedItems, previewIndex]);
-
-  useEffect(() => {
-    setPreviewKey(null);
-  }, [resetKey]);
+  }, [currentResetKey, indexedItems, previewIndex]);
 
   useEffect(() => {
     if (previewIndex !== null) {
@@ -98,7 +115,11 @@ export function useIndexedTimelinePreview<T extends MediaKeyItem>(
     indexedItems,
     timelineIndexByKey,
     previewKey,
-    setPreviewKey,
+    setPreviewKey: (nextPreviewKey: string | null) =>
+      setPreviewState({
+        resetKey: currentResetKey,
+        previewKey: nextPreviewKey,
+      }),
     previewIndex,
     openPreview,
     closePreview,

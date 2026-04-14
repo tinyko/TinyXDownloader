@@ -1,8 +1,15 @@
+import type { TaskLifecycleStatus, TaskTerminalStatus } from "@/types/tasks";
+
 export interface GlobalDownloadState {
   in_progress: boolean;
   current: number;
   total: number;
   percent: number;
+}
+
+export interface GlobalDownloadTaskState {
+  status: TaskLifecycleStatus | null;
+  progress: GlobalDownloadState | null;
 }
 
 export interface GlobalDownloadSessionMeta {
@@ -14,11 +21,13 @@ export interface GlobalDownloadSessionMeta {
   accountName?: string;
 }
 
+export type DownloadSessionResultStatus = TaskTerminalStatus;
+
 export interface GlobalDownloadHistoryItem {
   id: string;
   title: string;
   subtitle?: string;
-  status: "completed" | "interrupted";
+  status: TaskTerminalStatus;
   current: number;
   total: number;
   finishedAt: number;

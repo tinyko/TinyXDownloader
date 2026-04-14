@@ -3,6 +3,7 @@ import { startTransition, useCallback, useEffect, useRef, useState } from "react
 import type {
   AccountListItem,
   GroupInfo,
+  SavedAccountRef,
 } from "@/types/database";
 import { resolveAccountFolderName } from "@/lib/database/helpers";
 import {
@@ -11,16 +12,15 @@ import {
   type Settings,
 } from "@/lib/settings";
 import { toastWithSound as toast } from "@/lib/toast-with-sound";
-import {
-  GetDownloadDirectorySnapshot,
-  GetSavedAccountsWorkspaceData,
-} from "../../../wailsjs/go/main/App";
-import { normalizeSavedAccountsWorkspaceData } from "@/lib/fetch/snapshot-client";
+import { GetDownloadDirectorySnapshot } from "../../../wailsjs/go/main/App";
+import { loadSavedAccountsBootstrap } from "@/lib/database-client";
 
 export function useDatabaseAccountsData() {
-  const [accounts, setAccounts] = useState<AccountListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [groups, setGroups] = useState<GroupInfo[]>([]);
+  const [accountRefs, setAccountRefs] = useState<SavedAccountRef[]>([]);
+  const [publicCount, setPublicCount] = useState(0);
+  const [privateCount, setPrivateCount] = useState(0);
   const [folderExistence, setFolderExistence] = useState<Map<number, boolean>>(
     new Map()
   );
@@ -96,32 +96,39 @@ export function useDatabaseAccountsData() {
     }
 
     try {
-      const workspaceData = normalizeSavedAccountsWorkspaceData(
-        await GetSavedAccountsWorkspaceData()
-      );
-      const accountList = workspaceData?.accounts || [];
-      const groupList = workspaceData?.groups || [];
+      const bootstrap = await loadSavedAccountsBootstrap();
+      const groupList = bootstrap?.groups || [];
+      const nextAccountRefs = bootstrap?.accountRefs || [];
+      const nextPublicCount = bootstrap?.publicCount || 0;
+      const nextPrivateCount = bootstrap?.privateCount || 0;
 
       startTransition(() => {
-        setAccounts(accountList);
         setGroups(groupList);
+        setAccountRefs(nextAccountRefs);
+        setPublicCount(nextPublicCount);
+        setPrivateCount(nextPrivateCount);
         setLoading(false);
         initialLoadRef.current = false;
       });
-
-      window.setTimeout(() => {
-        void checkFolderExistence(accountList);
-      }, 0);
     } catch (error) {
       console.error("Failed to load accounts:", error);
       toast.error("Failed to load accounts");
       setLoading(false);
     }
-  }, [checkFolderExistence]);
+  }, []);
 
   const refreshFolderExistence = useCallback(async () => {
-    await checkFolderExistence(accounts, true);
-  }, [accounts, checkFolderExistence]);
+    folderSnapshotCacheRef.current = null;
+    setFolderExistence(new Map());
+  }, []);
+
+  const syncFolderExistence = useCallback(async (
+    accountsList: AccountListItem[],
+    forceRefresh = false,
+    explicitSettings?: Settings
+  ) => {
+    await checkFolderExistence(accountsList, forceRefresh, explicitSettings);
+  }, [checkFolderExistence]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -138,7 +145,8 @@ export function useDatabaseAccountsData() {
         return;
       }
 
-      void checkFolderExistence(accounts, true, nextSettings);
+      setFolderExistence(new Map());
+      lastDownloadPathRef.current = nextDownloadPath;
     };
 
     window.addEventListener(SETTINGS_CHANGED_EVENT, handleSettingsChanged as EventListener);
@@ -148,14 +156,17 @@ export function useDatabaseAccountsData() {
         handleSettingsChanged as EventListener
       );
     };
-  }, [accounts, checkFolderExistence]);
+  }, []);
 
   return {
-    accounts,
     loading,
     groups,
+    accountRefs,
+    publicCount,
+    privateCount,
     folderExistence,
     loadAccounts,
     refreshFolderExistence,
+    syncFolderExistence,
   };
 }

@@ -9,13 +9,17 @@ import {
   saveSettings,
   type Settings as SettingsType,
 } from "@/lib/settings";
-import { checkExifToolInstalled, checkFFmpegInstalled, downloadExifToolBinary, downloadFFmpegBinary, openSettingsFolder, runDownloadIntegrityCheck, selectDownloadFolder } from "@/lib/settings-client";
+import {
+  checkExifToolInstalled,
+  checkFFmpegInstalled,
+  downloadExifToolBinary,
+  downloadFFmpegBinary,
+  selectDownloadFolder,
+} from "@/lib/settings-client";
 import { applyTheme } from "@/lib/themes";
 import { toastWithSound as toast } from "@/lib/toast-with-sound";
 import type {
   SettingsPanelProps,
-  DownloadIntegrityMode,
-  DownloadIntegrityReport,
 } from "@/types/settings";
 
 export function useSettingsPanelState({
@@ -31,11 +35,6 @@ export function useSettingsPanelState({
   const [exiftoolInstalled, setExiftoolInstalled] = useState(false);
   const [downloadingExifTool, setDownloadingExifTool] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
-  const [checkingIntegrity, setCheckingIntegrity] = useState(false);
-  const [checkingIntegrityMode, setCheckingIntegrityMode] =
-    useState<DownloadIntegrityMode | null>(null);
-  const [integrityReport, setIntegrityReport] = useState<DownloadIntegrityReport | null>(null);
-  const [showIntegrityReport, setShowIntegrityReport] = useState(false);
   const [showPublicToken, setShowPublicToken] = useState(false);
   const [showPrivateToken, setShowPrivateToken] = useState(false);
 
@@ -160,56 +159,6 @@ export function useSettingsPanelState({
     }
   };
 
-  const handleCheckIntegrity = async (mode: DownloadIntegrityMode) => {
-    const downloadPath = (tempSettings.downloadPath || savedSettings.downloadPath || "").trim();
-    if (!downloadPath) {
-      toast.error("Download path is empty");
-      return;
-    }
-
-    setCheckingIntegrity(true);
-    setCheckingIntegrityMode(mode);
-    try {
-      const report = await runDownloadIntegrityCheck(
-        downloadPath,
-        tempSettings.proxy || "",
-        mode
-      );
-      setIntegrityReport(report);
-      setShowIntegrityReport(true);
-
-      const issueCount = report.partial_files + report.incomplete_files;
-      if (issueCount > 0) {
-        toast.warning(
-          `${mode === "quick" ? "Quick" : "Deep"} check found ${issueCount} incomplete item(s)`
-        );
-      } else {
-        toast.success(
-          `${mode === "quick" ? "Quick" : "Deep"} check completed: ${report.checked_files} tracked file(s), no incomplete files found`
-        );
-      }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      toast.error(`Integrity check failed: ${message}`);
-    } finally {
-      setCheckingIntegrity(false);
-      setCheckingIntegrityMode(null);
-    }
-  };
-
-  const handleOpenIntegrityFolder = async () => {
-    if (!integrityReport?.download_path) {
-      return;
-    }
-
-    try {
-      await openSettingsFolder(integrityReport.download_path);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      toast.error(`Could not open folder: ${message}`);
-    }
-  };
-
   return {
     savedSettings,
     tempSettings,
@@ -221,11 +170,6 @@ export function useSettingsPanelState({
     downloadingExifTool,
     showResetConfirm,
     setShowResetConfirm,
-    checkingIntegrity,
-    checkingIntegrityMode,
-    integrityReport,
-    showIntegrityReport,
-    setShowIntegrityReport,
     showPublicToken,
     setShowPublicToken,
     showPrivateToken,
@@ -238,7 +182,5 @@ export function useSettingsPanelState({
     handleBrowseFolder,
     handleDownloadFFmpeg,
     handleDownloadExifTool,
-    handleCheckIntegrity,
-    handleOpenIntegrityFolder,
   };
 }

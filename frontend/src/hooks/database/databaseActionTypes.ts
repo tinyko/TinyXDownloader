@@ -1,18 +1,24 @@
-import type { AccountListItem } from "@/types/database";
+import type { AccountListItem, SavedAccountRef } from "@/types/database";
 import type {
+  DownloadSessionResultStatus,
   GlobalDownloadSessionMeta,
   GlobalDownloadState,
 } from "@/types/download";
 
 export interface UseDatabaseActionsOptions {
   accounts: AccountListItem[];
+  accountRefs: SavedAccountRef[];
+  allMatchingIds: number[];
   selectedIds: Set<number>;
   setSelectedIds: React.Dispatch<React.SetStateAction<Set<number>>>;
+  resolveAccountsByIds: (ids: number[]) => Promise<AccountListItem[]>;
   loadAccounts: () => Promise<void>;
   refreshFolderExistence: () => Promise<void>;
   onLoadAccount: (account: AccountListItem) => void | Promise<void>;
   onUpdateSelected?: (usernames: string[]) => void | Promise<void>;
   onStopDownload?: () => void | Promise<void>;
   onDownloadSessionStart?: (meta: GlobalDownloadSessionMeta) => void;
+  onDownloadSessionFinish?: (status?: DownloadSessionResultStatus) => void;
+  onDownloadSessionFail?: () => void;
   downloadState?: GlobalDownloadState | null;
 }

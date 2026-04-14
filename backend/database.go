@@ -52,9 +52,28 @@ type GroupInfo struct {
 	Color string `json:"color"`
 }
 
+type SavedAccountRef struct {
+	ID       int64  `json:"id"`
+	Username string `json:"username"`
+}
+
 type SavedAccountsWorkspaceData struct {
 	Accounts []AccountListItem `json:"accounts"`
 	Groups   []GroupInfo       `json:"groups"`
+}
+
+type SavedAccountsBootstrap struct {
+	Groups       []GroupInfo      `json:"groups"`
+	PublicCount  int              `json:"public_count"`
+	PrivateCount int              `json:"private_count"`
+	AccountRefs  []SavedAccountRef `json:"account_refs"`
+}
+
+type SavedAccountsQueryPage struct {
+	Items      []AccountListItem `json:"items"`
+	TotalCount int               `json:"total_count"`
+	HasMore    bool              `json:"has_more"`
+	NextOffset int               `json:"next_offset"`
 }
 
 var db *sql.DB

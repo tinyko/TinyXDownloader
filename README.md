@@ -28,6 +28,19 @@ Settings and Diagnostics open as right-side drawers so the main workspace stays 
 
 - [Workspace Overview](docs/workspace-overview.md)
 - [Performance Plan / Implementation Notes](docs/plan.md)
+- [Bookmarks Cleanup Guide](docs/bookmarks-cleanup.md)
+
+## Bookmarks Tooling
+
+The repo includes a local bookmarks cleanup toolchain for your own authenticated X session. The shortest path is:
+
+```bash
+./bookmarks.sh export-cookies --name auth_token --name ct0 --name twid --pretty
+./bookmarks.sh dry-run --expected-handle Tiny_MOD
+./bookmarks.sh clear --headless
+```
+
+By default this writes `chrome-x-cookies.json` at the repo root and saves `before` / `after` / `error` screenshots under `tmp/bookmarks/`. The longer walkthrough and safety notes live in [Bookmarks Cleanup Guide](docs/bookmarks-cleanup.md).
 
 ## Local Build
 

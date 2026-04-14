@@ -117,36 +117,44 @@ export function useSingleFetchRuntime({
     setRemainingTime(getSettings().fetchTimeout || 60);
   }, []);
 
+  const resetFetchTiming = useCallback(() => {
+    if (timeoutIntervalRef.current !== null) {
+      window.clearInterval(timeoutIntervalRef.current);
+      timeoutIntervalRef.current = null;
+    }
+    fetchStartTimeRef.current = null;
+    setElapsedTime(0);
+    setRemainingTime(null);
+  }, []);
+
   useEffect(() => {
-    if (loading && fetchStartTimeRef.current !== null) {
-      const timeoutSeconds = getSettings().fetchTimeout || 60;
-
-      timeoutIntervalRef.current = window.setInterval(() => {
-        if (fetchStartTimeRef.current === null) {
-          return;
-        }
-
-        const elapsed = Math.floor((Date.now() - fetchStartTimeRef.current) / 1000);
-        const remaining = Math.max(0, timeoutSeconds - elapsed);
-
-        setElapsedTime(elapsed);
-        setRemainingTime(remaining);
-
-        if (remaining <= 0 && !stopFetchRef.current) {
-          stopFetchRef.current = true;
-          void cancelActiveRequest();
-          onTimeout?.();
-        }
-      }, 1000);
-    } else {
+    if (!loading || fetchStartTimeRef.current === null) {
       if (timeoutIntervalRef.current !== null) {
         window.clearInterval(timeoutIntervalRef.current);
         timeoutIntervalRef.current = null;
       }
-      setElapsedTime(0);
-      setRemainingTime(null);
-      fetchStartTimeRef.current = null;
+      return;
     }
+
+    const timeoutSeconds = getSettings().fetchTimeout || 60;
+
+    timeoutIntervalRef.current = window.setInterval(() => {
+      if (fetchStartTimeRef.current === null) {
+        return;
+      }
+
+      const elapsed = Math.floor((Date.now() - fetchStartTimeRef.current) / 1000);
+      const remaining = Math.max(0, timeoutSeconds - elapsed);
+
+      setElapsedTime(elapsed);
+      setRemainingTime(remaining);
+
+      if (remaining <= 0 && !stopFetchRef.current) {
+        stopFetchRef.current = true;
+        void cancelActiveRequest();
+        onTimeout?.();
+      }
+    }, 1000);
 
     return () => {
       if (timeoutIntervalRef.current !== null) {
@@ -177,5 +185,6 @@ export function useSingleFetchRuntime({
     scheduleResultUpdate,
     clearLiveResult,
     beginFetchTiming,
+    resetFetchTiming,
   };
 }

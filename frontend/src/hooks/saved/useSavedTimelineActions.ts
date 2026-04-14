@@ -6,6 +6,7 @@ import type { IndexedTimelineItem } from "@/hooks/media/useIndexedTimelinePrevie
 import { useDownloadItemStatusMap } from "@/hooks/download/useDownloadItemStatusMap";
 import type { SavedTimelineItem } from "@/types/api";
 import type {
+  DownloadSessionResultStatus,
   GlobalDownloadSessionMeta,
   GlobalDownloadState,
 } from "@/types/download";
@@ -29,6 +30,8 @@ interface UseSavedTimelineActionsOptions {
   downloadState?: GlobalDownloadState | null;
   downloadMeta?: GlobalDownloadSessionMeta | null;
   onDownloadSessionStart?: (meta: GlobalDownloadSessionMeta) => void;
+  onDownloadSessionFinish?: (status?: DownloadSessionResultStatus) => void;
+  onDownloadSessionFail?: () => void;
 }
 
 export function useSavedTimelineActions({
@@ -42,6 +45,8 @@ export function useSavedTimelineActions({
   downloadState = null,
   downloadMeta = null,
   onDownloadSessionStart,
+  onDownloadSessionFinish,
+  onDownloadSessionFail,
 }: UseSavedTimelineActionsOptions) {
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
   const [folderRefreshVersion, setFolderRefreshVersion] = useState(0);
@@ -126,6 +131,15 @@ export function useSavedTimelineActions({
       beginSingleDownload(itemKey);
 
       try {
+        onDownloadSessionStart?.({
+          source: "database-single",
+          title: `Downloading @${account.username}`,
+          subtitle: "1 selected item",
+          accountId: account.id,
+          accountName: account.username,
+          targetKey: `saved-${account.id}`,
+        });
+
         const settings = getSettings();
         const response = await DownloadMediaWithMetadata(
           new main.DownloadMediaWithMetadataRequest({
@@ -146,18 +160,31 @@ export function useSavedTimelineActions({
           })
         );
         if (response.success) {
+          onDownloadSessionFinish?.(response.failed > 0 ? "failed" : "completed");
           markFolderRefresh();
           return;
         }
+        onDownloadSessionFail?.();
         toast.error(response.message || "Download failed");
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : String(error);
+        onDownloadSessionFail?.();
         toast.error(`Download failed: ${errorMsg}`);
       } finally {
         endSingleDownload();
       }
     },
-    [account.username, beginSingleDownload, endSingleDownload, getOutputDir, markFolderRefresh]
+    [
+      account.id,
+      account.username,
+      beginSingleDownload,
+      endSingleDownload,
+      getOutputDir,
+      markFolderRefresh,
+      onDownloadSessionFail,
+      onDownloadSessionFinish,
+      onDownloadSessionStart,
+    ]
   );
 
   const handleDownload = useCallback(async () => {
@@ -195,13 +222,16 @@ export function useSavedTimelineActions({
           })
         );
         if (response.success) {
+          onDownloadSessionFinish?.(response.failed > 0 ? "failed" : "completed");
           markFolderRefresh();
           toast.success("Selected items downloaded");
         } else {
+          onDownloadSessionFail?.();
           toast.error(response.message || "Download failed");
         }
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : String(error);
+        onDownloadSessionFail?.();
         toast.error(`Download failed: ${errorMsg}`);
       } finally {
         clearBulkDownload();
@@ -235,13 +265,16 @@ export function useSavedTimelineActions({
         })
       );
       if (response.success) {
+        onDownloadSessionFinish?.(response.failed > 0 ? "failed" : "completed");
         markFolderRefresh();
         toast.success("Saved account download completed");
       } else {
+        onDownloadSessionFail?.();
         toast.error(response.message || "Download failed");
       }
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
+      onDownloadSessionFail?.();
       toast.error(`Download failed: ${errorMsg}`);
     }
   }, [
@@ -251,6 +284,8 @@ export function useSavedTimelineActions({
     clearBulkDownload,
     getOutputDir,
     markFolderRefresh,
+    onDownloadSessionFail,
+    onDownloadSessionFinish,
     onDownloadSessionStart,
     scope.mediaType,
     scope.queryKey,

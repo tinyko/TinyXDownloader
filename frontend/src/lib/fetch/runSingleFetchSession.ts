@@ -9,7 +9,6 @@ import {
   getFetchState,
   getResumableInfo,
   type FetchScope,
-  type FetchState,
   type ResumableFetchInfo,
 } from "@/lib/fetch/state";
 import {
@@ -21,14 +20,14 @@ import {
 } from "@/lib/fetch/session";
 import {
   loadSnapshotFromDB,
-  loadSnapshotSummaryFromDB,
-  loadSnapshotTweetIdsFromDB,
   normalizeStructuredResponse,
   saveAccountSnapshotChunk,
 } from "@/lib/fetch/snapshot-client";
+import { loadIncrementalBoundaryState } from "@/lib/fetch/bootstrapTimelineFetchSession";
 import { runTimelineFetchLoop } from "@/lib/fetch/runTimelineFetchLoop";
 import type { FetchMode, PrivateType } from "@/types/fetch";
 import type { TwitterResponse } from "@/types/api";
+import type { TaskTerminalStatus } from "@/types/tasks";
 import { ExtractDateRangeStructured } from "../../../wailsjs/go/main/App";
 import { main } from "../../../wailsjs/go/models";
 
@@ -93,11 +92,10 @@ export async function runSingleFetchSession({
   setResumeInfo,
   setNewMediaCount,
   onAddToHistory,
-}: RunSingleFetchSessionOptions) {
+}: RunSingleFetchSessionOptions): Promise<TaskTerminalStatus> {
   const isBookmarks = mode === "private" && privateType === "bookmarks";
   const isLikes = mode === "private" && privateType === "likes";
 
-  let existingState: FetchState | null = null;
   let cursor: string | undefined;
   let accountInfo: TwitterResponse["account_info"] | null = null;
   let savedCompletedSnapshot: TwitterResponse | null = null;
@@ -109,7 +107,7 @@ export async function runSingleFetchSession({
   let isIncrementalRefresh = false;
 
   if (isResume) {
-    existingState = getFetchState(fetchScope);
+    const existingState = getFetchState(fetchScope);
     const savedSnapshot = await loadSnapshotFromDB(fetchScope);
     if (savedSnapshot && savedSnapshot.cursor && !savedSnapshot.completed) {
       cursor = savedSnapshot.cursor;
@@ -127,20 +125,16 @@ export async function runSingleFetchSession({
       );
     } else {
       toast.error("No resumable fetch found");
-      return;
+      return "failed";
     }
   } else {
     clearFetchState(fetchScope);
     clearCursor(fetchScope);
-    const savedSummary = await loadSnapshotSummaryFromDB(fetchScope);
-    const savedTweetIds =
-      savedSummary?.completed && savedSummary.total_urls > 0
-        ? await loadSnapshotTweetIdsFromDB(fetchScope)
-        : [];
-    if (savedSummary?.completed && savedSummary.total_urls > 0 && savedTweetIds.length > 0) {
-      savedCompletedCount = savedSummary.total_urls;
-      knownTweetIds = new Set(savedTweetIds);
-      accountInfo = savedSummary.account_info;
+    const boundaryState = await loadIncrementalBoundaryState(fetchScope);
+    if (boundaryState.isIncrementalRefresh) {
+      savedCompletedCount = boundaryState.savedCompletedCount;
+      knownTweetIds = boundaryState.knownTweetIds;
+      accountInfo = boundaryState.accountInfo;
       isIncrementalRefresh = true;
       const visibleMatchingResult =
         currentResult &&
@@ -163,6 +157,7 @@ export async function runSingleFetchSession({
     } else {
       scheduleResultUpdate(null, true, null);
       logger.info(`Fetching ${fetchTarget}...`);
+      accountInfo = boundaryState.accountInfo;
     }
   }
 
@@ -179,7 +174,7 @@ export async function runSingleFetchSession({
           logger.warning(`Timeout reached (${timeoutSeconds}s). Stopping fetch...`);
           stopFetchRef.current = true;
           toast.warning("Fetch timeout reached. Stopping...");
-          return;
+          return "failed";
         }
       }
 
@@ -352,6 +347,7 @@ export async function runSingleFetchSession({
         toast.info(`Stopped at ${formatNumberWithComma(loopResult.currentTotalFetched)} items`);
         const resumable = getResumableInfo(cleanUsername, fetchScope);
         setResumeInfo(resumable.canResume ? resumable : null);
+        return loopResult.reason === "stopped" ? "cancelled" : "failed";
       } else if (loopResult.reason === "completed") {
         setResumeInfo(null);
       } else if (loopResult.reason === "error") {
@@ -396,7 +392,7 @@ export async function runSingleFetchSession({
           );
         }
 
-        return;
+        return "failed";
       }
 
       if (isIncrementalRefresh && !savedCompletedSnapshot) {
@@ -468,6 +464,8 @@ export async function runSingleFetchSession({
         }
       }
     }
+
+    return stopFetchRef.current ? "cancelled" : "completed";
   } finally {
     singleFetchRequestIdRef.current = null;
   }

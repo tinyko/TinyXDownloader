@@ -2,12 +2,15 @@ import { useMemo, useState } from "react";
 
 import type { AccountListItem } from "@/types/database";
 
-export function useDatabaseSelectionState(filteredAccounts: AccountListItem[]) {
+export function useDatabaseSelectionState(
+  visibleAccounts: AccountListItem[],
+  allMatchingIds: number[]
+) {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
 
   const selectedAccounts = useMemo(
-    () => filteredAccounts.filter((account) => selectedIds.has(account.id)),
-    [filteredAccounts, selectedIds]
+    () => visibleAccounts.filter((account) => selectedIds.has(account.id)),
+    [selectedIds, visibleAccounts]
   );
 
   const focusedAccount =
@@ -26,11 +29,15 @@ export function useDatabaseSelectionState(filteredAccounts: AccountListItem[]) {
   };
 
   const toggleSelectAll = () => {
-    if (selectedIds.size === filteredAccounts.length && filteredAccounts.length > 0) {
+    const allMatchingSelected =
+      allMatchingIds.length > 0 &&
+      allMatchingIds.every((id) => selectedIds.has(id));
+
+    if (allMatchingSelected) {
       setSelectedIds(new Set());
       return;
     }
-    setSelectedIds(new Set(filteredAccounts.map((account) => account.id)));
+    setSelectedIds(new Set(allMatchingIds));
   };
 
   return {
@@ -38,6 +45,9 @@ export function useDatabaseSelectionState(filteredAccounts: AccountListItem[]) {
     setSelectedIds,
     selectedAccounts,
     focusedAccount,
+    allMatchingSelected:
+      allMatchingIds.length > 0 &&
+      allMatchingIds.every((id) => selectedIds.has(id)),
     toggleSelect,
     toggleSelectAll,
   };

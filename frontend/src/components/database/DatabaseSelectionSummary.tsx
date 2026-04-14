@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 
 interface DatabaseSelectionSummaryProps {
   selectedAccounts: AccountListItem[];
+  selectedCount: number;
   focusedAccount: AccountListItem | null;
   folderExistence: Map<number, boolean>;
   isDownloading: boolean;
@@ -19,6 +20,7 @@ interface DatabaseSelectionSummaryProps {
 
 export function DatabaseSelectionSummary({
   selectedAccounts,
+  selectedCount,
   focusedAccount,
   folderExistence,
   isDownloading,
@@ -112,7 +114,7 @@ export function DatabaseSelectionSummary({
               Selection Summary
             </p>
             <p className="mt-1 text-lg font-semibold">
-              {formatNumberWithComma(selectedAccounts.length)} account(s) selected
+              {formatNumberWithComma(selectedCount)} account(s) selected
             </p>
             <p className="text-sm text-muted-foreground">
               Bulk download, export, and update actions will use this selection.

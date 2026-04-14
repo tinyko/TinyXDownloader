@@ -21,31 +21,59 @@ export function MediaWorkspace({
   downloadState = null,
   downloadMeta = null,
   onDownloadSessionStart,
+  onDownloadSessionFinish,
+  onDownloadSessionFail,
 }: MediaWorkspaceProps) {
-  const view = useMediaWorkspaceViewState(timeline);
+  const {
+    scrollContainerRef,
+    loadMoreRef,
+    selectedItems,
+    sortBy,
+    setSortBy,
+    filterType,
+    setFilterType,
+    viewMode,
+    setViewMode,
+    visibleCount,
+    showScrollTop,
+    mediaCounts,
+    filteredTimeline,
+    visibleTimeline,
+    indexedTimeline,
+    previewIndex,
+    openPreview,
+    closePreview,
+    goToPrevious,
+    goToNext,
+    toggleSelectAll,
+    toggleItem,
+    scrollToTop,
+  } = useMediaWorkspaceViewState(timeline);
   const actions = useMediaWorkspaceActions({
     accountInfo,
     onDownloadSessionStart,
+    onDownloadSessionFinish,
+    onDownloadSessionFail,
     downloadState,
     downloadMeta,
   });
 
   const handleBulkDownload = useCallback(async () => {
     const itemsWithIndices =
-      view.selectedItems.size > 0
-        ? view.indexedTimeline
-            .filter((entry) => view.selectedItems.has(entry.key))
+      selectedItems.size > 0
+        ? indexedTimeline
+            .filter((entry) => selectedItems.has(entry.key))
             .map((entry) => ({ item: entry.item, originalIndex: entry.index }))
-        : view.indexedTimeline.map((entry) => ({
+        : indexedTimeline.map((entry) => ({
             item: entry.item,
             originalIndex: entry.index,
           }));
 
     await actions.handleDownloadItems(itemsWithIndices);
-  }, [actions, view.indexedTimeline, view.selectedItems]);
+  }, [actions, indexedTimeline, selectedItems]);
 
   const previewItem =
-    view.previewIndex !== null ? view.filteredTimeline[view.previewIndex] : null;
+    previewIndex !== null ? filteredTimeline[previewIndex] : null;
   const previewItemKey = previewItem ? getTimelineItemKey(previewItem) : null;
   const previewDownloadStatus =
     previewItemKey && actions.skippedItems.has(previewItemKey)
@@ -58,7 +86,7 @@ export function MediaWorkspace({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div ref={view.scrollContainerRef} className="min-h-0 flex-1 overflow-y-auto pr-1">
+      <div ref={scrollContainerRef} className="min-h-0 flex-1 overflow-y-auto pr-1">
         <div className="space-y-4 pb-4">
           <MediaWorkspaceSummary
             accountInfo={accountInfo}
@@ -69,56 +97,56 @@ export function MediaWorkspace({
           <MediaWorkspaceToolbar
             fetchedMediaType={fetchedMediaType}
             totalUrls={totalUrls}
-            mediaCounts={view.mediaCounts}
-            sortBy={view.sortBy}
-            onSortByChange={view.setSortBy}
-            filterType={view.filterType}
-            onFilterTypeChange={view.setFilterType}
-            viewMode={view.viewMode}
-            onViewModeChange={view.setViewMode}
+            mediaCounts={mediaCounts}
+            sortBy={sortBy}
+            onSortByChange={setSortBy}
+            filterType={filterType}
+            onFilterTypeChange={setFilterType}
+            viewMode={viewMode}
+            onViewModeChange={setViewMode}
             folderExists={actions.folderExists}
             ffmpegInstalled={actions.ffmpegInstalled}
             gifsFolderHasMP4={actions.gifsFolderHasMP4}
             isConverting={actions.isConverting}
             isDownloading={actions.isDownloading}
-            selectedCount={view.selectedItems.size}
-            filteredCount={view.filteredTimeline.length}
+            selectedCount={selectedItems.size}
+            filteredCount={filteredTimeline.length}
             allFilteredSelected={
-              view.selectedItems.size === view.filteredTimeline.length &&
-              view.filteredTimeline.length > 0
+              selectedItems.size === filteredTimeline.length &&
+              filteredTimeline.length > 0
             }
-            onToggleSelectAll={view.toggleSelectAll}
+            onToggleSelectAll={toggleSelectAll}
             onOpenFolder={actions.handleOpenFolder}
             onConvertGifs={actions.handleConvertGifs}
             onDownload={handleBulkDownload}
           />
 
-          {view.viewMode === "list" ? (
+          {viewMode === "list" ? (
             <MediaWorkspaceListView
-              indexedTimeline={view.indexedTimeline}
-              selectedItems={view.selectedItems}
+              indexedTimeline={indexedTimeline}
+              selectedItems={selectedItems}
               downloadedItems={actions.downloadedItems}
               failedItems={actions.failedItems}
               skippedItems={actions.skippedItems}
               downloadingItem={actions.downloadingItem}
-              onToggleItem={view.toggleItem}
-              onOpenPreview={view.openPreview}
+              onToggleItem={toggleItem}
+              onOpenPreview={openPreview}
               onSingleDownload={actions.handleSingleMediaDownload}
               onOpenTweet={actions.handleOpenTweet}
             />
           ) : (
             <MediaWorkspaceGalleryView
-              items={view.visibleTimeline}
-              selectedItems={view.selectedItems}
+              items={visibleTimeline}
+              selectedItems={selectedItems}
               downloadedItems={actions.downloadedItems}
               failedItems={actions.failedItems}
               skippedItems={actions.skippedItems}
               downloadingItem={actions.downloadingItem}
-              loadMoreRef={view.loadMoreRef}
-              hasMore={view.visibleCount < view.filteredTimeline.length}
+              loadMoreRef={loadMoreRef}
+              hasMore={visibleCount < filteredTimeline.length}
               getItemKey={getTimelineItemKey}
-              onToggleItem={view.toggleItem}
-              onOpenPreview={view.openPreview}
+              onToggleItem={toggleItem}
+              onOpenPreview={openPreview}
               onSingleDownload={actions.handleSingleMediaDownload}
               onOpenTweet={actions.handleOpenTweet}
             />
@@ -126,18 +154,18 @@ export function MediaWorkspace({
         </div>
       </div>
 
-      {previewItem && view.previewIndex !== null ? (
+      {previewItem && previewIndex !== null ? (
         <MediaPreviewOverlay
           item={previewItem}
-          previewIndex={view.previewIndex}
-          totalItems={view.filteredTimeline.length}
-          canGoPrevious={view.previewIndex > 0}
-          canGoNext={view.previewIndex < view.filteredTimeline.length - 1}
+          previewIndex={previewIndex}
+          totalItems={filteredTimeline.length}
+          canGoPrevious={previewIndex > 0}
+          canGoNext={previewIndex < filteredTimeline.length - 1}
           downloadingItem={actions.downloadingItem === previewItemKey}
           downloadStatus={previewDownloadStatus}
-          onClose={view.closePreview}
-          onPrevious={view.goToPrevious}
-          onNext={view.goToNext}
+          onClose={closePreview}
+          onPrevious={goToPrevious}
+          onNext={goToNext}
           onDownload={() =>
             previewItemKey
               ? actions.handleSingleMediaDownload(previewItem, previewItemKey)
@@ -147,12 +175,12 @@ export function MediaWorkspace({
         />
       ) : null}
 
-      {view.showScrollTop && view.previewIndex === null ? (
+      {showScrollTop && previewIndex === null ? (
         <Button
           variant="default"
           size="icon"
           className="fixed bottom-6 left-1/2 z-30 h-9 w-9 -translate-x-1/2 rounded-full shadow-lg"
-          onClick={view.scrollToTop}
+          onClick={scrollToTop}
           aria-label="Scroll to top"
         >
           <ArrowUp className="h-4 w-4" />

@@ -15,7 +15,7 @@ import {
 } from "@/lib/fetch/session";
 import { runSingleFetchSession } from "@/lib/fetch/runSingleFetchSession";
 import { useSingleFetchRuntime } from "@/hooks/fetch/useSingleFetchRuntime";
-import type { FetchMode, PrivateType } from "@/types/fetch";
+import type { FetchMode, PrivateType, SingleFetchTaskStatus } from "@/types/fetch";
 import type { TwitterResponse } from "@/types/api";
 
 interface SingleFetchControllerOptions {
@@ -30,6 +30,7 @@ export function useSingleFetchController({
   onAddToHistory,
 }: SingleFetchControllerOptions) {
   const [loading, setLoading] = useState(false);
+  const [taskStatus, setTaskStatus] = useState<SingleFetchTaskStatus>(null);
   const [resumeInfo, setResumeInfo] = useState<ResumableFetchInfo | null>(null);
   const [newMediaCount, setNewMediaCount] = useState<number | null>(null);
 
@@ -51,6 +52,7 @@ export function useSingleFetchController({
     scheduleResultUpdate,
     clearLiveResult: clearLiveResultBase,
     beginFetchTiming,
+    resetFetchTiming,
   } = useSingleFetchRuntime({
     loading,
     onTimeout: handleRuntimeTimeout,
@@ -67,10 +69,11 @@ export function useSingleFetchController({
 
   const handleStopFetch = useCallback(async () => {
     stopFetchRef.current = true;
+    setTaskStatus("cancelling");
     logger.info("Stopping fetch...");
     toast.info("Stopping...");
     await cancelSingleActiveRequest();
-  }, [cancelSingleActiveRequest]);
+  }, [cancelSingleActiveRequest, stopFetchRef]);
 
   const checkResumable = useCallback((user: string) => {
     if (!user.trim()) {
@@ -148,6 +151,7 @@ export function useSingleFetchController({
       });
 
       setLoading(true);
+      setTaskStatus("running");
       stopFetchRef.current = false;
       beginFetchTiming();
       setNewMediaCount(null);
@@ -159,7 +163,7 @@ export function useSingleFetchController({
           : `@${singleUsername}`;
 
       try {
-        await runSingleFetchSession({
+        const terminalStatus = await runSingleFetchSession({
           useDateRange,
           startDate,
           endDate,
@@ -185,18 +189,34 @@ export function useSingleFetchController({
           setNewMediaCount,
           onAddToHistory,
         });
+        setTaskStatus(terminalStatus);
+      } catch (error) {
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        logger.error(`Single fetch failed: ${errorMsg}`);
+        if (stopFetchRef.current) {
+          setTaskStatus("cancelled");
+        } else {
+          setTaskStatus("failed");
+          toast.error("Failed to fetch media");
+        }
       } finally {
+        resetFetchTiming();
         setLoading(false);
       }
     },
     [
+      activeResultScopeRef,
       beginFetchTiming,
+      fetchStartTimeRef,
       flushResultUpdate,
       loading,
       onAddToHistory,
+      resetFetchTiming,
       result,
       scheduleResultUpdate,
+      singleFetchRequestIdRef,
       setUsername,
+      stopFetchRef,
       username,
     ]
   );
@@ -236,6 +256,7 @@ export function useSingleFetchController({
 
   return {
     loading,
+    taskStatus,
     result,
     resumeInfo,
     elapsedTime,

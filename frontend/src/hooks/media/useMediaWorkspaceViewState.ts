@@ -10,20 +10,54 @@ import {
 const INITIAL_VISIBLE_COUNT = 10;
 const LOAD_MORE_COUNT = 10;
 
+interface SelectionState {
+  resetKey: string;
+  items: Set<string>;
+}
+
+interface PreviewState {
+  resetKey: string;
+  previewKey: string | null;
+}
+
+interface VisibleCountState {
+  resetKey: string;
+  count: number;
+}
+
 export function useMediaWorkspaceViewState(timeline: TimelineEntry[]) {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const loadMoreRef = useRef<HTMLDivElement>(null);
 
-  const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
   const [sortBy, setSortBy] = useState<string>("date-desc");
   const [filterType, setFilterType] = useState<string>("all");
   const [viewMode, setViewMode] = useState<MediaWorkspaceViewMode>("list");
-  const [visibleCount, setVisibleCount] = useState<number>(INITIAL_VISIBLE_COUNT);
   const [showScrollTop, setShowScrollTop] = useState(false);
-  const [previewKey, setPreviewKey] = useState<string | null>(null);
 
   const { mediaCounts, filteredTimeline, indexedTimeline, timelineIndexByKey } =
     useMediaTimelineModel(timeline, filterType, sortBy);
+  const viewResetKey = `${filteredTimeline.length}|${filterType}|${sortBy}`;
+  const [selectionState, setSelectionState] = useState<SelectionState>({
+    resetKey: viewResetKey,
+    items: new Set(),
+  });
+  const [previewState, setPreviewState] = useState<PreviewState>({
+    resetKey: viewResetKey,
+    previewKey: null,
+  });
+  const [visibleCountState, setVisibleCountState] = useState<VisibleCountState>({
+    resetKey: viewResetKey,
+    count: INITIAL_VISIBLE_COUNT,
+  });
+
+  const selectedItems =
+    selectionState.resetKey === viewResetKey ? selectionState.items : new Set<string>();
+  const previewKey =
+    previewState.resetKey === viewResetKey ? previewState.previewKey : null;
+  const visibleCount =
+    visibleCountState.resetKey === viewResetKey
+      ? visibleCountState.count
+      : INITIAL_VISIBLE_COUNT;
 
   const previewIndex = previewKey ? timelineIndexByKey.get(previewKey) ?? null : null;
 
@@ -44,12 +78,6 @@ export function useMediaWorkspaceViewState(timeline: TimelineEntry[]) {
   }, []);
 
   useEffect(() => {
-    setVisibleCount(INITIAL_VISIBLE_COUNT);
-    setPreviewKey(null);
-    setSelectedItems(new Set());
-  }, [filteredTimeline.length, filterType, sortBy]);
-
-  useEffect(() => {
     if (viewMode !== "gallery") {
       return;
     }
@@ -62,9 +90,16 @@ export function useMediaWorkspaceViewState(timeline: TimelineEntry[]) {
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries[0].isIntersecting) {
-          setVisibleCount((current) =>
-            Math.min(current + LOAD_MORE_COUNT, filteredTimeline.length)
-          );
+          setVisibleCountState((current) => {
+            const currentCount =
+              current.resetKey === viewResetKey
+                ? current.count
+                : INITIAL_VISIBLE_COUNT;
+            return {
+              resetKey: viewResetKey,
+              count: Math.min(currentCount + LOAD_MORE_COUNT, filteredTimeline.length),
+            };
+          });
         }
       },
       { threshold: 0.1 }
@@ -72,7 +107,7 @@ export function useMediaWorkspaceViewState(timeline: TimelineEntry[]) {
 
     observer.observe(currentLoadMoreRef);
     return () => observer.unobserve(currentLoadMoreRef);
-  }, [filteredTimeline.length, viewMode]);
+  }, [filteredTimeline.length, viewMode, viewResetKey]);
 
   useEffect(() => {
     if (previewIndex !== null) {
@@ -87,24 +122,36 @@ export function useMediaWorkspaceViewState(timeline: TimelineEntry[]) {
   }, [previewIndex]);
 
   const closePreview = useCallback(() => {
-    setPreviewKey(null);
-  }, []);
+    setPreviewState({
+      resetKey: viewResetKey,
+      previewKey: null,
+    });
+  }, [viewResetKey]);
 
   const openPreview = useCallback((itemKey: string) => {
-    setPreviewKey(itemKey);
-  }, []);
+    setPreviewState({
+      resetKey: viewResetKey,
+      previewKey: itemKey,
+    });
+  }, [viewResetKey]);
 
   const goToPrevious = useCallback(() => {
     if (previewIndex !== null && previewIndex > 0) {
-      setPreviewKey(indexedTimeline[previewIndex - 1].key);
+      setPreviewState({
+        resetKey: viewResetKey,
+        previewKey: indexedTimeline[previewIndex - 1].key,
+      });
     }
-  }, [indexedTimeline, previewIndex]);
+  }, [indexedTimeline, previewIndex, viewResetKey]);
 
   const goToNext = useCallback(() => {
     if (previewIndex !== null && previewIndex < indexedTimeline.length - 1) {
-      setPreviewKey(indexedTimeline[previewIndex + 1].key);
+      setPreviewState({
+        resetKey: viewResetKey,
+        previewKey: indexedTimeline[previewIndex + 1].key,
+      });
     }
-  }, [indexedTimeline, previewIndex]);
+  }, [indexedTimeline, previewIndex, viewResetKey]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -128,23 +175,34 @@ export function useMediaWorkspaceViewState(timeline: TimelineEntry[]) {
 
   const toggleSelectAll = useCallback(() => {
     if (selectedItems.size === filteredTimeline.length) {
-      setSelectedItems(new Set());
+      setSelectionState({
+        resetKey: viewResetKey,
+        items: new Set(),
+      });
       return;
     }
-    setSelectedItems(new Set(indexedTimeline.map((entry) => entry.key)));
-  }, [filteredTimeline.length, indexedTimeline, selectedItems.size]);
+    setSelectionState({
+      resetKey: viewResetKey,
+      items: new Set(indexedTimeline.map((entry) => entry.key)),
+    });
+  }, [filteredTimeline.length, indexedTimeline, selectedItems.size, viewResetKey]);
 
   const toggleItem = useCallback((itemKey: string) => {
-    setSelectedItems((current) => {
-      const next = new Set(current);
+    setSelectionState((current) => {
+      const currentItems =
+        current.resetKey === viewResetKey ? current.items : new Set<string>();
+      const next = new Set(currentItems);
       if (next.has(itemKey)) {
         next.delete(itemKey);
       } else {
         next.add(itemKey);
       }
-      return next;
+      return {
+        resetKey: viewResetKey,
+        items: next,
+      };
     });
-  }, []);
+  }, [viewResetKey]);
 
   const scrollToTop = useCallback(() => {
     scrollContainerRef.current?.scrollTo({ top: 0, behavior: "smooth" });

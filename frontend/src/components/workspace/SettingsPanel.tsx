@@ -15,6 +15,7 @@ import { SettingsFetchControlsSection } from "@/components/workspace/settings/Se
 import { SettingsIntegritySection } from "@/components/workspace/settings/SettingsIntegritySection";
 import { IntegrityReportDialog } from "@/components/workspace/settings/IntegrityReportDialog";
 import { useSettingsPanelState } from "@/hooks/workspace/useSettingsPanelState";
+import { normalizeIntegrityTaskStatus } from "@/lib/tasks/lifecycle";
 import type { SettingsPanelProps } from "@/types/settings";
 
 export function SettingsPanel(props: SettingsPanelProps) {
@@ -39,6 +40,10 @@ export function SettingsPanel(props: SettingsPanelProps) {
   } = props;
 
   const state = useSettingsPanelState({ embedded, mode, privateType });
+  const integrityStatus = normalizeIntegrityTaskStatus(props.integrityTaskStatus);
+  const checkingIntegrity =
+    integrityStatus === "running" || integrityStatus === "cancelling";
+  const checkingIntegrityMode = props.integrityTaskStatus?.mode || null;
 
   return (
     <div className="space-y-6">
@@ -92,10 +97,18 @@ export function SettingsPanel(props: SettingsPanelProps) {
           />
 
           <SettingsIntegritySection
-            checkingIntegrity={state.checkingIntegrity}
-            checkingIntegrityMode={state.checkingIntegrityMode}
-            integrityReport={state.integrityReport}
-            onCheckIntegrity={state.handleCheckIntegrity}
+            checkingIntegrity={checkingIntegrity}
+            checkingIntegrityMode={checkingIntegrityMode}
+            integrityPhase={props.integrityTaskStatus?.phase}
+            integrityReport={props.integrityReport || null}
+            onCheckIntegrity={(integrityMode) =>
+              props.onCheckIntegrityTask?.(
+                (state.tempSettings.downloadPath || state.savedSettings.downloadPath || "").trim(),
+                state.tempSettings.proxy || "",
+                integrityMode
+              )
+            }
+            onCancelIntegrityCheck={() => props.onCancelIntegrityTask?.()}
           />
         </div>
       </div>
@@ -134,11 +147,11 @@ export function SettingsPanel(props: SettingsPanelProps) {
       </Dialog>
 
       <IntegrityReportDialog
-        report={state.integrityReport}
+        report={props.integrityReport || null}
         fallbackDownloadPath={state.tempSettings.downloadPath}
-        open={state.showIntegrityReport}
-        onOpenChange={state.setShowIntegrityReport}
-        onOpenFolder={state.handleOpenIntegrityFolder}
+        open={props.showIntegrityReport || false}
+        onOpenChange={(value) => props.onShowIntegrityReportChange?.(value)}
+        onOpenFolder={() => props.onOpenIntegrityFolder?.()}
       />
     </div>
   );

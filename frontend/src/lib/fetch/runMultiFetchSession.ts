@@ -6,10 +6,9 @@ import {
   resolveFetchTimelineType,
 } from "@/lib/fetch/session";
 import {
-  loadSnapshotSummaryFromDB,
-  loadSnapshotTweetIdsFromDB,
 } from "@/lib/fetch/snapshot-client";
 import { runTimelineFetchLoop } from "@/lib/fetch/runTimelineFetchLoop";
+import { loadIncrementalBoundaryState } from "@/lib/fetch/bootstrapTimelineFetchSession";
 import type { FetchMode, MultipleAccount, PrivateType } from "@/types/fetch";
 import type { TwitterResponse } from "@/types/api";
 import { main } from "../../../wailsjs/go/models";
@@ -77,24 +76,10 @@ export async function runMultiFetchSession({
     timelineType: multipleTimelineType,
     retweets: accountRetweets,
   });
-  const savedSummary = await loadSnapshotSummaryFromDB(accountScope);
-  const savedTweetIds =
-    savedSummary?.completed && (savedSummary?.total_urls || 0) > 0
-      ? await loadSnapshotTweetIdsFromDB(accountScope)
-      : [];
-  const hasIncrementalBoundary =
-    Boolean(savedSummary?.completed) &&
-    (savedSummary?.total_urls || 0) > 0 &&
-    savedTweetIds.length > 0;
-  const knownTweetIds = hasIncrementalBoundary
-    ? new Set(savedTweetIds)
-    : new Set<string>();
+  const boundaryState = await loadIncrementalBoundaryState(accountScope);
   const seenSessionEntryKeys = new Set<string>();
-  let accountInfo: TwitterResponse["account_info"] | null =
-    savedSummary?.account_info || null;
-  const incrementalBaseCount = hasIncrementalBoundary
-    ? savedSummary?.total_urls || 0
-    : 0;
+  let accountInfo: TwitterResponse["account_info"] | null = boundaryState.accountInfo;
+  const incrementalBaseCount = boundaryState.savedCompletedCount;
   let currentMediaCount = incrementalBaseCount;
   let previousMediaCount = incrementalBaseCount || account.mediaCount || 0;
 
@@ -132,7 +117,7 @@ export async function runMultiFetchSession({
     scope: accountScope,
     initialAccountInfo: accountInfo,
     incrementalBaseCount,
-    knownTweetIds,
+    knownTweetIds: boundaryState.knownTweetIds,
     seenSessionEntryKeys,
     readStopReason: () => {
       if (stopAllRef.current || accountStopFlagsRef.current.get(accountId)) {

@@ -19,6 +19,17 @@ const InputWithContext = React.forwardRef<HTMLInputElement, InputWithContextProp
     const inputRef = React.useRef<HTMLInputElement>(null);
     const [hasSelection, setHasSelection] = React.useState(false);
     const [canPaste, setCanPaste] = React.useState(false);
+    const [internalHasValue, setInternalHasValue] = React.useState(() => {
+      if (typeof props.value === "string") {
+        return props.value.length > 0;
+      }
+      if (typeof props.defaultValue === "string") {
+        return props.defaultValue.length > 0;
+      }
+      return false;
+    });
+    const hasValue =
+      typeof props.value === "string" ? props.value.length > 0 : internalHasValue;
 
     // Combine refs
     React.useImperativeHandle(ref, () => inputRef.current as HTMLInputElement);
@@ -58,6 +69,7 @@ const InputWithContext = React.forwardRef<HTMLInputElement, InputWithContextProp
           // Update value and trigger change
           input.value = newValue;
           input.setSelectionRange(start, start);
+          setInternalHasValue(newValue.length > 0);
           
           // Trigger React onChange
           if (onChange) {
@@ -113,6 +125,7 @@ const InputWithContext = React.forwardRef<HTMLInputElement, InputWithContextProp
         input.value = newValue;
         const newPosition = start + text.length;
         input.setSelectionRange(newPosition, newPosition);
+        setInternalHasValue(newValue.length > 0);
         
         // Trigger React onChange
         if (onChange) {
@@ -143,6 +156,7 @@ const InputWithContext = React.forwardRef<HTMLInputElement, InputWithContextProp
     };
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+      setInternalHasValue(e.target.value.length > 0);
       if (onChange) {
         onChange(e);
       }
@@ -199,7 +213,7 @@ const InputWithContext = React.forwardRef<HTMLInputElement, InputWithContextProp
           <ContextMenuSeparator />
           <ContextMenuItem
             onSelect={handleSelectAll}
-            disabled={!inputRef.current?.value || props.disabled}
+            disabled={!hasValue || props.disabled}
           >
             <Type className="mr-2 h-4 w-4" />
             Select All
