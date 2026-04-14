@@ -12,20 +12,23 @@ import type { UseDatabaseActionsOptions } from "@/hooks/database/databaseActionT
 import { DownloadSavedScopes, GetFolderPath, OpenFolder } from "../../../wailsjs/go/main/App";
 import { main } from "../../../wailsjs/go/models";
 
-interface UseDatabaseDownloadActionsArgs
-  extends Pick<
-    UseDatabaseActionsOptions,
-    | "accounts"
-    | "selectedIds"
-    | "refreshFolderExistence"
-    | "onStopDownload"
-    | "onDownloadSessionStart"
-    | "downloadState"
-  > {}
+type UseDatabaseDownloadActionsArgs = Pick<
+  UseDatabaseActionsOptions,
+  | "accounts"
+  | "accountRefs"
+  | "selectedIds"
+  | "resolveAccountsByIds"
+  | "refreshFolderExistence"
+  | "onStopDownload"
+  | "onDownloadSessionStart"
+  | "downloadState"
+>;
 
 export function useDatabaseDownloadActions({
   accounts,
+  accountRefs,
   selectedIds,
+  resolveAccountsByIds,
   refreshFolderExistence,
   onStopDownload,
   onDownloadSessionStart,
@@ -42,11 +45,12 @@ export function useDatabaseDownloadActions({
     if (selectedIds.size === 0) {
       return false;
     }
+    const refsById = new Map(accountRefs.map((account) => [account.id, account.username]));
     return Array.from(selectedIds).some((id) => {
-      const account = accounts.find((entry) => entry.id === id);
-      return account ? isPrivateAccount(account.username) : false;
+      const username = refsById.get(id);
+      return username ? isPrivateAccount(username) : false;
     });
-  }, [accounts, selectedIds]);
+  }, [accountRefs, selectedIds]);
 
   const handleOpenFolder = async (username: string) => {
     const settings = getSettings();
@@ -139,12 +143,9 @@ export function useDatabaseDownloadActions({
     stopBulkDownloadRef.current = false;
 
     const settings = getSettings();
-    const selectedAccounts = idsToDownload
-      .map((id) => accounts.find((account) => account.id === id))
-      .filter(
-        (account): account is AccountListItem =>
-          account !== undefined && account.total_media > 0
-      );
+    const selectedAccounts = (await resolveAccountsByIds(idsToDownload)).filter(
+      (account): account is AccountListItem => account.total_media > 0
+    );
 
     if (selectedAccounts.length === 0) {
       setIsBulkDownloading(false);

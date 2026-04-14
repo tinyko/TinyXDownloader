@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 
 type WorkspaceTab = "fetch" | "saved";
 
@@ -8,15 +8,19 @@ export function useWorkspaceChromeState() {
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
-  useEffect(() => {
-    if (workspaceTab === "saved") {
-      setSavedTabVisited(true);
-    }
-  }, [workspaceTab]);
+  const handleWorkspaceTabChange = useCallback(
+    (nextTab: WorkspaceTab) => {
+      setWorkspaceTab(nextTab);
+      if (nextTab === "saved") {
+        setSavedTabVisited(true);
+      }
+    },
+    []
+  );
 
   return {
     workspaceTab,
-    setWorkspaceTab,
+    setWorkspaceTab: handleWorkspaceTabChange,
     savedTabVisited,
     diagnosticsOpen,
     setDiagnosticsOpen,

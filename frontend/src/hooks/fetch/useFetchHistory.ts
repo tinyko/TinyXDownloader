@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 
 import type { TwitterResponse } from "@/types/api";
 import type { HistoryItem } from "@/types/fetch";
@@ -7,24 +7,21 @@ const HISTORY_KEY = "twitter_media_fetch_history";
 const MAX_HISTORY = 10;
 
 export function useFetchHistory() {
-  const [fetchHistory, setFetchHistory] = useState<HistoryItem[]>([]);
+  const [fetchHistory, setFetchHistory] = useState<HistoryItem[]>(() => {
+    try {
+      const saved = localStorage.getItem(HISTORY_KEY);
+      return saved ? (JSON.parse(saved) as HistoryItem[]) : [];
+    } catch (err) {
+      console.error("Failed to load history:", err);
+      return [];
+    }
+  });
 
   const saveHistory = useCallback((history: HistoryItem[]) => {
     try {
       localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
     } catch (err) {
       console.error("Failed to save history:", err);
-    }
-  }, []);
-
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem(HISTORY_KEY);
-      if (saved) {
-        setFetchHistory(JSON.parse(saved));
-      }
-    } catch (err) {
-      console.error("Failed to load history:", err);
     }
   }, []);
 

@@ -41,6 +41,20 @@ type DownloadIntegrityReport struct {
 	Issues            []DownloadIntegrityIssue `json:"issues"`
 }
 
+type DownloadIntegrityProgress struct {
+	Mode              string `json:"mode"`
+	Phase             string `json:"phase"`
+	ScannedFiles      int    `json:"scanned_files"`
+	CheckedFiles      int    `json:"checked_files"`
+	VerifiedFiles     int    `json:"verified_files"`
+	CompleteFiles     int    `json:"complete_files"`
+	PartialFiles      int    `json:"partial_files"`
+	IncompleteFiles   int    `json:"incomplete_files"`
+	UntrackedFiles    int    `json:"untracked_files"`
+	UnverifiableFiles int    `json:"unverifiable_files"`
+	IssuesCount       int    `json:"issues_count"`
+}
+
 type trackedLocalFile struct {
 	path         string
 	relativePath string
@@ -48,6 +62,7 @@ type trackedLocalFile struct {
 }
 
 type trackedFileCheckResult struct {
+	verified     bool
 	complete     bool
 	incomplete   bool
 	unverifiable bool
@@ -67,7 +82,21 @@ func normalizeDownloadIntegrityMode(mode string) string {
 	}
 }
 
+func NormalizeDownloadIntegrityModeForApp(mode string) string {
+	return normalizeDownloadIntegrityMode(mode)
+}
+
 func CheckDownloadIntegrity(downloadPath, customProxy, mode string) (DownloadIntegrityReport, error) {
+	return CheckDownloadIntegrityWithContext(context.Background(), downloadPath, customProxy, mode, nil)
+}
+
+func CheckDownloadIntegrityWithContext(
+	ctx context.Context,
+	downloadPath,
+	customProxy,
+	mode string,
+	progressCallback func(DownloadIntegrityProgress),
+) (DownloadIntegrityReport, error) {
 	if db == nil {
 		if err := InitDB(); err != nil {
 			return DownloadIntegrityReport{}, err
@@ -94,12 +123,19 @@ func CheckDownloadIntegrity(downloadPath, customProxy, mode string) (DownloadInt
 		return DownloadIntegrityReport{}, fmt.Errorf("download path is not a directory: %s", absolutePath)
 	}
 
+	normalizedMode := normalizeDownloadIntegrityMode(mode)
+
+	if progressCallback != nil {
+		progressCallback(DownloadIntegrityProgress{
+			Mode:  normalizedMode,
+			Phase: "preparing-index",
+		})
+	}
+
 	trackedFiles, err := loadTrackedMediaIndex(absolutePath)
 	if err != nil {
 		return DownloadIntegrityReport{}, err
 	}
-
-	normalizedMode := normalizeDownloadIntegrityMode(mode)
 
 	var client *http.Client
 	if normalizedMode == downloadIntegrityModeDeep {
@@ -110,11 +146,12 @@ func CheckDownloadIntegrity(downloadPath, customProxy, mode string) (DownloadInt
 	}
 
 	return checkDownloadDirectoryIntegrity(
-		context.Background(),
+		ctx,
 		absolutePath,
 		trackedFiles,
 		client,
 		normalizedMode,
+		progressCallback,
 	)
 }
 
@@ -124,6 +161,7 @@ func checkDownloadDirectoryIntegrity(
 	tracked map[string]MediaItem,
 	client *http.Client,
 	mode string,
+	progressCallback func(DownloadIntegrityProgress),
 ) (DownloadIntegrityReport, error) {
 	report := DownloadIntegrityReport{
 		Mode:         mode,
@@ -134,6 +172,9 @@ func checkDownloadDirectoryIntegrity(
 	trackedLocalFiles := make([]trackedLocalFile, 0)
 	seenTrackedPaths := make(map[string]struct{}, len(tracked))
 	err := filepath.Walk(downloadPath, func(path string, info os.FileInfo, walkErr error) error {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
 		if walkErr != nil {
 			return nil
 		}
@@ -176,7 +217,25 @@ func checkDownloadDirectoryIntegrity(
 		return nil
 	})
 	if err != nil {
+		if ctx.Err() != nil {
+			return report, ctx.Err()
+		}
 		return report, err
+	}
+
+	if progressCallback != nil {
+		progressCallback(DownloadIntegrityProgress{
+			Mode:              mode,
+			Phase:             "scanning-local",
+			ScannedFiles:      report.ScannedFiles,
+			CheckedFiles:      report.CheckedFiles,
+			CompleteFiles:     report.CompleteFiles,
+			PartialFiles:      report.PartialFiles,
+			IncompleteFiles:   report.IncompleteFiles,
+			UntrackedFiles:    report.UntrackedFiles,
+			UnverifiableFiles: report.UnverifiableFiles,
+			IssuesCount:       len(report.Issues),
+		})
 	}
 
 	for trackedPath, item := range tracked {
@@ -198,8 +257,37 @@ func checkDownloadDirectoryIntegrity(
 		})
 	}
 
+	if mode == downloadIntegrityModeDeep && progressCallback != nil {
+		progressCallback(DownloadIntegrityProgress{
+			Mode:              mode,
+			Phase:             "verifying-remote",
+			ScannedFiles:      report.ScannedFiles,
+			CheckedFiles:      report.CheckedFiles,
+			CompleteFiles:     report.CompleteFiles,
+			PartialFiles:      report.PartialFiles,
+			IncompleteFiles:   report.IncompleteFiles,
+			UntrackedFiles:    report.UntrackedFiles,
+			UnverifiableFiles: report.UnverifiableFiles,
+			IssuesCount:       len(report.Issues),
+		})
+	}
+
 	if len(trackedLocalFiles) == 0 {
 		sortIssues(report.Issues)
+		if progressCallback != nil {
+			progressCallback(DownloadIntegrityProgress{
+				Mode:              mode,
+				Phase:             "completed",
+				ScannedFiles:      report.ScannedFiles,
+				CheckedFiles:      report.CheckedFiles,
+				CompleteFiles:     report.CompleteFiles,
+				PartialFiles:      report.PartialFiles,
+				IncompleteFiles:   report.IncompleteFiles,
+				UntrackedFiles:    report.UntrackedFiles,
+				UnverifiableFiles: report.UnverifiableFiles,
+				IssuesCount:       len(report.Issues),
+			})
+		}
 		return report, nil
 	}
 
@@ -230,7 +318,11 @@ func checkDownloadDirectoryIntegrity(
 	wg.Wait()
 	close(results)
 
+	verifiedFiles := 0
 	for result := range results {
+		if ctx.Err() != nil {
+			return report, ctx.Err()
+		}
 		switch {
 		case result.complete:
 			report.CompleteFiles++
@@ -242,9 +334,27 @@ func checkDownloadDirectoryIntegrity(
 		case result.unverifiable:
 			report.UnverifiableFiles++
 		}
+		if result.verified {
+			verifiedFiles++
+		}
 	}
 
 	sortIssues(report.Issues)
+	if progressCallback != nil {
+		progressCallback(DownloadIntegrityProgress{
+			Mode:              mode,
+			Phase:             "completed",
+			ScannedFiles:      report.ScannedFiles,
+			CheckedFiles:      report.CheckedFiles,
+			VerifiedFiles:     verifiedFiles,
+			CompleteFiles:     report.CompleteFiles,
+			PartialFiles:      report.PartialFiles,
+			IncompleteFiles:   report.IncompleteFiles,
+			UntrackedFiles:    report.UntrackedFiles,
+			UnverifiableFiles: report.UnverifiableFiles,
+			IssuesCount:       len(report.Issues),
+		})
+	}
 	return report, nil
 }
 
@@ -298,10 +408,11 @@ func inspectTrackedFile(
 	}
 
 	if info.Size() >= remoteSize {
-		return trackedFileCheckResult{complete: true}
+		return trackedFileCheckResult{verified: true, complete: true}
 	}
 
 	return trackedFileCheckResult{
+		verified:   true,
 		incomplete: true,
 		issue: &DownloadIntegrityIssue{
 			Path:         file.path,

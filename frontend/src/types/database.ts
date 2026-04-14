@@ -12,6 +12,25 @@ export interface SavedAccountsWorkspaceData {
   groups: GroupInfo[];
 }
 
+export interface SavedAccountRef {
+  id: number;
+  username: string;
+}
+
+export interface SavedAccountsBootstrap {
+  groups: GroupInfo[];
+  publicCount: number;
+  privateCount: number;
+  accountRefs: SavedAccountRef[];
+}
+
+export interface SavedAccountsQueryPage {
+  items: AccountListItem[];
+  totalCount: number;
+  hasMore: boolean;
+  nextOffset: number;
+}
+
 export type DatabaseAccountViewMode = "public" | "private";
 
 export type DatabaseSortOrder =

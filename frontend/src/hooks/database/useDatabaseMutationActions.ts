@@ -5,14 +5,20 @@ import type { UseDatabaseActionsOptions } from "@/hooks/database/databaseActionT
 import { DeleteAccountFromDB, UpdateAccountGroup } from "../../../wailsjs/go/main/App";
 import { toastWithSound as toast } from "@/lib/toast-with-sound";
 
-interface UseDatabaseMutationActionsArgs
-  extends Pick<
-    UseDatabaseActionsOptions,
-    "accounts" | "selectedIds" | "setSelectedIds" | "loadAccounts" | "onLoadAccount" | "onUpdateSelected"
-  > {}
+type UseDatabaseMutationActionsArgs = Pick<
+  UseDatabaseActionsOptions,
+  | "accountRefs"
+  | "allMatchingIds"
+  | "selectedIds"
+  | "setSelectedIds"
+  | "loadAccounts"
+  | "onLoadAccount"
+  | "onUpdateSelected"
+>;
 
 export function useDatabaseMutationActions({
-  accounts,
+  accountRefs,
+  allMatchingIds,
   selectedIds,
   setSelectedIds,
   loadAccounts,
@@ -64,14 +70,15 @@ export function useDatabaseMutationActions({
     const idsToUpdate =
       selectedIds.size > 0
         ? Array.from(selectedIds)
-        : accounts.map((account) => account.id);
+        : allMatchingIds;
     if (idsToUpdate.length === 0) {
       toast.error("No accounts selected");
       return;
     }
 
+    const usernamesById = new Map(accountRefs.map((account) => [account.id, account.username]));
     const usernames = idsToUpdate
-      .map((id) => accounts.find((account) => account.id === id)?.username)
+      .map((id) => usernamesById.get(id))
       .filter((username): username is string => !!username);
 
     if (usernames.length === 0) {

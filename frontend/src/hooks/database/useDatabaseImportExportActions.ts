@@ -4,7 +4,41 @@ import { getSettings } from "@/lib/settings";
 import { toastWithSound as toast } from "@/lib/toast-with-sound";
 import { ExportAccountJSON, ExportAccountsTXT, SaveAccountToDB } from "../../../wailsjs/go/main/App";
 
-function getImportMediaType(data: any) {
+interface ImportedMediaListItem {
+  url: string;
+  date: string;
+  tweet_id: string;
+  type: string;
+  media_type?: string;
+}
+
+interface ImportedLegacyAccountData {
+  username?: string;
+  nick?: string;
+  followers?: number;
+  following?: number;
+  profile_image?: string;
+  posts?: number;
+  media_list?: ImportedMediaListItem[];
+  media_type?: string;
+}
+
+interface ImportedSnapshotData {
+  account_info?: {
+    name?: string;
+    nick?: string;
+    profile_image?: string;
+  };
+  total_urls?: number;
+  media_type?: string;
+  timeline?: Array<{
+    type?: string;
+  }>;
+}
+
+type ImportedAccountData = ImportedLegacyAccountData & ImportedSnapshotData;
+
+function getImportMediaType(data: ImportedAccountData) {
   if (data.media_type) {
     return data.media_type;
   }
@@ -45,11 +79,13 @@ function getImportMediaType(data: any) {
   return "all";
 }
 
-interface UseDatabaseImportExportActionsArgs
-  extends Pick<UseDatabaseActionsOptions, "accounts" | "selectedIds" | "loadAccounts"> {}
+type UseDatabaseImportExportActionsArgs = Pick<
+  UseDatabaseActionsOptions,
+  "allMatchingIds" | "selectedIds" | "loadAccounts"
+>;
 
 export function useDatabaseImportExportActions({
-  accounts,
+  allMatchingIds,
   selectedIds,
   loadAccounts,
 }: UseDatabaseImportExportActionsArgs) {
@@ -57,7 +93,7 @@ export function useDatabaseImportExportActions({
     const idsToExport =
       selectedIds.size > 0
         ? Array.from(selectedIds)
-        : accounts.map((account) => account.id);
+        : allMatchingIds;
 
     if (idsToExport.length === 0) {
       toast.error("No accounts to export");
@@ -96,7 +132,7 @@ export function useDatabaseImportExportActions({
     const idsToExport =
       selectedIds.size > 0
         ? Array.from(selectedIds)
-        : accounts.map((account) => account.id);
+        : allMatchingIds;
 
     if (idsToExport.length === 0) {
       toast.error("No accounts to export");
@@ -129,14 +165,15 @@ export function useDatabaseImportExportActions({
       for (const file of Array.from(files)) {
         try {
           const text = await file.text();
-          const data = JSON.parse(text);
+          const data = JSON.parse(text) as ImportedAccountData;
           const detectedMediaType = getImportMediaType(data);
+          const accountName = data.account_info?.name?.trim();
 
-          if (data.account_info && data.timeline) {
+          if (data.account_info && data.timeline && accountName) {
             await SaveAccountToDB(
-              data.account_info.name,
-              data.account_info.nick,
-              data.account_info.profile_image,
+              accountName,
+              data.account_info.nick || accountName,
+              data.account_info.profile_image || "",
               data.total_urls || data.timeline.length,
               text,
               detectedMediaType

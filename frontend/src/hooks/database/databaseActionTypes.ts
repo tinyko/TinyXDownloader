@@ -1,4 +1,4 @@
-import type { AccountListItem } from "@/types/database";
+import type { AccountListItem, SavedAccountRef } from "@/types/database";
 import type {
   GlobalDownloadSessionMeta,
   GlobalDownloadState,
@@ -6,8 +6,11 @@ import type {
 
 export interface UseDatabaseActionsOptions {
   accounts: AccountListItem[];
+  accountRefs: SavedAccountRef[];
+  allMatchingIds: number[];
   selectedIds: Set<number>;
   setSelectedIds: React.Dispatch<React.SetStateAction<Set<number>>>;
+  resolveAccountsByIds: (ids: number[]) => Promise<AccountListItem[]>;
   loadAccounts: () => Promise<void>;
   refreshFolderExistence: () => Promise<void>;
   onLoadAccount: (account: AccountListItem) => void | Promise<void>;

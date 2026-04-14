@@ -41,6 +41,23 @@ export interface DownloadIntegrityReport {
   issues: DownloadIntegrityIssue[];
 }
 
+export interface DownloadIntegrityTaskStatus {
+  in_progress: boolean;
+  cancelled: boolean;
+  mode: DownloadIntegrityMode | "";
+  phase: string;
+  scanned_files: number;
+  checked_files: number;
+  verified_files: number;
+  partial_files: number;
+  incomplete_files: number;
+  untracked_files: number;
+  unverifiable_files: number;
+  issues_count: number;
+  error?: string;
+  report?: DownloadIntegrityReport | null;
+}
+
 export interface SettingsPanelProps {
   embedded?: boolean;
   mode?: FetchMode;

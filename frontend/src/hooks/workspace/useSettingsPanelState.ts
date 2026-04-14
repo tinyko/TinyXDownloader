@@ -9,13 +9,24 @@ import {
   saveSettings,
   type Settings as SettingsType,
 } from "@/lib/settings";
-import { checkExifToolInstalled, checkFFmpegInstalled, downloadExifToolBinary, downloadFFmpegBinary, openSettingsFolder, runDownloadIntegrityCheck, selectDownloadFolder } from "@/lib/settings-client";
+import {
+  cancelDownloadIntegrityTask,
+  checkExifToolInstalled,
+  checkFFmpegInstalled,
+  downloadExifToolBinary,
+  downloadFFmpegBinary,
+  getDownloadIntegrityTaskStatus,
+  openSettingsFolder,
+  selectDownloadFolder,
+  startDownloadIntegrityTask,
+} from "@/lib/settings-client";
 import { applyTheme } from "@/lib/themes";
 import { toastWithSound as toast } from "@/lib/toast-with-sound";
 import type {
   SettingsPanelProps,
   DownloadIntegrityMode,
   DownloadIntegrityReport,
+  DownloadIntegrityTaskStatus,
 } from "@/types/settings";
 
 export function useSettingsPanelState({
@@ -36,6 +47,8 @@ export function useSettingsPanelState({
     useState<DownloadIntegrityMode | null>(null);
   const [integrityReport, setIntegrityReport] = useState<DownloadIntegrityReport | null>(null);
   const [showIntegrityReport, setShowIntegrityReport] = useState(false);
+  const [integrityTaskStatus, setIntegrityTaskStatus] =
+    useState<DownloadIntegrityTaskStatus | null>(null);
   const [showPublicToken, setShowPublicToken] = useState(false);
   const [showPrivateToken, setShowPrivateToken] = useState(false);
 
@@ -170,30 +183,97 @@ export function useSettingsPanelState({
     setCheckingIntegrity(true);
     setCheckingIntegrityMode(mode);
     try {
-      const report = await runDownloadIntegrityCheck(
+      const status = await startDownloadIntegrityTask(
         downloadPath,
         tempSettings.proxy || "",
         mode
       );
-      setIntegrityReport(report);
-      setShowIntegrityReport(true);
-
-      const issueCount = report.partial_files + report.incomplete_files;
-      if (issueCount > 0) {
-        toast.warning(
-          `${mode === "quick" ? "Quick" : "Deep"} check found ${issueCount} incomplete item(s)`
-        );
-      } else {
-        toast.success(
-          `${mode === "quick" ? "Quick" : "Deep"} check completed: ${report.checked_files} tracked file(s), no incomplete files found`
-        );
-      }
+      setIntegrityTaskStatus(status);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       toast.error(`Integrity check failed: ${message}`);
-    } finally {
       setCheckingIntegrity(false);
       setCheckingIntegrityMode(null);
+    }
+  };
+
+  useEffect(() => {
+    if (!checkingIntegrity) {
+      return;
+    }
+
+    let cancelled = false;
+    const interval = window.setInterval(() => {
+      void getDownloadIntegrityTaskStatus()
+        .then((status) => {
+          if (cancelled) {
+            return;
+          }
+          setIntegrityTaskStatus(status);
+          if (status.in_progress) {
+            return;
+          }
+
+          setCheckingIntegrity(false);
+          setCheckingIntegrityMode(null);
+
+          if (status.cancelled) {
+            toast.info(
+              `${status.mode === "deep" ? "Deep" : "Quick"} integrity check cancelled`
+            );
+            return;
+          }
+
+          if (status.error) {
+            toast.error(`Integrity check failed: ${status.error}`);
+            return;
+          }
+
+          if (!status.report) {
+            return;
+          }
+
+          setIntegrityReport(status.report);
+          setShowIntegrityReport(true);
+
+          const issueCount =
+            status.report.partial_files + status.report.incomplete_files;
+          if (issueCount > 0) {
+            toast.warning(
+              `${status.mode === "deep" ? "Deep" : "Quick"} check found ${issueCount} incomplete item(s)`
+            );
+          } else {
+            toast.success(
+              `${status.mode === "deep" ? "Deep" : "Quick"} check completed: ${status.report.checked_files} tracked file(s), no incomplete files found`
+            );
+          }
+        })
+        .catch((error) => {
+          if (cancelled) {
+            return;
+          }
+          const message = error instanceof Error ? error.message : String(error);
+          setCheckingIntegrity(false);
+          setCheckingIntegrityMode(null);
+          toast.error(`Integrity check failed: ${message}`);
+        });
+    }, 500);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [checkingIntegrity]);
+
+  const handleCancelIntegrityCheck = async () => {
+    try {
+      const cancelled = await cancelDownloadIntegrityTask();
+      if (!cancelled) {
+        toast.info("No integrity check is currently running");
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      toast.error(`Could not cancel integrity check: ${message}`);
     }
   };
 
@@ -223,6 +303,7 @@ export function useSettingsPanelState({
     setShowResetConfirm,
     checkingIntegrity,
     checkingIntegrityMode,
+    integrityTaskStatus,
     integrityReport,
     showIntegrityReport,
     setShowIntegrityReport,
@@ -239,6 +320,7 @@ export function useSettingsPanelState({
     handleDownloadFFmpeg,
     handleDownloadExifTool,
     handleCheckIntegrity,
+    handleCancelIntegrityCheck,
     handleOpenIntegrityFolder,
   };
 }

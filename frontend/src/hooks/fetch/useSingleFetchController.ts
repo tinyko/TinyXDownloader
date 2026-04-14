@@ -51,6 +51,7 @@ export function useSingleFetchController({
     scheduleResultUpdate,
     clearLiveResult: clearLiveResultBase,
     beginFetchTiming,
+    resetFetchTiming,
   } = useSingleFetchRuntime({
     loading,
     onTimeout: handleRuntimeTimeout,
@@ -70,7 +71,7 @@ export function useSingleFetchController({
     logger.info("Stopping fetch...");
     toast.info("Stopping...");
     await cancelSingleActiveRequest();
-  }, [cancelSingleActiveRequest]);
+  }, [cancelSingleActiveRequest, stopFetchRef]);
 
   const checkResumable = useCallback((user: string) => {
     if (!user.trim()) {
@@ -186,17 +187,23 @@ export function useSingleFetchController({
           onAddToHistory,
         });
       } finally {
+        resetFetchTiming();
         setLoading(false);
       }
     },
     [
+      activeResultScopeRef,
       beginFetchTiming,
+      fetchStartTimeRef,
       flushResultUpdate,
       loading,
       onAddToHistory,
+      resetFetchTiming,
       result,
       scheduleResultUpdate,
+      singleFetchRequestIdRef,
       setUsername,
+      stopFetchRef,
       username,
     ]
   );

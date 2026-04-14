@@ -220,7 +220,13 @@ export function useDownloadItemStatusMap(options: UseDownloadItemStatusMapOption
   }, [schedulePendingItemStatusFlush]);
 
   useEffect(() => {
-    resetStatuses();
+    const resetTimer = window.setTimeout(() => {
+      resetStatuses();
+    }, 0);
+
+    return () => {
+      window.clearTimeout(resetTimer);
+    };
   }, [resetKey, resetStatuses]);
 
   return {

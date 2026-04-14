@@ -94,8 +94,10 @@ export function SettingsPanel(props: SettingsPanelProps) {
           <SettingsIntegritySection
             checkingIntegrity={state.checkingIntegrity}
             checkingIntegrityMode={state.checkingIntegrityMode}
+            integrityPhase={state.integrityTaskStatus?.phase}
             integrityReport={state.integrityReport}
             onCheckIntegrity={state.handleCheckIntegrity}
+            onCancelIntegrityCheck={state.handleCancelIntegrityCheck}
           />
         </div>
       </div>

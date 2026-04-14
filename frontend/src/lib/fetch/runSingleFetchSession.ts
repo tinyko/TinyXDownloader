@@ -21,11 +21,10 @@ import {
 } from "@/lib/fetch/session";
 import {
   loadSnapshotFromDB,
-  loadSnapshotSummaryFromDB,
-  loadSnapshotTweetIdsFromDB,
   normalizeStructuredResponse,
   saveAccountSnapshotChunk,
 } from "@/lib/fetch/snapshot-client";
+import { loadIncrementalBoundaryState } from "@/lib/fetch/bootstrapTimelineFetchSession";
 import { runTimelineFetchLoop } from "@/lib/fetch/runTimelineFetchLoop";
 import type { FetchMode, PrivateType } from "@/types/fetch";
 import type { TwitterResponse } from "@/types/api";
@@ -132,15 +131,11 @@ export async function runSingleFetchSession({
   } else {
     clearFetchState(fetchScope);
     clearCursor(fetchScope);
-    const savedSummary = await loadSnapshotSummaryFromDB(fetchScope);
-    const savedTweetIds =
-      savedSummary?.completed && savedSummary.total_urls > 0
-        ? await loadSnapshotTweetIdsFromDB(fetchScope)
-        : [];
-    if (savedSummary?.completed && savedSummary.total_urls > 0 && savedTweetIds.length > 0) {
-      savedCompletedCount = savedSummary.total_urls;
-      knownTweetIds = new Set(savedTweetIds);
-      accountInfo = savedSummary.account_info;
+    const boundaryState = await loadIncrementalBoundaryState(fetchScope);
+    if (boundaryState.isIncrementalRefresh) {
+      savedCompletedCount = boundaryState.savedCompletedCount;
+      knownTweetIds = boundaryState.knownTweetIds;
+      accountInfo = boundaryState.accountInfo;
       isIncrementalRefresh = true;
       const visibleMatchingResult =
         currentResult &&
@@ -163,6 +158,7 @@ export async function runSingleFetchSession({
     } else {
       scheduleResultUpdate(null, true, null);
       logger.info(`Fetching ${fetchTarget}...`);
+      accountInfo = boundaryState.accountInfo;
     }
   }
 

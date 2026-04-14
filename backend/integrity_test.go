@@ -65,7 +65,7 @@ func TestCheckDownloadDirectoryIntegrityDetectsPartialAndTruncatedFiles(t *testi
 			URL:  server.URL + "/truncated",
 			Type: "photo",
 		},
-	}, server.Client(), downloadIntegrityModeDeep)
+	}, server.Client(), downloadIntegrityModeDeep, nil)
 	if err != nil {
 		t.Fatalf("integrity check failed: %v", err)
 	}
@@ -133,7 +133,7 @@ func TestCheckDownloadDirectoryIntegrityQuickModeSkipsRemoteValidationAndFlagsMi
 			URL:  server.URL + "/missing",
 			Type: "photo",
 		},
-	}, server.Client(), downloadIntegrityModeQuick)
+	}, server.Client(), downloadIntegrityModeQuick, nil)
 	if err != nil {
 		t.Fatalf("quick integrity check failed: %v", err)
 	}
@@ -198,7 +198,7 @@ func TestDeepIntegrityCheckStillPerformsRemoteValidation(t *testing.T) {
 			URL:  server.URL + "/truncated",
 			Type: "photo",
 		},
-	}, server.Client(), downloadIntegrityModeDeep)
+	}, server.Client(), downloadIntegrityModeDeep, nil)
 	if err != nil {
 		t.Fatalf("deep integrity check failed: %v", err)
 	}

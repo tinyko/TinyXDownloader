@@ -41,8 +41,13 @@ export function SavedTimelineWorkspace({
   const [sortBy, setSortBy] = useState("date-desc");
   const [viewMode, setViewMode] = useState<"gallery" | "list">("list");
   const [showScrollTop, setShowScrollTop] = useState(false);
-  const [bootstrap, setBootstrap] = useState<AccountTimelineBootstrap | null>(null);
-  const [loadingBootstrap, setLoadingBootstrap] = useState(true);
+  const [bootstrapState, setBootstrapState] = useState<{
+    resetKey: string;
+    data: AccountTimelineBootstrap | null;
+  }>({
+    resetKey: "",
+    data: null,
+  });
 
   const accountFolderName = useMemo(() => {
     if (account.username === "bookmarks") {
@@ -56,6 +61,12 @@ export function SavedTimelineWorkspace({
 
   const { items, loading, loadingMore, hasMore, loadMoreRef } =
     useSavedTimelinePager(scope, filterType, sortBy);
+  const bootstrapResetKey = `${scope.username}|${scope.mediaType}|${scope.timelineType}|${
+    scope.retweets ? "1" : "0"
+  }|${scope.queryKey}|${filterType}`;
+  const bootstrap =
+    bootstrapState.resetKey === bootstrapResetKey ? bootstrapState.data : null;
+  const loadingBootstrap = bootstrapState.resetKey !== bootstrapResetKey;
   const accountInfo = bootstrap?.summary.account_info;
   const totalItems = bootstrap?.total_items ?? account.total_media ?? 0;
   const mediaCounts = bootstrap?.media_counts ?? {
@@ -64,21 +75,19 @@ export function SavedTimelineWorkspace({
     gif: 0,
     text: 0,
   };
-  const bootstrapResetKey = `${scope.username}|${scope.mediaType}|${scope.timelineType}|${
-    scope.retweets ? "1" : "0"
-  }|${scope.queryKey}|${filterType}`;
 
   useEffect(() => {
     let active = true;
-    setLoadingBootstrap(true);
 
     const loadBootstrap = async () => {
       const data = await loadSavedTimelineBootstrap(scope, filterType);
       if (!active) {
         return;
       }
-      setBootstrap(data);
-      setLoadingBootstrap(false);
+      setBootstrapState({
+        resetKey: bootstrapResetKey,
+        data,
+      });
     };
 
     void loadBootstrap();
@@ -88,11 +97,7 @@ export function SavedTimelineWorkspace({
   }, [
     bootstrapResetKey,
     filterType,
-    scope.mediaType,
-    scope.queryKey,
-    scope.retweets,
-    scope.timelineType,
-    scope.username,
+    scope,
   ]);
 
   const previewResetKey = `${scope.username}|${scope.mediaType}|${scope.timelineType}|${

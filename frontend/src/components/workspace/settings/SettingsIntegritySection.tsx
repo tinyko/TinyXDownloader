@@ -15,15 +15,19 @@ import type { DownloadIntegrityMode, DownloadIntegrityReport } from "@/types/set
 interface SettingsIntegritySectionProps {
   checkingIntegrity: boolean;
   checkingIntegrityMode: DownloadIntegrityMode | null;
+  integrityPhase?: string;
   integrityReport: DownloadIntegrityReport | null;
   onCheckIntegrity: (mode: DownloadIntegrityMode) => void | Promise<void>;
+  onCancelIntegrityCheck: () => void | Promise<void>;
 }
 
 export function SettingsIntegritySection({
   checkingIntegrity,
   checkingIntegrityMode,
+  integrityPhase,
   integrityReport,
   onCheckIntegrity,
+  onCancelIntegrityCheck,
 }: SettingsIntegritySectionProps) {
   return (
     <div className="space-y-2">
@@ -60,14 +64,30 @@ export function SettingsIntegritySection({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start">
-            <DropdownMenuItem disabled={checkingIntegrity} onClick={() => void onCheckIntegrity("quick")}>
+            <DropdownMenuItem
+              disabled={checkingIntegrity}
+              onClick={() => void onCheckIntegrity("quick")}
+            >
               Quick Check
             </DropdownMenuItem>
-            <DropdownMenuItem disabled={checkingIntegrity} onClick={() => void onCheckIntegrity("deep")}>
+            <DropdownMenuItem
+              disabled={checkingIntegrity}
+              onClick={() => void onCheckIntegrity("deep")}
+            >
               Deep Check
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
+        {checkingIntegrity ? (
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-9"
+            onClick={() => void onCancelIntegrityCheck()}
+          >
+            Cancel
+          </Button>
+        ) : null}
         {integrityReport ? (
           <span className="text-xs text-muted-foreground">
             Last {integrityReport.mode === "deep" ? "deep" : "quick"} scan:{" "}
@@ -76,6 +96,11 @@ export function SettingsIntegritySection({
           </span>
         ) : null}
       </div>
+      {checkingIntegrity && integrityPhase ? (
+        <p className="text-xs text-muted-foreground">
+          Running phase: {integrityPhase}
+        </p>
+      ) : null}
       <p className="text-xs text-muted-foreground">
         Quick avoids remote checks. Deep is slower, but it can catch truncated tracked files.
       </p>

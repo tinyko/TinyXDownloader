@@ -77,7 +77,7 @@ export function useMultiFetchController() {
     } finally {
       currentQueuePromiseRef.current = null;
     }
-  }, [cancelAllActiveAccountRequests, isFetchingAll, setActiveSessionStatus]);
+  }, [cancelAllActiveAccountRequests, isFetchingAll, setActiveSessionStatus, stopAllRef]);
 
   const createPendingSession = useCallback(
     (
@@ -227,6 +227,7 @@ export function useMultiFetchController() {
       replaceActiveSession,
       setActiveSessionStatus,
       setMultipleAccountsState,
+      stopAllRef,
       stopCurrentQueueForReplacement,
     ]
   );
@@ -261,6 +262,7 @@ export function useMultiFetchController() {
     diffVisibilityRef,
     setActiveSessionStatus,
     setMultipleAccountsState,
+    stopAllRef,
   ]);
 
   return {
