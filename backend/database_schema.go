@@ -338,6 +338,16 @@ func ensureAccountsIndexes() error {
 	indexStatements := []string{
 		`CREATE INDEX IF NOT EXISTS idx_accounts_group_last_fetched ON accounts(group_name, last_fetched DESC)`,
 		`CREATE INDEX IF NOT EXISTS idx_accounts_fetch_key ON accounts(fetch_key)`,
+		`CREATE INDEX IF NOT EXISTS idx_accounts_saved_view_last_fetched
+			ON accounts(` + savedAccountsIsPrivateExpr + `, last_fetched DESC, id DESC)`,
+		`CREATE INDEX IF NOT EXISTS idx_accounts_saved_filters_last_fetched
+			ON accounts(` + savedAccountsIsPrivateExpr + `, ` + savedAccountsGroupExpr + `, ` + savedAccountsMediaTypeExpr + `, last_fetched DESC, id DESC)`,
+		`CREATE INDEX IF NOT EXISTS idx_accounts_saved_filters_followers
+			ON accounts(` + savedAccountsIsPrivateExpr + `, ` + savedAccountsGroupExpr + `, ` + savedAccountsMediaTypeExpr + `, ` + savedAccountsFollowersExpr + ` DESC, id DESC)`,
+		`CREATE INDEX IF NOT EXISTS idx_accounts_saved_filters_statuses
+			ON accounts(` + savedAccountsIsPrivateExpr + `, ` + savedAccountsGroupExpr + `, ` + savedAccountsMediaTypeExpr + `, ` + savedAccountsStatusesExpr + ` DESC, id DESC)`,
+		`CREATE INDEX IF NOT EXISTS idx_accounts_saved_filters_matching_ids
+			ON accounts(` + savedAccountsIsPrivateExpr + `, ` + savedAccountsGroupExpr + `, ` + savedAccountsMediaTypeExpr + `, id ASC)`,
 	}
 
 	for _, statement := range indexStatements {

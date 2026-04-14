@@ -9,7 +9,27 @@ import (
 const (
 	defaultSavedAccountsPageLimit = 100
 	maxSavedAccountsPageLimit     = 200
+
+	savedAccountsIsPrivateExpr  = "CASE WHEN LOWER(username) IN ('bookmarks', 'likes') THEN 1 ELSE 0 END"
+	savedAccountsGroupExpr      = "COALESCE(group_name, '')"
+	savedAccountsMediaTypeExpr  = "COALESCE(media_type, 'all')"
+	savedAccountsFollowersExpr  = "COALESCE(followers_count, 0)"
+	savedAccountsStatusesExpr   = "COALESCE(statuses_count, 0)"
+	savedAccountsTotalMediaExpr = "COALESCE(total_media, 0)"
+	savedAccountsUsernameExpr   = "LOWER(username)"
 )
+
+const savedAccountsSelectColumns = `
+	SELECT id, username, name, profile_image, total_media, last_fetched,
+	       ` + savedAccountsGroupExpr + ` as group_name, COALESCE(group_color, '') as group_color,
+	       ` + savedAccountsMediaTypeExpr + ` as media_type,
+	       COALESCE(timeline_type, 'timeline') as timeline_type,
+	       COALESCE(retweets, 0) as retweets,
+	       COALESCE(query_key, '') as query_key,
+	       COALESCE(cursor, '') as cursor, COALESCE(completed, 1) as completed,
+	       ` + savedAccountsFollowersExpr + ` as followers_count,
+	       ` + savedAccountsStatusesExpr + ` as statuses_count
+	FROM accounts`
 
 func normalizeSavedAccountsPageLimit(limit int) int {
 	if limit <= 0 {
@@ -39,9 +59,9 @@ func buildSavedAccountsWhereClause(
 
 	switch strings.TrimSpace(accountViewMode) {
 	case "private":
-		clauses = append(clauses, "LOWER(username) IN ('bookmarks', 'likes')")
+		clauses = append(clauses, savedAccountsIsPrivateExpr+" = 1")
 	default:
-		clauses = append(clauses, "LOWER(username) NOT IN ('bookmarks', 'likes')")
+		clauses = append(clauses, savedAccountsIsPrivateExpr+" = 0")
 	}
 
 	normalizedQuery := strings.ToLower(strings.TrimSpace(searchQuery))
@@ -55,18 +75,18 @@ func buildSavedAccountsWhereClause(
 		switch strings.TrimSpace(filterGroup) {
 		case "", "all":
 		case "ungrouped":
-			clauses = append(clauses, "COALESCE(group_name, '') = ''")
+			clauses = append(clauses, savedAccountsGroupExpr+" = ''")
 		default:
-			clauses = append(clauses, "COALESCE(group_name, '') = ?")
+			clauses = append(clauses, savedAccountsGroupExpr+" = ?")
 			args = append(args, filterGroup)
 		}
 
 		switch strings.TrimSpace(filterMediaType) {
 		case "", "all":
 		case "all-media":
-			clauses = append(clauses, "COALESCE(media_type, 'all') = 'all'")
+			clauses = append(clauses, savedAccountsMediaTypeExpr+" = 'all'")
 		default:
-			clauses = append(clauses, "COALESCE(media_type, 'all') = ?")
+			clauses = append(clauses, savedAccountsMediaTypeExpr+" = ?")
 			args = append(args, filterMediaType)
 		}
 	}
@@ -82,26 +102,80 @@ func buildSavedAccountsSortClause(sortOrder string) string {
 	case "oldest":
 		return "last_fetched ASC, id ASC"
 	case "username-asc":
-		return "LOWER(username) ASC, id ASC"
+		return savedAccountsUsernameExpr + " ASC, id ASC"
 	case "username-desc":
-		return "LOWER(username) DESC, id DESC"
+		return savedAccountsUsernameExpr + " DESC, id DESC"
 	case "followers-high":
-		return "COALESCE(followers_count, 0) DESC, id DESC"
+		return savedAccountsFollowersExpr + " DESC, id DESC"
 	case "followers-low":
-		return "COALESCE(followers_count, 0) ASC, id ASC"
+		return savedAccountsFollowersExpr + " ASC, id ASC"
 	case "posts-high":
-		return "COALESCE(statuses_count, 0) DESC, id DESC"
+		return savedAccountsStatusesExpr + " DESC, id DESC"
 	case "posts-low":
-		return "COALESCE(statuses_count, 0) ASC, id ASC"
+		return savedAccountsStatusesExpr + " ASC, id ASC"
 	case "media-high":
-		return "COALESCE(total_media, 0) DESC, id DESC"
+		return savedAccountsTotalMediaExpr + " DESC, id DESC"
 	case "media-low":
-		return "COALESCE(total_media, 0) ASC, id ASC"
+		return savedAccountsTotalMediaExpr + " ASC, id ASC"
 	case "newest", "":
 		fallthrough
 	default:
 		return "last_fetched DESC, id DESC"
 	}
+}
+
+func buildSavedAccountsPageQuery(
+	accountViewMode string,
+	searchQuery string,
+	filterGroup string,
+	filterMediaType string,
+	sortOrder string,
+	offset int,
+	limit int,
+) (string, []interface{}) {
+	whereClause, whereArgs := buildSavedAccountsWhereClause(
+		accountViewMode,
+		searchQuery,
+		filterGroup,
+		filterMediaType,
+	)
+	sortClause := buildSavedAccountsSortClause(sortOrder)
+	args := append(whereArgs, limit, offset)
+	query := savedAccountsSelectColumns + whereClause + `
+		ORDER BY ` + sortClause + `
+		LIMIT ? OFFSET ?
+	`
+	return query, args
+}
+
+func buildSavedAccountsCountQuery(
+	accountViewMode string,
+	searchQuery string,
+	filterGroup string,
+	filterMediaType string,
+) (string, []interface{}) {
+	whereClause, whereArgs := buildSavedAccountsWhereClause(
+		accountViewMode,
+		searchQuery,
+		filterGroup,
+		filterMediaType,
+	)
+	return `SELECT COUNT(*) FROM accounts` + whereClause, whereArgs
+}
+
+func buildSavedAccountMatchingIDsQuery(
+	accountViewMode string,
+	searchQuery string,
+	filterGroup string,
+	filterMediaType string,
+) (string, []interface{}) {
+	whereClause, whereArgs := buildSavedAccountsWhereClause(
+		accountViewMode,
+		searchQuery,
+		filterGroup,
+		filterMediaType,
+	)
+	return `SELECT id FROM accounts` + whereClause + ` ORDER BY id ASC`, whereArgs
 }
 
 func scanAccountListItem(scanner interface {
@@ -148,29 +222,17 @@ func querySavedAccountsPageItems(
 	offset int,
 	limit int,
 ) ([]AccountListItem, error) {
-	whereClause, whereArgs := buildSavedAccountsWhereClause(
+	query, args := buildSavedAccountsPageQuery(
 		accountViewMode,
 		searchQuery,
 		filterGroup,
 		filterMediaType,
+		sortOrder,
+		offset,
+		limit,
 	)
-	sortClause := buildSavedAccountsSortClause(sortOrder)
-	args := append(whereArgs, limit, offset)
 
-	rows, err := db.Query(`
-		SELECT id, username, name, profile_image, total_media, last_fetched,
-		       COALESCE(group_name, '') as group_name, COALESCE(group_color, '') as group_color,
-		       COALESCE(media_type, 'all') as media_type,
-		       COALESCE(timeline_type, 'timeline') as timeline_type,
-		       COALESCE(retweets, 0) as retweets,
-		       COALESCE(query_key, '') as query_key,
-		       COALESCE(cursor, '') as cursor, COALESCE(completed, 1) as completed,
-		       COALESCE(followers_count, 0) as followers_count,
-		       COALESCE(statuses_count, 0) as statuses_count
-		FROM accounts`+whereClause+`
-		ORDER BY `+sortClause+`
-		LIMIT ? OFFSET ?
-	`, args...)
+	rows, err := db.Query(query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -193,7 +255,7 @@ func querySavedAccountsTotalCount(
 	filterGroup string,
 	filterMediaType string,
 ) (int, error) {
-	whereClause, whereArgs := buildSavedAccountsWhereClause(
+	query, args := buildSavedAccountsCountQuery(
 		accountViewMode,
 		searchQuery,
 		filterGroup,
@@ -201,10 +263,7 @@ func querySavedAccountsTotalCount(
 	)
 
 	var total int
-	if err := db.QueryRow(
-		`SELECT COUNT(*) FROM accounts`+whereClause,
-		whereArgs...,
-	).Scan(&total); err != nil {
+	if err := db.QueryRow(query, args...).Scan(&total); err != nil {
 		return 0, err
 	}
 	return total, nil
@@ -233,8 +292,8 @@ func querySavedAccountViewCounts() (int, int, error) {
 	var privateCount int
 	err := db.QueryRow(`
 		SELECT
-			COALESCE(SUM(CASE WHEN LOWER(username) NOT IN ('bookmarks', 'likes') THEN 1 ELSE 0 END), 0),
-			COALESCE(SUM(CASE WHEN LOWER(username) IN ('bookmarks', 'likes') THEN 1 ELSE 0 END), 0)
+			COALESCE(SUM(CASE WHEN `+savedAccountsIsPrivateExpr+` = 0 THEN 1 ELSE 0 END), 0),
+			COALESCE(SUM(CASE WHEN `+savedAccountsIsPrivateExpr+` = 1 THEN 1 ELSE 0 END), 0)
 		FROM accounts
 	`).Scan(&publicCount, &privateCount)
 	if err != nil {
@@ -343,14 +402,14 @@ func GetSavedAccountMatchingIDs(
 		}
 	}
 
-	whereClause, whereArgs := buildSavedAccountsWhereClause(
+	query, args := buildSavedAccountMatchingIDsQuery(
 		accountViewMode,
 		searchQuery,
 		filterGroup,
 		filterMediaType,
 	)
 
-	rows, err := db.Query(`SELECT id FROM accounts`+whereClause+` ORDER BY id ASC`, whereArgs...)
+	rows, err := db.Query(query, args...)
 	if err != nil {
 		return nil, err
 	}
