@@ -2,7 +2,7 @@ import fs from "node:fs"
 import path from "path"
 import tailwindcss from "@tailwindcss/vite"
 import react from "@vitejs/plugin-react"
-import { defineConfig } from "vite"
+import { defineConfig } from "vitest/config"
 
 const wailsConfigPath = path.resolve(__dirname, "..", "wails.json")
 const wailsConfig = JSON.parse(fs.readFileSync(wailsConfigPath, "utf-8")) as {
@@ -19,6 +19,12 @@ export default defineConfig({
     __APP_VERSION__: JSON.stringify(wailsConfig.info.productVersion),
   },
   plugins: [react(), tailwindcss()],
+  test: {
+    environment: "jsdom",
+    setupFiles: ["./tests/setup.ts"],
+    clearMocks: true,
+    restoreMocks: true,
+  },
   build: {
     rollupOptions: {
       output: {
