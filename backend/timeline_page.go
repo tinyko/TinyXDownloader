@@ -53,6 +53,13 @@ type timelinePageProjectionRow struct {
 	row      timelineMediaProjection
 }
 
+type timelinePageSummaryContext struct {
+	summary     *accountSummaryRecord
+	pageSummary *AccountSnapshotSummary
+	mediaCounts TimelineMediaCounts
+	totalItems  int
+}
+
 func normalizeTimelinePageLimit(limit int) int {
 	if limit <= 0 {
 		return defaultTimelinePageLimit
@@ -229,16 +236,10 @@ func loadTimelinePageSummary(scope FetchScopeRecord) (*accountSummaryRecord, *Ac
 	return summary, pageSummary, nil
 }
 
-func GetAccountTimelineBootstrap(
+func loadTimelinePageSummaryContext(
 	scope FetchScopeRecord,
 	filterType string,
-) (*AccountTimelineBootstrap, error) {
-	if db == nil {
-		if err := InitDB(); err != nil {
-			return nil, err
-		}
-	}
-
+) (*timelinePageSummaryContext, error) {
 	summary, pageSummary, err := loadTimelinePageSummary(scope)
 	if err != nil || summary == nil || pageSummary == nil {
 		return nil, err
@@ -253,37 +254,28 @@ func GetAccountTimelineBootstrap(
 		return nil, err
 	}
 
-	return &AccountTimelineBootstrap{
-		Summary:     *pageSummary,
-		MediaCounts: mediaCounts,
-		TotalItems:  totalItems,
+	return &timelinePageSummaryContext{
+		summary:     summary,
+		pageSummary: pageSummary,
+		mediaCounts: mediaCounts,
+		totalItems:  totalItems,
 	}, nil
 }
 
-func GetAccountTimelineItemsPage(
-	scope FetchScopeRecord,
+func loadTimelineItemsPage(
+	summary *accountSummaryRecord,
+	totalItems int,
 	offset int,
 	limit int,
 	filterType string,
 	sortBy string,
 ) (*AccountTimelineItemsPage, error) {
-	if db == nil {
-		if err := InitDB(); err != nil {
-			return nil, err
-		}
-	}
-
-	summary, _, err := loadTimelinePageSummary(scope)
-	if err != nil || summary == nil {
-		return nil, err
+	if summary == nil {
+		return nil, nil
 	}
 
 	normalizedOffset := normalizeTimelinePageOffset(offset)
 	normalizedLimit := normalizeTimelinePageLimit(limit)
-	totalItems, err := queryTimelineTotalItems(summary.FetchKey, filterType)
-	if err != nil {
-		return nil, err
-	}
 	pageRows, err := queryTimelineItemsPageRows(
 		summary.FetchKey,
 		normalizedOffset,
@@ -333,6 +325,53 @@ func GetAccountTimelineItemsPage(
 	}, nil
 }
 
+func GetAccountTimelineBootstrap(
+	scope FetchScopeRecord,
+	filterType string,
+) (*AccountTimelineBootstrap, error) {
+	if db == nil {
+		if err := InitDB(); err != nil {
+			return nil, err
+		}
+	}
+
+	context, err := loadTimelinePageSummaryContext(scope, filterType)
+	if err != nil || context == nil {
+		return nil, err
+	}
+
+	return &AccountTimelineBootstrap{
+		Summary:     *context.pageSummary,
+		MediaCounts: context.mediaCounts,
+		TotalItems:  context.totalItems,
+	}, nil
+}
+
+func GetAccountTimelineItemsPage(
+	scope FetchScopeRecord,
+	offset int,
+	limit int,
+	filterType string,
+	sortBy string,
+) (*AccountTimelineItemsPage, error) {
+	if db == nil {
+		if err := InitDB(); err != nil {
+			return nil, err
+		}
+	}
+
+	summary, _, err := loadTimelinePageSummary(scope)
+	if err != nil || summary == nil {
+		return nil, err
+	}
+
+	totalItems, err := queryTimelineTotalItems(summary.FetchKey, filterType)
+	if err != nil {
+		return nil, err
+	}
+	return loadTimelineItemsPage(summary, totalItems, offset, limit, filterType, sortBy)
+}
+
 func GetAccountTimelinePage(
 	scope FetchScopeRecord,
 	offset int,
@@ -340,20 +379,20 @@ func GetAccountTimelinePage(
 	filterType string,
 	sortBy string,
 ) (*AccountTimelinePage, error) {
-	bootstrap, err := GetAccountTimelineBootstrap(scope, filterType)
-	if err != nil || bootstrap == nil {
+	context, err := loadTimelinePageSummaryContext(scope, filterType)
+	if err != nil || context == nil {
 		return nil, err
 	}
-	itemsPage, err := GetAccountTimelineItemsPage(scope, offset, limit, filterType, sortBy)
+	itemsPage, err := loadTimelineItemsPage(context.summary, context.totalItems, offset, limit, filterType, sortBy)
 	if err != nil || itemsPage == nil {
 		return nil, err
 	}
 
 	return &AccountTimelinePage{
-		Summary:     bootstrap.Summary,
-		MediaCounts: bootstrap.MediaCounts,
+		Summary:     *context.pageSummary,
+		MediaCounts: context.mediaCounts,
 		Items:       itemsPage.Items,
-		TotalItems:  bootstrap.TotalItems,
+		TotalItems:  context.totalItems,
 		HasMore:     itemsPage.HasMore,
 		NextOffset:  itemsPage.NextOffset,
 	}, nil

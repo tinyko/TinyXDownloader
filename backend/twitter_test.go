@@ -50,3 +50,44 @@ func TestExtractJSONFindsJSONAmidLogNoise(t *testing.T) {
 		t.Fatalf("expected JSON payload to be extracted, got %q", jsonStr)
 	}
 }
+
+func TestBuildTimelineEntriesFromCLIResponseKeepsTextAndMediaPathsStable(t *testing.T) {
+	response := &CLIResponse{
+		Media: []CLIMediaItem{
+			{
+				URL:     "https://example.com/media.jpg",
+				Date:    "2026-04-15T08:00:00",
+				TweetID: 1001,
+				Type:    "photo",
+			},
+		},
+		Metadata: []TweetMetadata{
+			{
+				TweetID: 1001,
+				Content: "photo tweet",
+				Author: Author{
+					Name: "media_author",
+					Nick: "Media Author",
+				},
+			},
+			{
+				TweetID: 1002,
+				Content: "plain text tweet",
+				Author: Author{
+					Name: "text_author",
+					Nick: "Text Author",
+				},
+			},
+		},
+	}
+
+	mediaTimeline := buildTimelineEntriesFromCLIResponse(response, false)
+	if len(mediaTimeline) != 1 || mediaTimeline[0].TweetID != TweetIDString(1001) {
+		t.Fatalf("expected media-only path to keep only media entry, got %+v", mediaTimeline)
+	}
+
+	textTimeline := buildTimelineEntriesFromCLIResponse(response, true)
+	if len(textTimeline) != 1 || textTimeline[0].TweetID != TweetIDString(1002) {
+		t.Fatalf("expected text-only path to keep non-media metadata entry, got %+v", textTimeline)
+	}
+}
