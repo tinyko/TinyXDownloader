@@ -68,7 +68,7 @@ export function useMultiFetchController() {
 
     stopAllRef.current = true;
     setIsFetchingAll(false);
-    setActiveSessionStatus("stopped");
+    setActiveSessionStatus("cancelling");
     await cancelAllActiveAccountRequests();
     try {
       await currentQueuePromiseRef.current;
@@ -177,7 +177,7 @@ export function useMultiFetchController() {
           }
 
           if (!completed) {
-            setActiveSessionStatus("stopped");
+            setActiveSessionStatus("cancelled");
             return;
           }
 
@@ -235,7 +235,7 @@ export function useMultiFetchController() {
   const handleStopAll = useCallback(() => {
     stopAllRef.current = true;
     setIsFetchingAll(false);
-    setActiveSessionStatus("stopped");
+    setActiveSessionStatus("cancelling");
 
     accountStartTimesRef.current.clear();
     accountTimeoutSecondsRef.current.clear();

@@ -1,3 +1,5 @@
+import type { TaskLifecycleStatus } from "@/types/tasks";
+
 export type FetchMode = "public" | "private";
 export type PrivateType = "bookmarks" | "likes";
 export type FetchType = "single" | "multiple";
@@ -37,9 +39,12 @@ export type MultiFetchSessionSource = "manual-fetch" | "saved-update";
 export type MultiFetchSessionStatus =
   | "ready"
   | "running"
+  | "cancelling"
   | "completed"
-  | "stopped"
-  | "failed";
+  | "failed"
+  | "cancelled";
+
+export type SingleFetchTaskStatus = TaskLifecycleStatus | null;
 
 export interface MultiFetchSession {
   id: string;

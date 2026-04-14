@@ -2,6 +2,9 @@ import { cleanup } from "@testing-library/react";
 import { afterEach, beforeAll, vi } from "vitest";
 
 beforeAll(() => {
+  // React 19 warns when act() expectations are not explicitly enabled.
+  globalThis.IS_REACT_ACT_ENVIRONMENT = true
+
   Object.defineProperty(window, "matchMedia", {
     writable: true,
     value: vi.fn().mockImplementation((query: string) => ({

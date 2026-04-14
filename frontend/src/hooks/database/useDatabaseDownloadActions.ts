@@ -21,6 +21,8 @@ type UseDatabaseDownloadActionsArgs = Pick<
   | "refreshFolderExistence"
   | "onStopDownload"
   | "onDownloadSessionStart"
+  | "onDownloadSessionFinish"
+  | "onDownloadSessionFail"
   | "downloadState"
 >;
 
@@ -32,6 +34,8 @@ export function useDatabaseDownloadActions({
   refreshFolderExistence,
   onStopDownload,
   onDownloadSessionStart,
+  onDownloadSessionFinish,
+  onDownloadSessionFail,
   downloadState = null,
 }: UseDatabaseDownloadActionsArgs) {
   const [isBulkDownloading, setIsBulkDownloading] = useState(false);
@@ -94,6 +98,7 @@ export function useDatabaseDownloadActions({
       );
 
       if (!response.success) {
+        onDownloadSessionFail?.();
         toast.error(response.message || "Download failed");
         return;
       }
@@ -124,8 +129,10 @@ export function useDatabaseDownloadActions({
       } else {
         toast.success(message);
       }
+      onDownloadSessionFinish?.(response.failed > 0 ? "failed" : "completed");
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
+      onDownloadSessionFail?.();
       toast.error(`Download failed: ${errorMsg}`);
     }
   };
@@ -173,6 +180,7 @@ export function useDatabaseDownloadActions({
       );
     } catch (error) {
       console.error("Bulk download failed:", error);
+      onDownloadSessionFail?.();
     }
 
     setIsBulkDownloading(false);
@@ -210,7 +218,9 @@ export function useDatabaseDownloadActions({
       } else {
         toast.success(message);
       }
+      onDownloadSessionFinish?.(response.failed > 0 ? "failed" : "completed");
     } else if (response && !response.success && !stopBulkDownloadRef.current) {
+      onDownloadSessionFail?.();
       toast.error(response.message || "Bulk download failed");
     }
   };

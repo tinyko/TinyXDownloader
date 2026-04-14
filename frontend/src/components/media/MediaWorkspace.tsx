@@ -21,6 +21,8 @@ export function MediaWorkspace({
   downloadState = null,
   downloadMeta = null,
   onDownloadSessionStart,
+  onDownloadSessionFinish,
+  onDownloadSessionFail,
 }: MediaWorkspaceProps) {
   const {
     scrollContainerRef,
@@ -50,6 +52,8 @@ export function MediaWorkspace({
   const actions = useMediaWorkspaceActions({
     accountInfo,
     onDownloadSessionStart,
+    onDownloadSessionFinish,
+    onDownloadSessionFail,
     downloadState,
     downloadMeta,
   });

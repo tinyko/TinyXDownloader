@@ -6,6 +6,14 @@ import (
 	"twitterxmediabatchdownloader/backend"
 )
 
+const (
+	integrityTaskStatusRunning    = "running"
+	integrityTaskStatusCancelling = "cancelling"
+	integrityTaskStatusCompleted  = "completed"
+	integrityTaskStatusFailed     = "failed"
+	integrityTaskStatusCancelled  = "cancelled"
+)
+
 func (a *App) CheckDownloadIntegrity(req CheckDownloadIntegrityRequest) (backend.DownloadIntegrityReport, error) {
 	return backend.CheckDownloadIntegrity(req.DownloadPath, req.Proxy, req.Mode)
 }
@@ -24,7 +32,9 @@ func (a *App) StartDownloadIntegrityTask(req CheckDownloadIntegrityRequest) (Dow
 	a.integrityCtx = ctx
 	a.integrityCancel = cancel
 	a.integrityTask = DownloadIntegrityTaskStatusResponse{
+		Status:     integrityTaskStatusRunning,
 		InProgress: true,
+		Cancelled:  false,
 		Mode:       mode,
 		Phase:      "preparing-index",
 	}
@@ -64,15 +74,18 @@ func (a *App) runIntegrityTask(ctx context.Context, downloadPath, proxy, mode st
 	defer a.integrityMu.Unlock()
 
 	if ctx.Err() != nil {
+		a.integrityTask.Status = integrityTaskStatusCancelled
 		a.integrityTask.InProgress = false
 		a.integrityTask.Cancelled = true
-		a.integrityTask.Phase = "completed"
+		a.integrityTask.Phase = "cancelled"
+		a.integrityTask.Report = nil
 		a.integrityTask.Error = ""
 		a.integrityCtx = nil
 		a.integrityCancel = nil
 		return
 	}
 
+	a.integrityTask.Cancelled = false
 	a.integrityTask.InProgress = false
 	a.integrityTask.Phase = "completed"
 	a.integrityTask.Report = &report
@@ -85,9 +98,12 @@ func (a *App) runIntegrityTask(ctx context.Context, downloadPath, proxy, mode st
 	a.integrityTask.IssuesCount = len(report.Issues)
 	a.integrityTask.integrateDeepVerifiedCount()
 	if err != nil {
+		a.integrityTask.Status = integrityTaskStatusFailed
+		a.integrityTask.Phase = "failed"
 		a.integrityTask.Error = err.Error()
 		a.integrityTask.Report = nil
 	} else {
+		a.integrityTask.Status = integrityTaskStatusCompleted
 		a.integrityTask.Error = ""
 	}
 	a.integrityCtx = nil
@@ -114,6 +130,10 @@ func (a *App) GetDownloadIntegrityTaskStatus() DownloadIntegrityTaskStatusRespon
 func (a *App) CancelDownloadIntegrityTask() bool {
 	a.integrityMu.Lock()
 	cancel := a.integrityCancel
+	if cancel != nil && a.integrityTask.InProgress {
+		a.integrityTask.Status = integrityTaskStatusCancelling
+		a.integrityTask.Phase = "cancelling"
+	}
 	a.integrityMu.Unlock()
 	if cancel == nil {
 		return false

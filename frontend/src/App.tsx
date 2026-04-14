@@ -26,6 +26,7 @@ import { useMultiFetchController } from "@/hooks/fetch/useMultiFetchController";
 import { useFetchHistory } from "@/hooks/fetch/useFetchHistory";
 import { useFetchWorkspaceCoordinator } from "@/hooks/workspace/useFetchWorkspaceCoordinator";
 import { useGlobalDownloadMonitor } from "@/hooks/download/useGlobalDownloadMonitor";
+import { useGlobalIntegrityMonitor } from "@/hooks/integrity/useGlobalIntegrityMonitor";
 import { useWorkspaceChromeState } from "@/hooks/workspace/useWorkspaceChromeState";
 import { useWorkspaceSettingsState } from "@/hooks/workspace/useWorkspaceSettingsState";
 
@@ -101,6 +102,7 @@ function App() {
     elapsedTime,
     remainingTime,
     newMediaCount,
+    taskStatus: singleFetchTaskStatus,
     handleFetchSingle,
     handleResume,
     handleClearResume,
@@ -128,11 +130,23 @@ function App() {
 
   const {
     globalDownloadState,
+    globalDownloadTaskState,
     globalDownloadMeta,
     globalDownloadHistory,
     handleDownloadSessionStart,
+    handleDownloadSessionFinish,
+    handleDownloadSessionFail,
     handleGlobalStopDownload,
   } = useGlobalDownloadMonitor();
+  const {
+    integrityTaskStatus,
+    integrityReport,
+    showIntegrityReport,
+    handleCheckIntegrity,
+    handleCancelIntegrityCheck,
+    handleOpenIntegrityFolder,
+    setShowIntegrityReport,
+  } = useGlobalIntegrityMonitor();
 
   const handleMultiAccountDownload = useCallback(async () => {
     if (globalDownloadState?.in_progress) {
@@ -198,17 +212,22 @@ function App() {
           parts.push(`${response.failed} failed`);
         }
         toast.success(parts.length > 0 ? parts.join(", ") : "Download completed");
+        handleDownloadSessionFinish(response.failed > 0 ? "failed" : "completed");
       } else {
+        handleDownloadSessionFail();
         toast.error(response.message || "Download failed");
       }
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
       logger.error(`Multi-account download failed: ${errorMsg}`);
+      handleDownloadSessionFail();
       toast.error("Multi-account download failed");
     }
   }, [
     fetchedMediaType,
     globalDownloadState?.in_progress,
+    handleDownloadSessionFail,
+    handleDownloadSessionFinish,
     handleDownloadSessionStart,
     activeSession,
     searchMode,
@@ -220,18 +239,29 @@ function App() {
   }, [handleMultiAccountDownload]);
 
   const activityPanelState = useActivityPanelState({
-    loading,
     fetchType,
     username,
     elapsedTime,
     remainingTime,
+    singleFetchTaskStatus,
     activeSession,
     result,
     resumeInfo,
-    globalDownloadState,
+    globalDownloadTaskState,
     globalDownloadMeta,
     globalDownloadHistory,
+    integrityTaskStatus,
+    integrityReport,
   });
+
+  const handleStopActiveFetch = useCallback(() => {
+    if (fetchType === "multiple") {
+      handleStopAll();
+      return;
+    }
+
+    void handleStopFetch();
+  }, [fetchType, handleStopAll, handleStopFetch]);
 
   const {
     handleFetch,
@@ -262,8 +292,11 @@ function App() {
     <ActivityPanel
       fetch={activityPanelState.fetch}
       download={activityPanelState.download}
+      integrity={activityPanelState.integrity}
       failures={activityPanelState.failures}
+      onStopFetch={handleStopActiveFetch}
       onStopDownload={handleGlobalStopDownload}
+      onStopIntegrity={handleCancelIntegrityCheck}
     />
   );
 
@@ -304,6 +337,8 @@ function App() {
               downloadState={globalDownloadState}
               downloadMeta={globalDownloadMeta}
               onDownloadSessionStart={handleDownloadSessionStart}
+              onDownloadSessionFinish={handleDownloadSessionFinish}
+              onDownloadSessionFail={handleDownloadSessionFail}
             />
           </Suspense>
         ) : savedTimelineSelection && fetchType === "single" ? (
@@ -314,6 +349,8 @@ function App() {
               downloadState={globalDownloadState}
               downloadMeta={globalDownloadMeta}
               onDownloadSessionStart={handleDownloadSessionStart}
+              onDownloadSessionFinish={handleDownloadSessionFinish}
+              onDownloadSessionFail={handleDownloadSessionFail}
             />
           </Suspense>
         ) : fetchType === "multiple" && (activeSession || recentSessions.length > 0) ? (
@@ -357,6 +394,8 @@ function App() {
             downloadMeta={globalDownloadMeta}
             onStopDownload={handleGlobalStopDownload}
             onDownloadSessionStart={handleDownloadSessionStart}
+            onDownloadSessionFinish={handleDownloadSessionFinish}
+            onDownloadSessionFail={handleDownloadSessionFail}
             recentFetches={fetchHistory}
             onSelectRecentFetch={handleHistorySelect}
             onRemoveRecentFetch={removeFromHistory}
@@ -406,6 +445,13 @@ function App() {
                 onUseDateRangeChange={setUseDateRange}
                 onStartDateChange={setStartDate}
                 onEndDateChange={setEndDate}
+                integrityTaskStatus={integrityTaskStatus}
+                integrityReport={integrityReport}
+                showIntegrityReport={showIntegrityReport}
+                onCheckIntegrityTask={handleCheckIntegrity}
+                onCancelIntegrityTask={handleCancelIntegrityCheck}
+                onShowIntegrityReportChange={setShowIntegrityReport}
+                onOpenIntegrityFolder={handleOpenIntegrityFolder}
               />
             </Suspense>
           }

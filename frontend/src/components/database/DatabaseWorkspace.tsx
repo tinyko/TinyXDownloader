@@ -21,6 +21,7 @@ import type {
   DatabaseSortOrder,
 } from "@/types/database";
 import type {
+  DownloadSessionResultStatus,
   GlobalDownloadSessionMeta,
   GlobalDownloadState,
 } from "@/types/download";
@@ -33,6 +34,8 @@ interface DatabaseWorkspaceProps {
   downloadMeta?: GlobalDownloadSessionMeta | null;
   onStopDownload?: () => void | Promise<void>;
   onDownloadSessionStart?: (meta: GlobalDownloadSessionMeta) => void;
+  onDownloadSessionFinish?: (status?: DownloadSessionResultStatus) => void;
+  onDownloadSessionFail?: () => void;
   recentFetches?: HistoryItem[];
   onSelectRecentFetch?: (item: HistoryItem) => void;
   onRemoveRecentFetch?: (id: string) => void;
@@ -46,6 +49,8 @@ export function DatabaseWorkspace({
   downloadMeta = null,
   onStopDownload,
   onDownloadSessionStart,
+  onDownloadSessionFinish,
+  onDownloadSessionFail,
   recentFetches = [],
   onSelectRecentFetch,
   onRemoveRecentFetch,
@@ -199,6 +204,8 @@ export function DatabaseWorkspace({
     onUpdateSelected,
     onStopDownload,
     onDownloadSessionStart,
+    onDownloadSessionFinish,
+    onDownloadSessionFail,
     downloadState,
   });
 

@@ -28,6 +28,7 @@ import { loadIncrementalBoundaryState } from "@/lib/fetch/bootstrapTimelineFetch
 import { runTimelineFetchLoop } from "@/lib/fetch/runTimelineFetchLoop";
 import type { FetchMode, PrivateType } from "@/types/fetch";
 import type { TwitterResponse } from "@/types/api";
+import type { TaskTerminalStatus } from "@/types/tasks";
 import { ExtractDateRangeStructured } from "../../../wailsjs/go/main/App";
 import { main } from "../../../wailsjs/go/models";
 
@@ -92,7 +93,7 @@ export async function runSingleFetchSession({
   setResumeInfo,
   setNewMediaCount,
   onAddToHistory,
-}: RunSingleFetchSessionOptions) {
+}: RunSingleFetchSessionOptions): Promise<TaskTerminalStatus> {
   const isBookmarks = mode === "private" && privateType === "bookmarks";
   const isLikes = mode === "private" && privateType === "likes";
 
@@ -126,7 +127,7 @@ export async function runSingleFetchSession({
       );
     } else {
       toast.error("No resumable fetch found");
-      return;
+      return "failed";
     }
   } else {
     clearFetchState(fetchScope);
@@ -175,7 +176,7 @@ export async function runSingleFetchSession({
           logger.warning(`Timeout reached (${timeoutSeconds}s). Stopping fetch...`);
           stopFetchRef.current = true;
           toast.warning("Fetch timeout reached. Stopping...");
-          return;
+          return "failed";
         }
       }
 
@@ -348,6 +349,7 @@ export async function runSingleFetchSession({
         toast.info(`Stopped at ${formatNumberWithComma(loopResult.currentTotalFetched)} items`);
         const resumable = getResumableInfo(cleanUsername, fetchScope);
         setResumeInfo(resumable.canResume ? resumable : null);
+        return loopResult.reason === "stopped" ? "cancelled" : "failed";
       } else if (loopResult.reason === "completed") {
         setResumeInfo(null);
       } else if (loopResult.reason === "error") {
@@ -392,7 +394,7 @@ export async function runSingleFetchSession({
           );
         }
 
-        return;
+        return "failed";
       }
 
       if (isIncrementalRefresh && !savedCompletedSnapshot) {
@@ -464,6 +466,8 @@ export async function runSingleFetchSession({
         }
       }
     }
+
+    return stopFetchRef.current ? "cancelled" : "completed";
   } finally {
     singleFetchRequestIdRef.current = null;
   }

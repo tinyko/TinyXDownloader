@@ -7,6 +7,7 @@ import type {
   MediaType as SettingsMediaType,
 } from "@/lib/settings";
 import type { FetchMode, PrivateType } from "@/types/fetch";
+import type { TaskLifecycleStatus } from "@/types/tasks";
 
 export type {
   FontFamily,
@@ -42,6 +43,7 @@ export interface DownloadIntegrityReport {
 }
 
 export interface DownloadIntegrityTaskStatus {
+  status: TaskLifecycleStatus;
   in_progress: boolean;
   cancelled: boolean;
   mode: DownloadIntegrityMode | "";
@@ -76,4 +78,15 @@ export interface SettingsPanelProps {
   onUseDateRangeChange?: (value: boolean) => void;
   onStartDateChange?: (value: string) => void;
   onEndDateChange?: (value: string) => void;
+  integrityTaskStatus?: DownloadIntegrityTaskStatus | null;
+  integrityReport?: DownloadIntegrityReport | null;
+  showIntegrityReport?: boolean;
+  onCheckIntegrityTask?: (
+    downloadPath: string,
+    proxy: string,
+    mode: DownloadIntegrityMode
+  ) => void | Promise<void>;
+  onCancelIntegrityTask?: () => void | Promise<void>;
+  onShowIntegrityReportChange?: (value: boolean) => void;
+  onOpenIntegrityFolder?: () => void | Promise<void>;
 }

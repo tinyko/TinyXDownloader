@@ -153,6 +153,7 @@ type CheckDownloadIntegrityRequest struct {
 }
 
 type DownloadIntegrityTaskStatusResponse struct {
+	Status            string                           `json:"status"`
 	InProgress        bool                             `json:"in_progress"`
 	Cancelled         bool                             `json:"cancelled"`
 	Mode              string                           `json:"mode"`

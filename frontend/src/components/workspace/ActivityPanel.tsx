@@ -1,6 +1,7 @@
 import {
   AlertTriangle,
   Download,
+  FileCheck,
   StopCircle,
   Wifi,
 } from "lucide-react";
@@ -8,18 +9,14 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import type {
-  GlobalDownloadHistoryItem,
-  GlobalDownloadSessionMeta,
-  GlobalDownloadState,
-} from "@/types/download";
+import type { GlobalDownloadHistoryItem, GlobalDownloadSessionMeta } from "@/types/download";
+import type { DownloadIntegrityReport, DownloadIntegrityTaskStatus } from "@/types/settings";
+import type { TaskCardSummary, TaskLifecycleStatus } from "@/types/tasks";
+import { cn } from "@/lib/utils";
 
 interface ActivityPanelProps {
-  fetch: {
-    loading: boolean;
+  fetch: TaskCardSummary & {
     fetchType: "single" | "multiple";
-    title: string;
-    description: string;
     elapsedTime: number;
     remainingTime: number | null;
     latestFetchResult: {
@@ -40,10 +37,13 @@ interface ActivityPanelProps {
       mediaCount: number;
     } | null;
   };
-  download: {
-    state: GlobalDownloadState | null;
+  download: TaskCardSummary & {
     meta: GlobalDownloadSessionMeta | null;
     history: GlobalDownloadHistoryItem[];
+  };
+  integrity: TaskCardSummary & {
+    report: DownloadIntegrityReport | null;
+    taskStatus: DownloadIntegrityTaskStatus | null;
   };
   failures: {
     count: number;
@@ -51,7 +51,9 @@ interface ActivityPanelProps {
     incomplete: number;
     failed: number;
   };
+  onStopFetch?: () => void | Promise<void>;
   onStopDownload: () => void | Promise<void>;
+  onStopIntegrity?: () => void | Promise<void>;
 }
 
 function formatElapsed(seconds: number) {
@@ -87,11 +89,48 @@ function SectionCard({
   );
 }
 
+function getStatusLabel(status: TaskLifecycleStatus | null) {
+  switch (status) {
+    case "running":
+      return "Running";
+    case "cancelling":
+      return "Cancelling";
+    case "completed":
+      return "Completed";
+    case "failed":
+      return "Failed";
+    case "cancelled":
+      return "Cancelled";
+    default:
+      return "Idle";
+  }
+}
+
+function getStatusTone(status: TaskLifecycleStatus | null) {
+  switch (status) {
+    case "running":
+      return "border-blue-500/20 bg-blue-500/10 text-blue-300";
+    case "cancelling":
+      return "border-amber-500/20 bg-amber-500/10 text-amber-300";
+    case "completed":
+      return "border-emerald-500/20 bg-emerald-500/10 text-emerald-300";
+    case "failed":
+      return "border-red-500/20 bg-red-500/10 text-red-300";
+    case "cancelled":
+      return "border-slate-500/20 bg-slate-500/10 text-slate-300";
+    default:
+      return "";
+  }
+}
+
 export function ActivityPanel({
   fetch,
   download,
+  integrity,
   failures,
+  onStopFetch,
   onStopDownload,
+  onStopIntegrity,
 }: ActivityPanelProps) {
   return (
     <aside className="flex h-full min-h-0 flex-col gap-3">
@@ -116,8 +155,8 @@ export function ActivityPanel({
                     : "Single-account fetch"}
                 </p>
               </div>
-              <Badge variant={fetch.loading ? "default" : "secondary"}>
-                {fetch.loading ? "Running" : "Idle"}
+              <Badge className={cn("border", getStatusTone(fetch.status))}>
+                {getStatusLabel(fetch.status)}
               </Badge>
             </div>
             <div className="grid grid-cols-2 gap-2">
@@ -138,6 +177,14 @@ export function ActivityPanel({
                 </p>
               </div>
             </div>
+            {fetch.progress ? (
+              <div className="space-y-2">
+                <Progress value={fetch.progress.percent} className="h-2.5" />
+                <p className="text-xs text-muted-foreground">
+                  {fetch.progress.current.toLocaleString()} / {fetch.progress.total.toLocaleString()} tracked
+                </p>
+              </div>
+            ) : null}
             {fetch.fetchType === "multiple" ? (
               <div className="grid grid-cols-2 gap-2 text-sm">
                 <div className="rounded-xl bg-muted/50 p-2.5">
@@ -173,6 +220,22 @@ export function ActivityPanel({
                 </p>
               </div>
             ) : null}
+            {fetch.resumeInfo?.canResume && fetch.fetchType === "single" ? (
+              <div className="rounded-xl bg-muted/50 p-2.5 text-sm text-muted-foreground">
+                Resume available for {fetch.resumeInfo.mediaCount.toLocaleString()} item(s).
+              </div>
+            ) : null}
+            {(fetch.canCancel || fetch.status === "cancelling") && onStopFetch ? (
+              <Button
+                variant="destructive"
+                className="h-10 w-full justify-center gap-2"
+                onClick={() => void onStopFetch()}
+                disabled={fetch.status === "cancelling"}
+              >
+                <StopCircle className="h-4 w-4" />
+                {fetch.status === "cancelling" ? "Cancelling..." : "Cancel Fetch"}
+              </Button>
+            ) : null}
 
             <div className="rounded-xl border border-border/70 bg-muted/20 p-2.5">
               {failures.hasFailures ? (
@@ -193,7 +256,7 @@ export function ActivityPanel({
 
         <SectionCard
           title="Download"
-          subtitle={download.meta?.subtitle || "Background download task status."}
+          subtitle={download.meta?.subtitle || download.description}
           action={
             <div className="flex h-8 items-center gap-2 rounded-full border border-border/70 bg-muted/40 px-3 text-xs font-medium text-muted-foreground">
               <Download className="h-3.5 w-3.5" />
@@ -202,27 +265,28 @@ export function ActivityPanel({
           }
         >
           <div className="space-y-3">
-            {download.state?.in_progress ? (
+            {download.progress ? (
               <div className="space-y-3">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className="text-base font-semibold">
-                      {download.meta?.title || "Downloading media"}
-                    </p>
+                    <p className="text-base font-semibold">{download.title}</p>
                     <p className="text-xs text-muted-foreground">
-                      {download.state.current.toLocaleString()} / {download.state.total.toLocaleString()} completed
+                      {download.progress.current.toLocaleString()} / {download.progress.total.toLocaleString()} completed
                     </p>
                   </div>
-                  <Badge>{download.state.percent}%</Badge>
+                  <Badge className={cn("border", getStatusTone(download.status))}>
+                    {download.progress.percent}%
+                  </Badge>
                 </div>
-                <Progress value={download.state.percent} className="h-2.5" />
+                <Progress value={download.progress.percent} className="h-2.5" />
                 <Button
                   variant="destructive"
                   className="h-10 w-full justify-center gap-2"
-                  onClick={onStopDownload}
+                  onClick={() => void onStopDownload()}
+                  disabled={download.status === "cancelling"}
                 >
                   <StopCircle className="h-4 w-4" />
-                  Stop Download
+                  {download.status === "cancelling" ? "Cancelling..." : "Cancel Download"}
                 </Button>
               </div>
             ) : (
@@ -235,7 +299,7 @@ export function ActivityPanel({
               <div className="flex items-center justify-between gap-3">
                 <h4 className="text-sm font-semibold">Recent Tasks</h4>
                 <span className="text-xs text-muted-foreground">
-                  Last completed or interrupted downloads
+                  Last completed, failed, or cancelled downloads
                 </span>
               </div>
               {download.history.length === 0 ? (
@@ -250,8 +314,8 @@ export function ActivityPanel({
                           {item.subtitle || "Recent download task"}
                         </p>
                       </div>
-                      <Badge variant={item.status === "completed" ? "default" : "secondary"}>
-                        {item.status === "completed" ? "Done" : "Interrupted"}
+                      <Badge className={cn("border", getStatusTone(item.status))}>
+                        {getStatusLabel(item.status)}
                       </Badge>
                     </div>
                     <p className="mt-2 text-xs text-muted-foreground">
@@ -262,6 +326,68 @@ export function ActivityPanel({
                 ))
               )}
             </div>
+          </div>
+        </SectionCard>
+
+        <SectionCard
+          title="Integrity"
+          subtitle={integrity.description}
+          action={
+            <div className="flex h-8 items-center gap-2 rounded-full border border-border/70 bg-muted/40 px-3 text-xs font-medium text-muted-foreground">
+              <FileCheck className="h-3.5 w-3.5" />
+              <span>Folder health</span>
+            </div>
+          }
+        >
+          <div className="space-y-3">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-base font-semibold">{integrity.title}</p>
+                <p className="text-xs text-muted-foreground">
+                  {integrity.phase || "Background integrity task status."}
+                </p>
+              </div>
+              <Badge className={cn("border", getStatusTone(integrity.status))}>
+                {getStatusLabel(integrity.status)}
+              </Badge>
+            </div>
+
+            {integrity.progress ? (
+              <div className="space-y-2">
+                <Progress value={integrity.progress.percent} className="h-2.5" />
+                <p className="text-xs text-muted-foreground">
+                  {integrity.progress.current.toLocaleString()} / {integrity.progress.total.toLocaleString()} files checked
+                </p>
+              </div>
+            ) : null}
+
+            {integrity.report ? (
+              <div className="rounded-xl bg-muted/50 p-3 text-sm">
+                <p className="font-medium">
+                  {integrity.report.partial_files + integrity.report.incomplete_files} issue(s)
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {integrity.report.checked_files.toLocaleString()} checked •{" "}
+                  {integrity.report.untracked_files.toLocaleString()} untracked
+                </p>
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                No integrity report yet.
+              </p>
+            )}
+
+            {(integrity.canCancel || integrity.status === "cancelling") && onStopIntegrity ? (
+              <Button
+                variant="destructive"
+                className="h-10 w-full justify-center gap-2"
+                onClick={() => void onStopIntegrity()}
+                disabled={integrity.status === "cancelling"}
+              >
+                <StopCircle className="h-4 w-4" />
+                {integrity.status === "cancelling" ? "Cancelling..." : "Cancel Integrity Check"}
+              </Button>
+            ) : null}
           </div>
         </SectionCard>
       </div>

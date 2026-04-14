@@ -15,8 +15,10 @@ import type {
   DownloadIntegrityReport,
   DownloadIntegrityTaskStatus,
 } from "@/types/settings";
+import type { TaskLifecycleStatus } from "@/types/tasks";
 
 interface RawIntegrityTaskStatus {
+  status?: string;
   in_progress?: boolean;
   cancelled?: boolean;
   mode?: string;
@@ -94,10 +96,32 @@ export function openSettingsFolder(path: string) {
 function normalizeIntegrityTaskStatus(
   data: RawIntegrityTaskStatus | null | undefined
 ): DownloadIntegrityTaskStatus {
+  let status: TaskLifecycleStatus = "completed";
+  switch (data?.status) {
+    case "running":
+    case "cancelling":
+    case "completed":
+    case "failed":
+    case "cancelled":
+      status = data.status;
+      break;
+    default:
+      if (data?.cancelled) {
+        status = "cancelled";
+      } else if (data?.in_progress) {
+        status = "running";
+      } else if (data?.error) {
+        status = "failed";
+      } else {
+        status = "completed";
+      }
+  }
+
   const mode =
     data?.mode === "quick" || data?.mode === "deep" ? data.mode : "";
 
   return {
+    status,
     in_progress: Boolean(data?.in_progress),
     cancelled: Boolean(data?.cancelled),
     mode,
