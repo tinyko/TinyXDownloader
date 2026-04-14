@@ -12,7 +12,11 @@ import {
 import { checkExifToolInstalled, checkFFmpegInstalled, downloadExifToolBinary, downloadFFmpegBinary, openSettingsFolder, runDownloadIntegrityCheck, selectDownloadFolder } from "@/lib/settings-client";
 import { applyTheme } from "@/lib/themes";
 import { toastWithSound as toast } from "@/lib/toast-with-sound";
-import type { SettingsPanelProps, DownloadIntegrityReport } from "@/types/settings";
+import type {
+  SettingsPanelProps,
+  DownloadIntegrityMode,
+  DownloadIntegrityReport,
+} from "@/types/settings";
 
 export function useSettingsPanelState({
   embedded = false,
@@ -28,6 +32,8 @@ export function useSettingsPanelState({
   const [downloadingExifTool, setDownloadingExifTool] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [checkingIntegrity, setCheckingIntegrity] = useState(false);
+  const [checkingIntegrityMode, setCheckingIntegrityMode] =
+    useState<DownloadIntegrityMode | null>(null);
   const [integrityReport, setIntegrityReport] = useState<DownloadIntegrityReport | null>(null);
   const [showIntegrityReport, setShowIntegrityReport] = useState(false);
   const [showPublicToken, setShowPublicToken] = useState(false);
@@ -154,7 +160,7 @@ export function useSettingsPanelState({
     }
   };
 
-  const handleCheckIntegrity = async () => {
+  const handleCheckIntegrity = async (mode: DownloadIntegrityMode) => {
     const downloadPath = (tempSettings.downloadPath || savedSettings.downloadPath || "").trim();
     if (!downloadPath) {
       toast.error("Download path is empty");
@@ -162,17 +168,24 @@ export function useSettingsPanelState({
     }
 
     setCheckingIntegrity(true);
+    setCheckingIntegrityMode(mode);
     try {
-      const report = await runDownloadIntegrityCheck(downloadPath, tempSettings.proxy || "");
+      const report = await runDownloadIntegrityCheck(
+        downloadPath,
+        tempSettings.proxy || "",
+        mode
+      );
       setIntegrityReport(report);
       setShowIntegrityReport(true);
 
       const issueCount = report.partial_files + report.incomplete_files;
       if (issueCount > 0) {
-        toast.warning(`Found ${issueCount} incomplete item(s)`);
+        toast.warning(
+          `${mode === "quick" ? "Quick" : "Deep"} check found ${issueCount} incomplete item(s)`
+        );
       } else {
         toast.success(
-          `Checked ${report.checked_files} tracked file(s), no incomplete files found`
+          `${mode === "quick" ? "Quick" : "Deep"} check completed: ${report.checked_files} tracked file(s), no incomplete files found`
         );
       }
     } catch (error) {
@@ -180,6 +193,7 @@ export function useSettingsPanelState({
       toast.error(`Integrity check failed: ${message}`);
     } finally {
       setCheckingIntegrity(false);
+      setCheckingIntegrityMode(null);
     }
   };
 
@@ -208,6 +222,7 @@ export function useSettingsPanelState({
     showResetConfirm,
     setShowResetConfirm,
     checkingIntegrity,
+    checkingIntegrityMode,
     integrityReport,
     showIntegrityReport,
     setShowIntegrityReport,

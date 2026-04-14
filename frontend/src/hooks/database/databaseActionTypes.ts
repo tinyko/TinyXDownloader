@@ -11,7 +11,7 @@ export interface UseDatabaseActionsOptions {
   loadAccounts: () => Promise<void>;
   refreshFolderExistence: () => Promise<void>;
   onLoadAccount: (account: AccountListItem) => void | Promise<void>;
-  onUpdateSelected?: (usernames: string[]) => void;
+  onUpdateSelected?: (usernames: string[]) => void | Promise<void>;
   onStopDownload?: () => void | Promise<void>;
   onDownloadSessionStart?: (meta: GlobalDownloadSessionMeta) => void;
   downloadState?: GlobalDownloadState | null;

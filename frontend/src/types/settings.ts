@@ -17,6 +17,8 @@ export type {
   SettingsMediaType,
 };
 
+export type DownloadIntegrityMode = "quick" | "deep";
+
 export interface DownloadIntegrityIssue {
   path: string;
   relative_path: string;
@@ -27,6 +29,7 @@ export interface DownloadIntegrityIssue {
 }
 
 export interface DownloadIntegrityReport {
+  mode: DownloadIntegrityMode;
   download_path: string;
   scanned_files: number;
   checked_files: number;

@@ -26,7 +26,7 @@ import type { HistoryItem } from "@/types/fetch";
 
 interface DatabaseWorkspaceProps {
   onLoadAccount: (account: AccountListItem) => void | Promise<void>;
-  onUpdateSelected?: (usernames: string[]) => void;
+  onUpdateSelected?: (usernames: string[]) => void | Promise<void>;
   downloadState?: GlobalDownloadState | null;
   downloadMeta?: GlobalDownloadSessionMeta | null;
   onStopDownload?: () => void | Promise<void>;

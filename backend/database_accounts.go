@@ -150,6 +150,31 @@ func GetAllGroups() ([]map[string]string, error) {
 	return groups, nil
 }
 
+func GetSavedAccountsWorkspaceData() (*SavedAccountsWorkspaceData, error) {
+	accounts, err := GetAllAccounts()
+	if err != nil {
+		return nil, err
+	}
+
+	groupMaps, err := GetAllGroups()
+	if err != nil {
+		return nil, err
+	}
+
+	groups := make([]GroupInfo, 0, len(groupMaps))
+	for _, group := range groupMaps {
+		groups = append(groups, GroupInfo{
+			Name:  group["name"],
+			Color: group["color"],
+		})
+	}
+
+	return &SavedAccountsWorkspaceData{
+		Accounts: accounts,
+		Groups:   groups,
+	}, nil
+}
+
 // ClearAllAccounts deletes all accounts from the database
 func ClearAllAccounts() error {
 	if db == nil {
@@ -198,12 +223,22 @@ func GetAccountByID(id int64) (*AccountDB, error) {
 
 // GetAccountResponseByScope returns the saved snapshot JSON for an exact fetch scope.
 func GetAccountResponseByScope(username, mediaType, timelineType string, retweets bool, queryKey string) (string, error) {
-	response, err := GetAccountResponseByScopeStructured(username, mediaType, timelineType, retweets, queryKey)
-	if err != nil || response == nil {
+	if db == nil {
+		if err := InitDB(); err != nil {
+			return "", err
+		}
+	}
+
+	summary, err := getAccountSummaryByFetchKey(buildFetchKey(username, mediaType, timelineType, retweets, queryKey))
+	if err != nil || summary == nil {
 		return "", err
 	}
 
-	responseJSON, err := json.Marshal(response)
+	if err := ensureSummaryMigrated(summary); err != nil {
+		return "", err
+	}
+
+	responseJSON, err := marshalStructuredResponseBySummary(summary)
 	if err != nil {
 		return "", err
 	}

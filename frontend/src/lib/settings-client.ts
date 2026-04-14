@@ -7,7 +7,7 @@ import {
   OpenFolder,
   SelectFolder,
 } from "../../wailsjs/go/main/App";
-import type { DownloadIntegrityReport } from "@/types/settings";
+import type { DownloadIntegrityMode, DownloadIntegrityReport } from "@/types/settings";
 
 export function selectDownloadFolder(currentPath: string) {
   return SelectFolder(currentPath);
@@ -29,10 +29,15 @@ export function downloadExifToolBinary() {
   return DownloadExifTool();
 }
 
-export function runDownloadIntegrityCheck(downloadPath: string, proxy: string) {
+export function runDownloadIntegrityCheck(
+  downloadPath: string,
+  proxy: string,
+  mode: DownloadIntegrityMode
+) {
   return CheckDownloadIntegrity({
     download_path: downloadPath,
     proxy,
+    mode,
   }) as Promise<DownloadIntegrityReport>;
 }
 

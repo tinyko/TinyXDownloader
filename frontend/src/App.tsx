@@ -114,12 +114,16 @@ function App() {
   });
 
   const {
-    multipleAccounts,
+    activeSession,
+    recentSessions,
     isFetchingAll,
-    setMultipleAccountsState,
+    createPendingSession,
     resetMultipleQueueState,
     handleFetchAll,
     handleStopAll,
+    removeCurrentSession,
+    removeRecentSession,
+    clearRecentSessions,
   } = useMultiFetchController();
 
   const {
@@ -136,7 +140,7 @@ function App() {
       return;
     }
 
-    const accountsToDownload = multipleAccounts.filter((account) => account.mediaCount > 0);
+    const accountsToDownload = activeSession?.accounts.filter((account) => account.mediaCount > 0) || [];
 
     if (accountsToDownload.length === 0) {
       toast.error("No fetched media is ready to download yet");
@@ -169,9 +173,9 @@ function App() {
 
     handleDownloadSessionStart({
       source: "multi-account-workspace",
-      title: `Downloading ${accountsToDownload.length} Accounts`,
-      subtitle: `${formatNumberWithComma(totalItems)} item(s) from ${formatNumberWithComma(accountsToDownload.length)} fetched account(s)`,
-      targetKey: "multi-account-workspace",
+        title: `Downloading ${accountsToDownload.length} Accounts`,
+        subtitle: `${formatNumberWithComma(totalItems)} item(s) from ${formatNumberWithComma(accountsToDownload.length)} fetched account(s)`,
+        targetKey: "multi-account-workspace",
     });
 
     try {
@@ -206,7 +210,7 @@ function App() {
     fetchedMediaType,
     globalDownloadState?.in_progress,
     handleDownloadSessionStart,
-    multipleAccounts,
+    activeSession,
     searchMode,
     searchPrivateType,
   ]);
@@ -221,7 +225,7 @@ function App() {
     username,
     elapsedTime,
     remainingTime,
-    multipleAccounts,
+    activeSession,
     result,
     resumeInfo,
     globalDownloadState,
@@ -239,14 +243,14 @@ function App() {
     username,
     setUsername,
     loading,
-    isFetchingAll,
+    publicAuthToken,
     setFetchedMediaType,
     setFetchType,
     setWorkspaceTab,
     setSavedTimelineSelection,
     setSearchMode,
     setSearchPrivateType,
-    setMultipleAccountsState,
+    createPendingSession,
     clearLiveResult,
     clearResumeInfo,
     resetMultipleQueueState,
@@ -312,12 +316,16 @@ function App() {
               onDownloadSessionStart={handleDownloadSessionStart}
             />
           </Suspense>
-        ) : fetchType === "multiple" && multipleAccounts.length > 0 ? (
+        ) : fetchType === "multiple" && (activeSession || recentSessions.length > 0) ? (
           <MultiAccountWorkspace
-            accounts={multipleAccounts}
+            session={activeSession}
+            recentSessions={recentSessions}
             isFetchingAll={isFetchingAll}
             isDownloading={Boolean(globalDownloadState?.in_progress)}
             onDownloadFetched={handleDownloadFetchedAccounts}
+            onRemoveCurrentSession={removeCurrentSession}
+            onRemoveRecentSession={removeRecentSession}
+            onClearRecentSessions={clearRecentSessions}
           />
         ) : (
           <div className="flex h-full min-h-[420px] items-center justify-center rounded-[24px] border border-dashed border-border/80 bg-muted/20 px-8 text-center">

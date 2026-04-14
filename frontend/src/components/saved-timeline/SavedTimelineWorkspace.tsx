@@ -16,7 +16,9 @@ import { useIndexedTimelinePreview } from "@/hooks/media/useIndexedTimelinePrevi
 import { useSavedAccountFolderExists } from "@/hooks/saved/useSavedAccountFolderExists";
 import { useSavedTimelineActions } from "@/hooks/saved/useSavedTimelineActions";
 import { useSavedTimelinePager } from "@/hooks/saved/useSavedTimelinePager";
+import { loadSavedTimelineBootstrap } from "@/lib/fetch/snapshot-client";
 import type { FetchScope } from "@/lib/fetch/state";
+import type { AccountTimelineBootstrap } from "@/types/api";
 import { backend } from "../../../wailsjs/go/models";
 
 interface SavedTimelineWorkspaceProps {
@@ -39,6 +41,8 @@ export function SavedTimelineWorkspace({
   const [sortBy, setSortBy] = useState("date-desc");
   const [viewMode, setViewMode] = useState<"gallery" | "list">("list");
   const [showScrollTop, setShowScrollTop] = useState(false);
+  const [bootstrap, setBootstrap] = useState<AccountTimelineBootstrap | null>(null);
+  const [loadingBootstrap, setLoadingBootstrap] = useState(true);
 
   const accountFolderName = useMemo(() => {
     if (account.username === "bookmarks") {
@@ -50,16 +54,46 @@ export function SavedTimelineWorkspace({
     return account.username;
   }, [account.username]);
 
-  const { page, items, loading, loadingMore, hasMore, loadMoreRef } =
+  const { items, loading, loadingMore, hasMore, loadMoreRef } =
     useSavedTimelinePager(scope, filterType, sortBy);
-  const accountInfo = page?.summary.account_info;
-  const totalItems = page?.total_items ?? account.total_media ?? 0;
-  const mediaCounts = page?.media_counts ?? {
+  const accountInfo = bootstrap?.summary.account_info;
+  const totalItems = bootstrap?.total_items ?? account.total_media ?? 0;
+  const mediaCounts = bootstrap?.media_counts ?? {
     photo: 0,
     video: 0,
     gif: 0,
     text: 0,
   };
+  const bootstrapResetKey = `${scope.username}|${scope.mediaType}|${scope.timelineType}|${
+    scope.retweets ? "1" : "0"
+  }|${scope.queryKey}|${filterType}`;
+
+  useEffect(() => {
+    let active = true;
+    setLoadingBootstrap(true);
+
+    const loadBootstrap = async () => {
+      const data = await loadSavedTimelineBootstrap(scope, filterType);
+      if (!active) {
+        return;
+      }
+      setBootstrap(data);
+      setLoadingBootstrap(false);
+    };
+
+    void loadBootstrap();
+    return () => {
+      active = false;
+    };
+  }, [
+    bootstrapResetKey,
+    filterType,
+    scope.mediaType,
+    scope.queryKey,
+    scope.retweets,
+    scope.timelineType,
+    scope.username,
+  ]);
 
   const previewResetKey = `${scope.username}|${scope.mediaType}|${scope.timelineType}|${
     scope.retweets ? "1" : "0"
@@ -155,7 +189,7 @@ export function SavedTimelineWorkspace({
             hasMore={hasMore}
           />
 
-          {loading ? (
+          {loadingBootstrap || loading ? (
             <div className="flex h-[320px] items-center justify-center rounded-2xl border border-border/70 bg-background/40">
               <Spinner />
             </div>

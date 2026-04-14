@@ -1,4 +1,6 @@
 import {
+  GetAccountTimelineBootstrap,
+  GetAccountTimelineItemsPage,
   GetAccountSnapshotStructured,
   GetAccountSnapshotSummaryStructured,
   GetAccountSnapshotTweetIDs,
@@ -9,6 +11,8 @@ import { backend, main } from "../../../wailsjs/go/models";
 
 import type {
   AccountInfo,
+  AccountTimelineBootstrap,
+  AccountTimelineItemsPage,
   AccountTimelinePage,
   SavedTimelineItem,
   SnapshotSummary,
@@ -16,6 +20,7 @@ import type {
   TwitterResponse,
 } from "@/types/api";
 import type { FetchScope } from "@/lib/fetch/state";
+import type { SavedAccountsWorkspaceData } from "@/types/database";
 
 export function normalizeStructuredTimelineEntry(
   entry: backend.TimelineEntry | TimelineEntry
@@ -131,6 +136,39 @@ export function normalizeStructuredTimelinePage(
   };
 }
 
+export function normalizeStructuredTimelineBootstrap(
+  bootstrap: backend.AccountTimelineBootstrap | AccountTimelineBootstrap | null | undefined
+): AccountTimelineBootstrap | null {
+  if (!bootstrap) {
+    return null;
+  }
+
+  return {
+    summary: normalizeStructuredSummary(bootstrap.summary)!,
+    media_counts: {
+      photo: bootstrap.media_counts?.photo ?? 0,
+      video: bootstrap.media_counts?.video ?? 0,
+      gif: bootstrap.media_counts?.gif ?? 0,
+      text: bootstrap.media_counts?.text ?? 0,
+    },
+    total_items: bootstrap.total_items ?? 0,
+  };
+}
+
+export function normalizeStructuredTimelineItemsPage(
+  page: backend.AccountTimelineItemsPage | AccountTimelineItemsPage | null | undefined
+): AccountTimelineItemsPage | null {
+  if (!page) {
+    return null;
+  }
+
+  return {
+    items: (page.items || []).map((item) => normalizeStructuredSavedTimelineItem(item)),
+    has_more: Boolean(page.has_more),
+    next_offset: page.next_offset ?? 0,
+  };
+}
+
 function buildScopeRequest(scope: FetchScope) {
   return {
     username: scope.username,
@@ -191,6 +229,68 @@ export async function loadAccountTimelinePage(
     console.error("Failed to load account timeline page:", error);
     return null;
   }
+}
+
+export async function loadSavedTimelineBootstrap(
+  scope: FetchScope,
+  filterType: string
+): Promise<AccountTimelineBootstrap | null> {
+  try {
+    const bootstrap = await GetAccountTimelineBootstrap(
+      new main.AccountTimelineBootstrapRequest({
+        scope: buildScopeRequest(scope),
+        filter_type: filterType,
+      })
+    );
+    return normalizeStructuredTimelineBootstrap(bootstrap);
+  } catch (error) {
+    console.error("Failed to load account timeline bootstrap:", error);
+    return null;
+  }
+}
+
+export async function loadSavedTimelineItemsPage(
+  scope: FetchScope,
+  offset: number,
+  limit: number,
+  filterType: string,
+  sortBy: string
+): Promise<AccountTimelineItemsPage | null> {
+  try {
+    const page = await GetAccountTimelineItemsPage(
+      new main.AccountTimelineItemsPageRequest({
+        scope: buildScopeRequest(scope),
+        offset,
+        limit,
+        filter_type: filterType,
+        sort_by: sortBy,
+      })
+    );
+    return normalizeStructuredTimelineItemsPage(page);
+  } catch (error) {
+    console.error("Failed to load saved timeline items page:", error);
+    return null;
+  }
+}
+
+export function normalizeSavedAccountsWorkspaceData(
+  data:
+    | backend.SavedAccountsWorkspaceData
+    | SavedAccountsWorkspaceData
+    | null
+    | undefined
+): SavedAccountsWorkspaceData | null {
+  if (!data) {
+    return null;
+  }
+
+  return {
+    accounts: data.accounts || [],
+    groups: (data.groups || []).map((group) => ({
+      name: group.name,
+      color: group.color,
+    })),
+  };
 }
 
 export async function saveAccountSnapshotChunk(

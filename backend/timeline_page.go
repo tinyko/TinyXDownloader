@@ -26,6 +26,18 @@ type AccountTimelinePage struct {
 	NextOffset  int                    `json:"next_offset"`
 }
 
+type AccountTimelineBootstrap struct {
+	Summary     AccountSnapshotSummary `json:"summary"`
+	MediaCounts TimelineMediaCounts    `json:"media_counts"`
+	TotalItems  int                    `json:"total_items"`
+}
+
+type AccountTimelineItemsPage struct {
+	Items      []SavedTimelineItem `json:"items"`
+	HasMore    bool                `json:"has_more"`
+	NextOffset int                 `json:"next_offset"`
+}
+
 type SavedTimelineItem struct {
 	URL              string `json:"url"`
 	Date             string `json:"date"`
@@ -34,6 +46,11 @@ type SavedTimelineItem struct {
 	Content          string `json:"content,omitempty"`
 	AuthorUsername   string `json:"author_username,omitempty"`
 	OriginalFilename string `json:"original_filename,omitempty"`
+}
+
+type timelinePageProjectionRow struct {
+	entryKey string
+	row      timelineMediaProjection
 }
 
 func normalizeTimelinePageLimit(limit int) int {
@@ -119,96 +136,70 @@ func queryTimelineMediaCounts(fetchKey string) (TimelineMediaCounts, error) {
 	return counts, rows.Err()
 }
 
-func GetAccountTimelinePage(
-	scope FetchScopeRecord,
-	offset int,
-	limit int,
-	filterType string,
-	sortBy string,
-) (*AccountTimelinePage, error) {
-	if db == nil {
-		if err := InitDB(); err != nil {
-			return nil, err
-		}
-	}
-
-	normalizedScope := normalizeFetchScopeRecord(scope)
-	summary, err := getAccountSummaryByFetchKey(buildFetchKeyFromScope(normalizedScope))
-	if err != nil || summary == nil {
-		return nil, err
-	}
-
-	if err := ensureSummaryMigrated(summary); err != nil {
-		return nil, err
-	}
-
-	pageSummary := buildStructuredSummary(summary)
-	if pageSummary == nil {
-		return nil, nil
-	}
-
-	mediaCounts, err := queryTimelineMediaCounts(summary.FetchKey)
-	if err != nil {
-		return nil, err
-	}
-
-	normalizedOffset := normalizeTimelinePageOffset(offset)
-	normalizedLimit := normalizeTimelinePageLimit(limit)
+func queryTimelineTotalItems(fetchKey string, filterType string) (int, error) {
 	filterClause, filterArgs := buildTimelineFilterClause(filterType)
-	sortClause := buildTimelineSortClause(sortBy)
+	args := append([]interface{}{fetchKey}, filterArgs...)
 
-	totalArgs := append([]interface{}{summary.FetchKey}, filterArgs...)
 	var totalItems int
 	if err := db.QueryRow(`
 		SELECT COUNT(*)
 		FROM account_timeline_items
 		WHERE fetch_key = ?`+filterClause,
-		totalArgs...,
+		args...,
 	).Scan(&totalItems); err != nil {
-		return nil, err
+		return 0, err
 	}
 
-	pageArgs := append([]interface{}{summary.FetchKey}, filterArgs...)
-	pageArgs = append(pageArgs, normalizedLimit, normalizedOffset)
+	return totalItems, nil
+}
+
+func queryTimelineItemsPageRows(
+	fetchKey string,
+	offset int,
+	limit int,
+	filterType string,
+	sortBy string,
+) ([]timelinePageProjectionRow, error) {
+	filterClause, filterArgs := buildTimelineFilterClause(filterType)
+	sortClause := buildTimelineSortClause(sortBy)
+
+	args := append([]interface{}{fetchKey}, filterArgs...)
+	args = append(args, limit, offset)
+
 	rows, err := db.Query(`
 		SELECT
+			entry_key,
 			url,
 			date_value,
 			tweet_id,
 			type,
 			content,
 			author_username,
-			original_filename,
-			entry_json
+			original_filename
 		FROM account_timeline_items
 		WHERE fetch_key = ?`+filterClause+`
 		ORDER BY `+sortClause+`
 		LIMIT ? OFFSET ?
-	`, pageArgs...)
+	`, args...)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	items := make([]SavedTimelineItem, 0, normalizedLimit)
+	items := make([]timelinePageProjectionRow, 0, limit)
 	for rows.Next() {
-		var row timelineMediaProjection
+		var item timelinePageProjectionRow
 		if err := rows.Scan(
-			&row.URL,
-			&row.Date,
-			&row.TweetID,
-			&row.Type,
-			&row.Content,
-			&row.AuthorUsername,
-			&row.OriginalFilename,
-			&row.EntryJSON,
+			&item.entryKey,
+			&item.row.URL,
+			&item.row.Date,
+			&item.row.TweetID,
+			&item.row.Type,
+			&item.row.Content,
+			&item.row.AuthorUsername,
+			&item.row.OriginalFilename,
 		); err != nil {
 			return nil, err
-		}
-
-		item, ok := buildSavedTimelineItemFromProjection(row)
-		if !ok {
-			continue
 		}
 		items = append(items, item)
 	}
@@ -216,14 +207,155 @@ func GetAccountTimelinePage(
 		return nil, err
 	}
 
-	nextOffset := normalizedOffset + len(items)
-	return &AccountTimelinePage{
+	return items, nil
+}
+
+func loadTimelinePageSummary(scope FetchScopeRecord) (*accountSummaryRecord, *AccountSnapshotSummary, error) {
+	normalizedScope := normalizeFetchScopeRecord(scope)
+	summary, err := getAccountSummaryByFetchKey(buildFetchKeyFromScope(normalizedScope))
+	if err != nil || summary == nil {
+		return nil, nil, err
+	}
+
+	if err := ensureSummaryMigrated(summary); err != nil {
+		return nil, nil, err
+	}
+
+	pageSummary := buildStructuredSummary(summary)
+	if pageSummary == nil {
+		return nil, nil, nil
+	}
+
+	return summary, pageSummary, nil
+}
+
+func GetAccountTimelineBootstrap(
+	scope FetchScopeRecord,
+	filterType string,
+) (*AccountTimelineBootstrap, error) {
+	if db == nil {
+		if err := InitDB(); err != nil {
+			return nil, err
+		}
+	}
+
+	summary, pageSummary, err := loadTimelinePageSummary(scope)
+	if err != nil || summary == nil || pageSummary == nil {
+		return nil, err
+	}
+
+	mediaCounts, err := queryTimelineMediaCounts(summary.FetchKey)
+	if err != nil {
+		return nil, err
+	}
+	totalItems, err := queryTimelineTotalItems(summary.FetchKey, filterType)
+	if err != nil {
+		return nil, err
+	}
+
+	return &AccountTimelineBootstrap{
 		Summary:     *pageSummary,
 		MediaCounts: mediaCounts,
-		Items:       items,
 		TotalItems:  totalItems,
-		HasMore:     nextOffset < totalItems,
-		NextOffset:  nextOffset,
+	}, nil
+}
+
+func GetAccountTimelineItemsPage(
+	scope FetchScopeRecord,
+	offset int,
+	limit int,
+	filterType string,
+	sortBy string,
+) (*AccountTimelineItemsPage, error) {
+	if db == nil {
+		if err := InitDB(); err != nil {
+			return nil, err
+		}
+	}
+
+	summary, _, err := loadTimelinePageSummary(scope)
+	if err != nil || summary == nil {
+		return nil, err
+	}
+
+	normalizedOffset := normalizeTimelinePageOffset(offset)
+	normalizedLimit := normalizeTimelinePageLimit(limit)
+	totalItems, err := queryTimelineTotalItems(summary.FetchKey, filterType)
+	if err != nil {
+		return nil, err
+	}
+	pageRows, err := queryTimelineItemsPageRows(
+		summary.FetchKey,
+		normalizedOffset,
+		normalizedLimit,
+		filterType,
+		sortBy,
+	)
+	if err != nil {
+		return nil, err
+	}
+	entryKeysToHydrate := make([]string, 0)
+	for _, item := range pageRows {
+		if projectionNeedsHydration(item.row) {
+			entryKeysToHydrate = append(entryKeysToHydrate, item.entryKey)
+		}
+	}
+	if len(entryKeysToHydrate) > 0 {
+		if err := hydrateTimelineProjectionEntryKeys(summary.FetchKey, entryKeysToHydrate); err != nil {
+			return nil, err
+		}
+		pageRows, err = queryTimelineItemsPageRows(
+			summary.FetchKey,
+			normalizedOffset,
+			normalizedLimit,
+			filterType,
+			sortBy,
+		)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	items := make([]SavedTimelineItem, 0, len(pageRows))
+	for _, pageRow := range pageRows {
+		item, ok := buildSavedTimelineItemFromProjection(pageRow.row)
+		if !ok {
+			continue
+		}
+		items = append(items, item)
+	}
+
+	nextOffset := normalizedOffset + len(items)
+	return &AccountTimelineItemsPage{
+		Items:      items,
+		HasMore:    nextOffset < totalItems,
+		NextOffset: nextOffset,
+	}, nil
+}
+
+func GetAccountTimelinePage(
+	scope FetchScopeRecord,
+	offset int,
+	limit int,
+	filterType string,
+	sortBy string,
+) (*AccountTimelinePage, error) {
+	bootstrap, err := GetAccountTimelineBootstrap(scope, filterType)
+	if err != nil || bootstrap == nil {
+		return nil, err
+	}
+	itemsPage, err := GetAccountTimelineItemsPage(scope, offset, limit, filterType, sortBy)
+	if err != nil || itemsPage == nil {
+		return nil, err
+	}
+
+	return &AccountTimelinePage{
+		Summary:     bootstrap.Summary,
+		MediaCounts: bootstrap.MediaCounts,
+		Items:       itemsPage.Items,
+		TotalItems:  bootstrap.TotalItems,
+		HasMore:     itemsPage.HasMore,
+		NextOffset:  itemsPage.NextOffset,
 	}, nil
 }
 

@@ -2,7 +2,6 @@ package backend
 
 import (
 	"database/sql"
-	"encoding/json"
 	"strings"
 )
 
@@ -89,12 +88,7 @@ func GetAccountResponseByScopeStructured(username, mediaType, timelineType strin
 		return nil, err
 	}
 
-	timeline, err := loadTimelineEntriesByFetchKey(summary.FetchKey)
-	if err != nil {
-		return nil, err
-	}
-
-	return buildStructuredResponse(summary, timeline), nil
+	return loadStructuredResponseBySummary(summary)
 }
 
 func buildAccountDBFromSummary(summary *accountSummaryRecord) (*AccountDB, error) {
@@ -106,19 +100,9 @@ func buildAccountDBFromSummary(summary *accountSummaryRecord) (*AccountDB, error
 		return nil, err
 	}
 
-	timeline, err := loadTimelineEntriesByFetchKey(summary.FetchKey)
+	responseJSON, err := marshalStructuredResponseBySummary(summary)
 	if err != nil {
 		return nil, err
-	}
-
-	response := buildStructuredResponse(summary, timeline)
-	responseJSON := ""
-	if response != nil {
-		responseBytes, err := json.Marshal(response)
-		if err != nil {
-			return nil, err
-		}
-		responseJSON = string(responseBytes)
 	}
 
 	return &AccountDB{

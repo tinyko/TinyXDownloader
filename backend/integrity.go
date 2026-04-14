@@ -7,13 +7,17 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
 )
 
 const integrityCheckWorkers = 5
+
+const (
+	downloadIntegrityModeQuick = "quick"
+	downloadIntegrityModeDeep  = "deep"
+)
 
 type DownloadIntegrityIssue struct {
 	Path         string `json:"path"`
@@ -25,6 +29,7 @@ type DownloadIntegrityIssue struct {
 }
 
 type DownloadIntegrityReport struct {
+	Mode              string                   `json:"mode"`
 	DownloadPath      string                   `json:"download_path"`
 	ScannedFiles      int                      `json:"scanned_files"`
 	CheckedFiles      int                      `json:"checked_files"`
@@ -51,7 +56,18 @@ type trackedFileCheckResult struct {
 
 // CheckDownloadIntegrity scans the download directory for partial and truncated files.
 // It validates files that can be matched back to saved media entries in the database.
-func CheckDownloadIntegrity(downloadPath, customProxy string) (DownloadIntegrityReport, error) {
+func normalizeDownloadIntegrityMode(mode string) string {
+	switch strings.TrimSpace(strings.ToLower(mode)) {
+	case downloadIntegrityModeDeep:
+		return downloadIntegrityModeDeep
+	case downloadIntegrityModeQuick, "":
+		fallthrough
+	default:
+		return downloadIntegrityModeQuick
+	}
+}
+
+func CheckDownloadIntegrity(downloadPath, customProxy, mode string) (DownloadIntegrityReport, error) {
 	if db == nil {
 		if err := InitDB(); err != nil {
 			return DownloadIntegrityReport{}, err
@@ -83,107 +99,40 @@ func CheckDownloadIntegrity(downloadPath, customProxy string) (DownloadIntegrity
 		return DownloadIntegrityReport{}, err
 	}
 
-	client, err := CreateHTTPClient(customProxy, 30*time.Second)
-	if err != nil {
-		client = &http.Client{Timeout: 30 * time.Second}
+	normalizedMode := normalizeDownloadIntegrityMode(mode)
+
+	var client *http.Client
+	if normalizedMode == downloadIntegrityModeDeep {
+		client, err = CreateHTTPClient(customProxy, 30*time.Second)
+		if err != nil {
+			client = &http.Client{Timeout: 30 * time.Second}
+		}
 	}
 
-	return checkDownloadDirectoryIntegrity(context.Background(), absolutePath, trackedFiles, client)
+	return checkDownloadDirectoryIntegrity(
+		context.Background(),
+		absolutePath,
+		trackedFiles,
+		client,
+		normalizedMode,
+	)
 }
 
-func loadTrackedMediaIndex(downloadPath string) (map[string]MediaItem, error) {
-	rows, err := db.Query(`
-		SELECT id, username, name, profile_image, COALESCE(account_info_json, ''), total_media, last_fetched,
-		       COALESCE(response_json, ''), COALESCE(media_type, 'all'), COALESCE(timeline_type, 'timeline'),
-		       COALESCE(retweets, 0), COALESCE(query_key, ''), COALESCE(cursor, ''),
-		       COALESCE(completed, 1), COALESCE(followers_count, 0), COALESCE(statuses_count, 0),
-		       fetch_key, COALESCE(storage_version, 1)
-		FROM accounts
-		ORDER BY last_fetched DESC
-	`)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	tracked := make(map[string]MediaItem)
-	for rows.Next() {
-		var summary accountSummaryRecord
-		var lastFetched time.Time
-		var retweetsInt int
-		var completedInt int
-		if err := rows.Scan(
-			&summary.ID,
-			&summary.Username,
-			&summary.Name,
-			&summary.ProfileImage,
-			&summary.AccountInfoJSON,
-			&summary.TotalMedia,
-			&lastFetched,
-			&summary.ResponseJSON,
-			&summary.MediaType,
-			&summary.TimelineType,
-			&retweetsInt,
-			&summary.QueryKey,
-			&summary.Cursor,
-			&completedInt,
-			&summary.FollowersCount,
-			&summary.StatusesCount,
-			&summary.FetchKey,
-			&summary.StorageVersion,
-		); err != nil {
-			continue
-		}
-		summary.LastFetched = lastFetched
-		summary.Retweets = retweetsInt == 1
-		summary.Completed = completedInt == 1
-
-		if err := ensureScopeDownloadMediaIndex(&summary); err != nil {
-			continue
-		}
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-
-	indexRows, err := db.Query(`
-		SELECT relative_path, url, tweet_id, media_type, download_username
-		FROM download_media_index
-	`)
-	if err != nil {
-		return nil, err
-	}
-	defer indexRows.Close()
-
-	for indexRows.Next() {
-		var relativePath string
-		var mediaURL string
-		var tweetIDValue string
-		var mediaType string
-		var downloadUsername string
-		if err := indexRows.Scan(&relativePath, &mediaURL, &tweetIDValue, &mediaType, &downloadUsername); err != nil {
-			return nil, err
-		}
-		tweetID, _ := strconv.ParseInt(strings.TrimSpace(tweetIDValue), 10, 64)
-		outputPath := filepath.Join(downloadPath, relativePath)
-		tracked[filepath.Clean(outputPath)] = MediaItem{
-			URL:      mediaURL,
-			TweetID:  tweetID,
-			Type:     mediaType,
-			Username: downloadUsername,
-		}
-	}
-
-	return tracked, indexRows.Err()
-}
-
-func checkDownloadDirectoryIntegrity(ctx context.Context, downloadPath string, tracked map[string]MediaItem, client *http.Client) (DownloadIntegrityReport, error) {
+func checkDownloadDirectoryIntegrity(
+	ctx context.Context,
+	downloadPath string,
+	tracked map[string]MediaItem,
+	client *http.Client,
+	mode string,
+) (DownloadIntegrityReport, error) {
 	report := DownloadIntegrityReport{
+		Mode:         mode,
 		DownloadPath: downloadPath,
 		Issues:       make([]DownloadIntegrityIssue, 0),
 	}
 
 	trackedLocalFiles := make([]trackedLocalFile, 0)
+	seenTrackedPaths := make(map[string]struct{}, len(tracked))
 	err := filepath.Walk(downloadPath, func(path string, info os.FileInfo, walkErr error) error {
 		if walkErr != nil {
 			return nil
@@ -218,6 +167,7 @@ func checkDownloadDirectoryIntegrity(ctx context.Context, downloadPath string, t
 		}
 
 		report.CheckedFiles++
+		seenTrackedPaths[cleanPath] = struct{}{}
 		trackedLocalFiles = append(trackedLocalFiles, trackedLocalFile{
 			path:         cleanPath,
 			relativePath: relativePath,
@@ -227,6 +177,25 @@ func checkDownloadDirectoryIntegrity(ctx context.Context, downloadPath string, t
 	})
 	if err != nil {
 		return report, err
+	}
+
+	for trackedPath, item := range tracked {
+		if _, seen := seenTrackedPaths[trackedPath]; seen {
+			continue
+		}
+		relativePath, err := filepath.Rel(downloadPath, trackedPath)
+		if err != nil {
+			relativePath = trackedPath
+		}
+		report.CheckedFiles++
+		report.IncompleteFiles++
+		report.Issues = append(report.Issues, DownloadIntegrityIssue{
+			Path:         trackedPath,
+			RelativePath: relativePath,
+			Reason:       "missing_file",
+			LocalSize:    0,
+			URL:          item.URL,
+		})
 	}
 
 	if len(trackedLocalFiles) == 0 {
@@ -248,7 +217,7 @@ func checkDownloadDirectoryIntegrity(ctx context.Context, downloadPath string, t
 		go func() {
 			defer wg.Done()
 			for job := range jobs {
-				results <- inspectTrackedFile(ctx, client, job)
+				results <- inspectTrackedFile(ctx, client, job, mode)
 			}
 		}()
 	}
@@ -279,7 +248,12 @@ func checkDownloadDirectoryIntegrity(ctx context.Context, downloadPath string, t
 	return report, nil
 }
 
-func inspectTrackedFile(ctx context.Context, client *http.Client, file trackedLocalFile) trackedFileCheckResult {
+func inspectTrackedFile(
+	ctx context.Context,
+	client *http.Client,
+	file trackedLocalFile,
+	mode string,
+) trackedFileCheckResult {
 	info, err := os.Stat(file.path)
 	if err != nil {
 		return trackedFileCheckResult{unverifiable: true}
@@ -312,6 +286,10 @@ func inspectTrackedFile(ctx context.Context, client *http.Client, file trackedLo
 				URL:          file.item.URL,
 			},
 		}
+	}
+
+	if mode == downloadIntegrityModeQuick {
+		return trackedFileCheckResult{complete: true}
 	}
 
 	remoteSize, ok := getRemoteFileSize(ctx, client, file.item.URL)

@@ -8,18 +8,13 @@ import {
   clearFetchState,
   getFetchState,
   getResumableInfo,
-  saveCursor,
-  saveFetchState,
   type FetchScope,
   type FetchState,
   type ResumableFetchInfo,
 } from "@/lib/fetch/state";
 import {
-  appendUniqueEntries,
   buildTwitterResponse,
-  collectIncrementalEntries,
   createResultTimeline,
-  createTimelineAccumulator,
   formatNumberWithComma,
   mergeFetchedWithSavedTimeline,
   scopesMatch,
@@ -31,9 +26,10 @@ import {
   normalizeStructuredResponse,
   saveAccountSnapshotChunk,
 } from "@/lib/fetch/snapshot-client";
+import { runTimelineFetchLoop } from "@/lib/fetch/runTimelineFetchLoop";
 import type { FetchMode, PrivateType } from "@/types/fetch";
 import type { TwitterResponse } from "@/types/api";
-import { ExtractDateRangeStructured, ExtractTimelineStructured } from "../../../wailsjs/go/main/App";
+import { ExtractDateRangeStructured } from "../../../wailsjs/go/main/App";
 import { main } from "../../../wailsjs/go/models";
 
 const BATCH_SIZE = 200;
@@ -108,9 +104,7 @@ export async function runSingleFetchSession({
   let savedCompletedCount = 0;
   let knownTweetIds = new Set<string>();
   const seenSessionEntryKeys = new Set<string>();
-  const sessionAccumulator = createTimelineAccumulator();
-  const freshAccumulator = createTimelineAccumulator();
-  let overlapReached = false;
+  let initialEntries = [] as TwitterResponse["timeline"];
   let totalNewItemsFound = 0;
   let isIncrementalRefresh = false;
 
@@ -120,9 +114,9 @@ export async function runSingleFetchSession({
     if (savedSnapshot && savedSnapshot.cursor && !savedSnapshot.completed) {
       cursor = savedSnapshot.cursor;
       accountInfo = savedSnapshot.account_info;
-      appendUniqueEntries(sessionAccumulator, savedSnapshot.timeline || []);
+      initialEntries = savedSnapshot.timeline || [];
       logger.info(
-        `Resuming ${fetchTarget} from ${sessionAccumulator.timeline.length} items...`
+        `Resuming ${fetchTarget} from ${initialEntries.length} items...`
       );
       scheduleResultUpdate(savedSnapshot, true, fetchScope);
     } else if (existingState && existingState.cursor && !existingState.completed) {
@@ -228,61 +222,28 @@ export async function runSingleFetchSession({
       const settings = getSettings();
       const isSingleMode = settings.fetchMode === "single";
       const batchSize = isSingleMode ? 0 : BATCH_SIZE;
-
-      let hasMore = true;
-      let page = 0;
-
-      while (hasMore && !stopFetchRef.current) {
-        if (fetchStartTimeRef.current !== null) {
-          const timeoutSeconds = settings.fetchTimeout || 60;
-          const elapsed = Math.floor((Date.now() - fetchStartTimeRef.current) / 1000);
-          if (elapsed >= timeoutSeconds) {
-            logger.warning(`Timeout reached (${timeoutSeconds}s). Stopping fetch...`);
-            stopFetchRef.current = true;
-            toast.warning("Fetch timeout reached. Stopping...");
-
-            const currentTotalFetched = isIncrementalRefresh
-              ? savedCompletedCount + freshAccumulator.timeline.length
-              : sessionAccumulator.timeline.length;
-
-            if (accountInfo && currentTotalFetched > 0) {
-              saveFetchState({
-                ...fetchScope,
-                cursor: cursor || "",
-                accountInfo,
-                totalFetched: currentTotalFetched,
-                completed: false,
-              });
-
-              try {
-                await saveAccountSnapshotChunk(
-                  fetchScope,
-                  accountInfo,
-                  [],
-                  cursor,
-                  false,
-                  currentTotalFetched
-                );
-                logger.info(`Saved ${currentTotalFetched} items before timeout`);
-              } catch (err) {
-                console.error("Failed to save timeout state to database:", err);
-              }
-            }
-            break;
+      const loopResult = await runTimelineFetchLoop({
+        scope: fetchScope,
+        initialCursor: cursor,
+        initialAccountInfo: accountInfo,
+        initialEntries,
+        incrementalBaseCount: isIncrementalRefresh ? savedCompletedCount : 0,
+        knownTweetIds,
+        seenSessionEntryKeys,
+        readStopReason: () => {
+          if (stopFetchRef.current) {
+            return "stopped";
           }
-        }
-
-        const batchNum = page + 1;
-        logger.info(
-          isSingleMode
-            ? "Fetching all media..."
-            : `Fetching batch ${batchNum}${cursor ? " (resuming)" : ""}...`
-        );
-
-        const requestId = crypto.randomUUID();
-        singleFetchRequestIdRef.current = requestId;
-
-        const structuredData = await ExtractTimelineStructured(
+          if (fetchStartTimeRef.current !== null) {
+            const timeoutSeconds = settings.fetchTimeout || 60;
+            const elapsed = Math.floor((Date.now() - fetchStartTimeRef.current) / 1000);
+            if (elapsed >= timeoutSeconds) {
+              return "timeout";
+            }
+          }
+          return "continue";
+        },
+        buildRequest: (page, nextCursor, requestId) =>
           new main.TimelineRequest({
             username: isBookmarks ? "" : singleUsername,
             auth_token: authToken.trim(),
@@ -292,133 +253,150 @@ export async function runSingleFetchSession({
             media_type: mediaType,
             retweets,
             request_id: requestId,
-            cursor,
-          })
-        ).finally(() => {
+            cursor: nextCursor,
+          }),
+        onAttemptStart: (requestId) => {
+          singleFetchRequestIdRef.current = requestId;
+        },
+        onAttemptFinish: (requestId) => {
           if (singleFetchRequestIdRef.current === requestId) {
             singleFetchRequestIdRef.current = null;
           }
-        });
-        const data = normalizeStructuredResponse(structuredData);
-        if (!data) {
-          throw new Error("Empty timeline response");
-        }
-
-        if (!accountInfo && data.account_info) {
-          accountInfo = data.account_info;
-          if (isBookmarks) {
-            accountInfo.name = "bookmarks";
-            accountInfo.nick = "My Bookmarks";
-          } else if (isLikes) {
-            accountInfo.name = "likes";
-            accountInfo.nick = "My Likes";
-          }
-        }
-
-        let batchNewEntries = data.timeline;
-
-        if (isIncrementalRefresh) {
-          const { freshEntries, overlapReached: batchOverlapReached } =
-            collectIncrementalEntries(data.timeline, knownTweetIds, seenSessionEntryKeys);
-
-          batchNewEntries = appendUniqueEntries(freshAccumulator, freshEntries);
-          totalNewItemsFound = freshAccumulator.timeline.length;
-          overlapReached = overlapReached || batchOverlapReached;
-
-          if (totalNewItemsFound > 0) {
-            setNewMediaCount(totalNewItemsFound);
-          }
-        } else {
-          batchNewEntries = appendUniqueEntries(sessionAccumulator, data.timeline);
-          const newCount = batchNewEntries.length;
-
-          if (newCount > 0) {
-            setNewMediaCount(newCount);
-          }
-        }
-
-        cursor = data.cursor;
-        hasMore = !!data.cursor && !data.completed;
-        if (overlapReached) {
-          hasMore = false;
-          cursor = undefined;
+        },
+        onBeforeRequest: (page, nextCursor) => {
+          const batchNum = page + 1;
           logger.info(
-            `Reached previously saved items for ${fetchTarget}; stopping incremental refresh early.`
+            isSingleMode
+              ? "Fetching all media..."
+              : `Fetching batch ${batchNum}${nextCursor ? " (resuming)" : ""}...`
           );
-        }
-        page += 1;
-
-        if (cursor && hasMore) {
-          saveCursor(fetchScope, cursor);
-        }
-
-        if (accountInfo && (!isIncrementalRefresh || savedCompletedSnapshot)) {
-          const currentTimeline =
-            isIncrementalRefresh && savedCompletedSnapshot
-              ? mergeFetchedWithSavedTimeline(
-                  freshAccumulator.timeline,
-                  savedCompletedSnapshot.timeline
-                )
-              : createResultTimeline(sessionAccumulator);
-          const currentResponse = buildTwitterResponse(
-            accountInfo,
-            currentTimeline,
-            batchNewEntries.length,
-            page,
-            batchSize,
-            hasMore,
-            cursor,
-            !hasMore
-          );
-          scheduleResultUpdate(currentResponse, !hasMore || page === 1, fetchScope);
-        }
-
-        const currentTotalFetched = isIncrementalRefresh
-          ? savedCompletedCount + freshAccumulator.timeline.length
-          : sessionAccumulator.timeline.length;
-        logger.info(`Fetched ${currentTotalFetched} items total`);
-
-        saveFetchState({
-          ...fetchScope,
-          cursor: cursor || "",
-          accountInfo,
-          totalFetched: currentTotalFetched,
-          completed: !hasMore,
-        });
-
-        if (accountInfo) {
-          try {
-            await saveAccountSnapshotChunk(
-              fetchScope,
-              accountInfo,
-              batchNewEntries,
-              cursor,
-              !hasMore,
-              currentTotalFetched
-            );
-          } catch (err) {
-            console.error("Failed to save progress to database:", err);
+        },
+        onBatch: ({
+          accountInfo: nextAccountInfo,
+          accumulator,
+          batchNewEntries,
+          cursor: nextCursor,
+          hasMore,
+          page,
+          currentTotalFetched,
+          overlapReached,
+        }) => {
+          if (nextAccountInfo && !accountInfo) {
+            accountInfo = nextAccountInfo;
+            if (isBookmarks) {
+              accountInfo.name = "bookmarks";
+              accountInfo.nick = "My Bookmarks";
+            } else if (isLikes) {
+              accountInfo.name = "likes";
+              accountInfo.nick = "My Likes";
+            }
           }
-        }
+
+          if (isIncrementalRefresh) {
+            totalNewItemsFound = accumulator.timeline.length;
+            if (totalNewItemsFound > 0) {
+              setNewMediaCount(totalNewItemsFound);
+            }
+          } else if (batchNewEntries.length > 0) {
+            setNewMediaCount(batchNewEntries.length);
+          }
+
+          if (accountInfo && (!isIncrementalRefresh || savedCompletedSnapshot)) {
+            const currentTimeline =
+              isIncrementalRefresh && savedCompletedSnapshot
+                ? mergeFetchedWithSavedTimeline(
+                    accumulator.timeline,
+                    savedCompletedSnapshot.timeline
+                  )
+                : createResultTimeline(accumulator);
+            const currentResponse = buildTwitterResponse(
+              accountInfo,
+              currentTimeline,
+              batchNewEntries.length,
+              page,
+              batchSize,
+              hasMore,
+              nextCursor,
+              !hasMore
+            );
+            scheduleResultUpdate(currentResponse, !hasMore || page === 1, fetchScope);
+          }
+
+          if (overlapReached) {
+            logger.info(
+              `Reached previously saved items for ${fetchTarget}; stopping incremental refresh early.`
+            );
+          }
+
+          logger.info(`Fetched ${currentTotalFetched} items total`);
+        },
+      });
+
+      accountInfo = loopResult.accountInfo;
+      cursor = loopResult.cursor;
+
+      const elapsedSecs = fetchStartTimeRef.current
+        ? Math.floor((Date.now() - fetchStartTimeRef.current) / 1000)
+        : 0;
+
+      if (loopResult.reason === "timeout") {
+        stopFetchRef.current = true;
+        logger.warning(`Timeout reached (${settings.fetchTimeout || 60}s). Stopping fetch...`);
+        toast.warning("Fetch timeout reached. Stopping...");
       }
 
-      if (stopFetchRef.current) {
-        const elapsedSecs = fetchStartTimeRef.current
-          ? Math.floor((Date.now() - fetchStartTimeRef.current) / 1000)
-          : 0;
-        const currentTotalFetched = isIncrementalRefresh
-          ? savedCompletedCount + freshAccumulator.timeline.length
-          : sessionAccumulator.timeline.length;
+      if (loopResult.reason === "stopped" || loopResult.reason === "timeout") {
         logger.info(
-          `Stopped at ${currentTotalFetched} items - can resume later (${elapsedSecs}s)`
+          `Stopped at ${loopResult.currentTotalFetched} items - can resume later (${elapsedSecs}s)`
         );
-        toast.info(`Stopped at ${formatNumberWithComma(currentTotalFetched)} items`);
+        toast.info(`Stopped at ${formatNumberWithComma(loopResult.currentTotalFetched)} items`);
         const resumable = getResumableInfo(cleanUsername, fetchScope);
         setResumeInfo(resumable.canResume ? resumable : null);
-      } else {
-        clearFetchState(fetchScope);
-        clearCursor(fetchScope);
+      } else if (loopResult.reason === "completed") {
         setResumeInfo(null);
+      } else if (loopResult.reason === "error") {
+        const errorMsg =
+          loopResult.error instanceof Error
+            ? loopResult.error.message
+            : String(loopResult.error);
+        logger.error(`Failed to fetch: ${errorMsg} (${elapsedSecs}s)`);
+        toast.error("Failed to fetch media");
+
+        let partialResponse: TwitterResponse | null = null;
+        if (
+          accountInfo &&
+          loopResult.currentTotalFetched > 0 &&
+          (!isIncrementalRefresh || savedCompletedSnapshot)
+        ) {
+          partialResponse = buildTwitterResponse(
+            accountInfo,
+            isIncrementalRefresh && savedCompletedSnapshot
+              ? mergeFetchedWithSavedTimeline(
+                  loopResult.accumulator.timeline,
+                  savedCompletedSnapshot.timeline
+                )
+              : createResultTimeline(loopResult.accumulator),
+            0,
+            0,
+            BATCH_SIZE,
+            true,
+            cursor,
+            false
+          );
+        } else {
+          partialResponse = await loadSnapshotFromDB(fetchScope);
+        }
+
+        if (partialResponse) {
+          flushResultUpdate(partialResponse, fetchScope);
+          const resumable = getResumableInfo(cleanUsername, fetchScope);
+          setResumeInfo(resumable.canResume ? resumable : null);
+          toast.info(
+            `Saved ${formatNumberWithComma(partialResponse.timeline.length)} items - can resume`
+          );
+        }
+
+        return;
       }
 
       if (isIncrementalRefresh && !savedCompletedSnapshot) {
@@ -429,18 +407,18 @@ export async function runSingleFetchSession({
               accountInfo,
               isIncrementalRefresh && savedCompletedSnapshot
                 ? mergeFetchedWithSavedTimeline(
-                    freshAccumulator.timeline,
+                    loopResult.accumulator.timeline,
                     savedCompletedSnapshot.timeline
                   )
-                : createResultTimeline(sessionAccumulator),
+                : createResultTimeline(loopResult.accumulator),
               isIncrementalRefresh
                 ? totalNewItemsFound
-                : sessionAccumulator.timeline.length,
-              page,
+                : loopResult.accumulator.timeline.length,
+              loopResult.page,
               batchSize,
               false,
               cursor,
-              !stopFetchRef.current
+              loopResult.reason === "completed"
             )
           : null;
       }
@@ -488,78 +466,6 @@ export async function runSingleFetchSession({
           logger.success(`Found ${finalData.total_urls} media items (${elapsedSecs}s)`);
           toast.success(`${finalData.total_urls} media items found`);
         }
-      }
-    }
-  } catch (error) {
-    const errorMsg = error instanceof Error ? error.message : String(error);
-    const elapsedSecs = fetchStartTimeRef.current
-      ? Math.floor((Date.now() - fetchStartTimeRef.current) / 1000)
-      : 0;
-    const isCanceled =
-      stopFetchRef.current || errorMsg.toLowerCase().includes("extractor canceled");
-
-    if (isCanceled) {
-      logger.info(`Fetch stopped: ${errorMsg} (${elapsedSecs}s)`);
-    } else {
-      logger.error(`Failed to fetch: ${errorMsg} (${elapsedSecs}s)`);
-      toast.error("Failed to fetch media");
-    }
-
-    let partialResponse: TwitterResponse | null = null;
-    const currentTotalFetched = isIncrementalRefresh
-      ? savedCompletedCount + freshAccumulator.timeline.length
-      : sessionAccumulator.timeline.length;
-    if (
-      accountInfo &&
-      currentTotalFetched > 0 &&
-      (!isIncrementalRefresh || savedCompletedSnapshot)
-    ) {
-      partialResponse = buildTwitterResponse(
-        accountInfo,
-        isIncrementalRefresh && savedCompletedSnapshot
-          ? mergeFetchedWithSavedTimeline(
-              freshAccumulator.timeline,
-              savedCompletedSnapshot.timeline
-            )
-          : createResultTimeline(sessionAccumulator),
-        0,
-        0,
-        BATCH_SIZE,
-        true,
-        cursor,
-        false
-      );
-    } else {
-      partialResponse = await loadSnapshotFromDB(fetchScope);
-    }
-
-    if (partialResponse) {
-      flushResultUpdate(partialResponse, fetchScope);
-      saveFetchState({
-        ...fetchScope,
-        cursor: partialResponse.cursor || cursor || "",
-        accountInfo: partialResponse.account_info,
-        totalFetched: partialResponse.timeline.length,
-        completed: false,
-      });
-
-      const resumable = getResumableInfo(cleanUsername, fetchScope);
-      setResumeInfo(resumable.canResume ? resumable : null);
-      toast.info(
-        `Saved ${formatNumberWithComma(partialResponse.timeline.length)} items - can resume`
-      );
-
-      try {
-        await saveAccountSnapshotChunk(
-          fetchScope,
-          partialResponse.account_info,
-          [],
-          partialResponse.cursor || cursor,
-          false,
-          partialResponse.timeline.length
-        );
-      } catch (dbErr) {
-        console.error("Failed to save partial data to database:", dbErr);
       }
     }
   } finally {

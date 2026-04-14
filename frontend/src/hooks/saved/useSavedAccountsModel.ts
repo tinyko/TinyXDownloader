@@ -1,8 +1,6 @@
 import { useDeferredValue, useMemo } from "react";
 
-import { backend } from "../../../wailsjs/go/models";
-
-type AccountListItem = backend.AccountListItem;
+import type { AccountListItem, DatabaseSortOrder } from "@/types/database";
 
 export interface SavedAccountsModelArgs {
   accounts: AccountListItem[];
@@ -10,17 +8,7 @@ export interface SavedAccountsModelArgs {
   searchQuery: string;
   filterGroup: string;
   filterMediaType: string;
-  sortOrder:
-    | "newest"
-    | "oldest"
-    | "username-asc"
-    | "username-desc"
-    | "followers-high"
-    | "followers-low"
-    | "posts-high"
-    | "posts-low"
-    | "media-high"
-    | "media-low";
+  sortOrder: DatabaseSortOrder;
 }
 
 interface NormalizedAccountRecord {
@@ -30,8 +18,48 @@ interface NormalizedAccountRecord {
   isPrivate: boolean;
 }
 
+interface AccountPartitions {
+  publicRecords: NormalizedAccountRecord[];
+  privateRecords: NormalizedAccountRecord[];
+  publicAccounts: AccountListItem[];
+  privateAccounts: AccountListItem[];
+}
+
 function isPrivateAccount(username: string) {
   return username === "bookmarks" || username === "likes";
+}
+
+function compareNormalizedAccounts(
+  leftRecord: NormalizedAccountRecord,
+  rightRecord: NormalizedAccountRecord,
+  sortOrder: DatabaseSortOrder
+) {
+  const left = leftRecord.account;
+  const right = rightRecord.account;
+
+  switch (sortOrder) {
+    case "oldest":
+      return left.id - right.id;
+    case "username-asc":
+      return leftRecord.normalizedUsername.localeCompare(rightRecord.normalizedUsername);
+    case "username-desc":
+      return rightRecord.normalizedUsername.localeCompare(leftRecord.normalizedUsername);
+    case "followers-high":
+      return right.followers_count - left.followers_count;
+    case "followers-low":
+      return left.followers_count - right.followers_count;
+    case "posts-high":
+      return right.statuses_count - left.statuses_count;
+    case "posts-low":
+      return left.statuses_count - right.statuses_count;
+    case "media-high":
+      return right.total_media - left.total_media;
+    case "media-low":
+      return left.total_media - right.total_media;
+    case "newest":
+    default:
+      return right.id - left.id;
+  }
 }
 
 export function useSavedAccountsModel({
@@ -55,109 +83,156 @@ export function useSavedAccountsModel({
     [accounts]
   );
 
-  return useMemo(() => {
-    const publicAccounts = normalizedAccounts
-      .filter((record) => !record.isPrivate)
-      .map((record) => record.account);
-    const privateAccounts = normalizedAccounts
-      .filter((record) => record.isPrivate)
-      .map((record) => record.account);
-    const baseRecords = normalizedAccounts.filter((record) =>
-      accountViewMode === "public" ? !record.isPrivate : record.isPrivate
-    );
-    const normalizedQuery = deferredSearchQuery.trim().toLowerCase();
+  const normalizedQuery = useMemo(
+    () => deferredSearchQuery.trim().toLowerCase(),
+    [deferredSearchQuery]
+  );
 
+  const partitions = useMemo<AccountPartitions>(() => {
+    const publicRecords: NormalizedAccountRecord[] = [];
+    const privateRecords: NormalizedAccountRecord[] = [];
+    const publicAccounts: AccountListItem[] = [];
+    const privateAccounts: AccountListItem[] = [];
+
+    for (const record of normalizedAccounts) {
+      if (record.isPrivate) {
+        privateRecords.push(record);
+        privateAccounts.push(record.account);
+        continue;
+      }
+
+      publicRecords.push(record);
+      publicAccounts.push(record.account);
+    }
+
+    return {
+      publicRecords,
+      privateRecords,
+      publicAccounts,
+      privateAccounts,
+    };
+  }, [normalizedAccounts]);
+
+  const baseRecords =
+    accountViewMode === "public" ? partitions.publicRecords : partitions.privateRecords;
+
+  const sortCache = useMemo(() => {
+    const cache: Record<DatabaseSortOrder, NormalizedAccountRecord[]> = {
+      newest: baseRecords,
+      oldest: [...baseRecords].sort((left, right) =>
+        compareNormalizedAccounts(left, right, "oldest")
+      ),
+      "username-asc": [...baseRecords].sort((left, right) =>
+        compareNormalizedAccounts(left, right, "username-asc")
+      ),
+      "username-desc": [...baseRecords].sort((left, right) =>
+        compareNormalizedAccounts(left, right, "username-desc")
+      ),
+      "followers-high": [...baseRecords].sort((left, right) =>
+        compareNormalizedAccounts(left, right, "followers-high")
+      ),
+      "followers-low": [...baseRecords].sort((left, right) =>
+        compareNormalizedAccounts(left, right, "followers-low")
+      ),
+      "posts-high": [...baseRecords].sort((left, right) =>
+        compareNormalizedAccounts(left, right, "posts-high")
+      ),
+      "posts-low": [...baseRecords].sort((left, right) =>
+        compareNormalizedAccounts(left, right, "posts-low")
+      ),
+      "media-high": [...baseRecords].sort((left, right) =>
+        compareNormalizedAccounts(left, right, "media-high")
+      ),
+      "media-low": [...baseRecords].sort((left, right) =>
+        compareNormalizedAccounts(left, right, "media-low")
+      ),
+    };
+
+    return cache;
+  }, [baseRecords]);
+
+  const hasSearch = normalizedQuery !== "";
+  const hasGroupFilter = filterGroup !== "all";
+  const hasMediaFilter = filterMediaType !== "all";
+
+  return useMemo(() => {
     const noFiltersApplied =
-      normalizedQuery === "" &&
-      filterGroup === "all" &&
-      filterMediaType === "all" &&
+      !hasSearch &&
+      !hasGroupFilter &&
+      !hasMediaFilter &&
       sortOrder === "newest";
 
     if (noFiltersApplied) {
       return {
         deferredSearchQuery,
-        publicAccounts,
-        privateAccounts,
+        publicAccounts: partitions.publicAccounts,
+        privateAccounts: partitions.privateAccounts,
         filteredAccounts: baseRecords.map((record) => record.account),
       };
     }
 
-    const filteredRecords = baseRecords.filter((record) => {
-      const account = record.account;
+    const filteredRecords =
+      hasSearch || hasGroupFilter || hasMediaFilter
+        ? baseRecords.filter((record) => {
+            const account = record.account;
 
-      if (normalizedQuery) {
-        const matchesUsername = record.normalizedUsername.includes(normalizedQuery);
-        const matchesName = record.normalizedName.includes(normalizedQuery);
-        if (!matchesUsername && !matchesName) {
-          return false;
-        }
-      }
+            if (hasSearch) {
+              const matchesUsername = record.normalizedUsername.includes(normalizedQuery);
+              const matchesName = record.normalizedName.includes(normalizedQuery);
+              if (!matchesUsername && !matchesName) {
+                return false;
+              }
+            }
 
-      if (filterGroup !== "all") {
-        if (filterGroup === "ungrouped" && account.group_name) {
-          return false;
-        }
-        if (filterGroup !== "ungrouped" && account.group_name !== filterGroup) {
-          return false;
-        }
-      }
+            if (hasGroupFilter) {
+              if (filterGroup === "ungrouped" && account.group_name) {
+                return false;
+              }
+              if (filterGroup !== "ungrouped" && account.group_name !== filterGroup) {
+                return false;
+              }
+            }
 
-      if (filterMediaType !== "all") {
-        const accountMediaType = account.media_type || "all";
-        if (filterMediaType === "all-media") {
-          if (accountMediaType !== "all") {
-            return false;
-          }
-        } else if (accountMediaType !== filterMediaType) {
-          return false;
-        }
-      }
+            if (hasMediaFilter) {
+              const accountMediaType = account.media_type || "all";
+              if (filterMediaType === "all-media") {
+                if (accountMediaType !== "all") {
+                  return false;
+                }
+              } else if (accountMediaType !== filterMediaType) {
+                return false;
+              }
+            }
 
-      return true;
-    });
+            return true;
+          })
+        : baseRecords;
 
-    const sortedRecords = filteredRecords.slice();
-    sortedRecords.sort((leftRecord, rightRecord) => {
-      const left = leftRecord.account;
-      const right = rightRecord.account;
-
-      switch (sortOrder) {
-        case "oldest":
-          return left.id - right.id;
-        case "username-asc":
-          return leftRecord.normalizedUsername.localeCompare(rightRecord.normalizedUsername);
-        case "username-desc":
-          return rightRecord.normalizedUsername.localeCompare(leftRecord.normalizedUsername);
-        case "followers-high":
-          return right.followers_count - left.followers_count;
-        case "followers-low":
-          return left.followers_count - right.followers_count;
-        case "posts-high":
-          return right.statuses_count - left.statuses_count;
-        case "posts-low":
-          return left.statuses_count - right.statuses_count;
-        case "media-high":
-          return right.total_media - left.total_media;
-        case "media-low":
-          return left.total_media - right.total_media;
-        case "newest":
-        default:
-          return right.id - left.id;
-      }
-    });
+    const sortedRecords =
+      filteredRecords === baseRecords
+        ? sortCache[sortOrder]
+        : [...filteredRecords].sort((left, right) =>
+            compareNormalizedAccounts(left, right, sortOrder)
+          );
 
     return {
       deferredSearchQuery,
-      publicAccounts,
-      privateAccounts,
+      publicAccounts: partitions.publicAccounts,
+      privateAccounts: partitions.privateAccounts,
       filteredAccounts: sortedRecords.map((record) => record.account),
     };
   }, [
-    accountViewMode,
+    baseRecords,
     deferredSearchQuery,
     filterGroup,
     filterMediaType,
-    normalizedAccounts,
+    hasGroupFilter,
+    hasMediaFilter,
+    hasSearch,
+    normalizedQuery,
+    partitions.privateAccounts,
+    partitions.publicAccounts,
+    sortCache,
     sortOrder,
   ]);
 }

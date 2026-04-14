@@ -14,6 +14,7 @@ import type {
   FetchMode,
   FetchType,
   HistoryItem,
+  MultiFetchSessionSource,
   MultipleAccount,
   PrivateType,
 } from "@/types/fetch";
@@ -23,16 +24,20 @@ interface UseFetchWorkspaceCoordinatorOptions {
   username: string;
   setUsername: (value: string) => void;
   loading: boolean;
-  isFetchingAll: boolean;
+  publicAuthToken: string;
   setFetchedMediaType: (value: string) => void;
   setFetchType: (value: FetchType) => void;
   setWorkspaceTab: (value: "fetch" | "saved") => void;
   setSavedTimelineSelection: (value: { account: backend.AccountListItem; scope: FetchScope } | null) => void;
   setSearchMode: (value: FetchMode) => void;
   setSearchPrivateType: (value: PrivateType) => void;
-  setMultipleAccountsState: (
-    value: MultipleAccount[] | ((previous: MultipleAccount[]) => MultipleAccount[])
-  ) => void;
+  createPendingSession: (
+    accounts: MultipleAccount[],
+    meta: {
+      source: MultiFetchSessionSource;
+      title: string;
+    }
+  ) => Promise<unknown>;
   clearLiveResult: () => void;
   clearResumeInfo: () => void;
   resetMultipleQueueState: () => void;
@@ -55,6 +60,10 @@ interface UseFetchWorkspaceCoordinatorOptions {
       mediaType?: string;
       retweets?: boolean;
       authToken?: string;
+    },
+    sessionMeta?: {
+      source: MultiFetchSessionSource;
+      title: string;
     }
   ) => Promise<void>;
 }
@@ -63,14 +72,14 @@ export function useFetchWorkspaceCoordinator({
   username,
   setUsername,
   loading,
-  isFetchingAll,
+  publicAuthToken,
   setFetchedMediaType,
   setFetchType,
   setWorkspaceTab,
   setSavedTimelineSelection,
   setSearchMode,
   setSearchPrivateType,
-  setMultipleAccountsState,
+  createPendingSession,
   clearLiveResult,
   clearResumeInfo,
   resetMultipleQueueState,
@@ -89,7 +98,7 @@ export function useFetchWorkspaceCoordinator({
       authToken?: string,
       isResume?: boolean
     ) => {
-      if (loading || isFetchingAll) {
+      if (loading) {
         toast.warning("A fetch is already in progress");
         return;
       }
@@ -147,6 +156,9 @@ export function useFetchWorkspaceCoordinator({
           mediaType: effectiveMediaType,
           retweets: effectiveRetweets,
           authToken: authToken.trim(),
+        }, {
+          source: "manual-fetch",
+          title: `Fetching ${parsedUsernames.length} Accounts`,
         });
         return;
       }
@@ -173,7 +185,6 @@ export function useFetchWorkspaceCoordinator({
       clearResumeInfo,
       handleFetchAll,
       handleFetchSingle,
-      isFetchingAll,
       loading,
       resetMultipleQueueState,
       setFetchType,
@@ -222,13 +233,23 @@ export function useFetchWorkspaceCoordinator({
     setWorkspaceTab,
   ]);
 
-  const handleUpdateSelected = useCallback((usernames: string[]) => {
+  const handleUpdateSelected = useCallback(async (usernames: string[]) => {
     if (usernames.length === 0) {
       toast.error("No accounts selected");
       return;
     }
 
+    if (loading) {
+      toast.warning("A fetch is already in progress");
+      return;
+    }
+
     const parsedUsernames = usernames.map(parseUsername).filter(Boolean);
+    if (parsedUsernames.length === 0) {
+      toast.error("No valid public accounts to update");
+      return;
+    }
+
     const currentSettings = getSettings();
     const accounts = createMultipleAccounts(parsedUsernames, {
       mode: "public",
@@ -236,19 +257,50 @@ export function useFetchWorkspaceCoordinator({
       retweets: currentSettings.includeRetweets,
     });
 
-    setMultipleAccountsState((prev) => {
-      const existingUsernames = new Set(prev.map((acc) => acc.username.toLowerCase()));
-      const newAccounts = accounts.filter(
-        (acc) => !existingUsernames.has(acc.username.toLowerCase())
-      );
-      return [...prev, ...newAccounts];
-    });
-
+    setUsername(parsedUsernames.join("\n"));
+    setSearchMode("public");
     setFetchType("multiple");
     setSavedTimelineSelection(null);
+    setFetchedMediaType(currentSettings.mediaType);
+    clearLiveResult();
+    clearResumeInfo();
     setWorkspaceTab("fetch");
-    toast.success(`Added ${formatNumberWithComma(accounts.length)} account(s) to multiple fetch`);
-  }, [setFetchType, setMultipleAccountsState, setSavedTimelineSelection, setWorkspaceTab]);
+
+    const authToken = publicAuthToken.trim();
+    if (!authToken) {
+      await createPendingSession(accounts, {
+        source: "saved-update",
+        title: `Updating ${parsedUsernames.length} Saved Accounts`,
+      });
+      toast.warning(
+        `Loaded ${formatNumberWithComma(accounts.length)} account(s) into queue. Enter Public Auth Token and start fetch.`
+      );
+      return;
+    }
+
+    await handleFetchAll(accounts, {
+      mode: "public",
+      mediaType: currentSettings.mediaType,
+      retweets: currentSettings.includeRetweets,
+      authToken,
+    }, {
+      source: "saved-update",
+      title: `Updating ${parsedUsernames.length} Saved Accounts`,
+    });
+  }, [
+    clearLiveResult,
+    clearResumeInfo,
+    createPendingSession,
+    handleFetchAll,
+    loading,
+    publicAuthToken,
+    setFetchType,
+    setFetchedMediaType,
+    setSavedTimelineSelection,
+    setSearchMode,
+    setUsername,
+    setWorkspaceTab,
+  ]);
 
   const handleImportFile = useCallback(() => {
     const input = document.createElement("input");

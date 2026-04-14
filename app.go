@@ -307,6 +307,19 @@ type AccountTimelinePageRequest struct {
 	SortBy     string            `json:"sort_by"`
 }
 
+type AccountTimelineBootstrapRequest struct {
+	Scope      FetchScopeRequest `json:"scope"`
+	FilterType string            `json:"filter_type"`
+}
+
+type AccountTimelineItemsPageRequest struct {
+	Scope      FetchScopeRequest `json:"scope"`
+	Offset     int               `json:"offset"`
+	Limit      int               `json:"limit"`
+	FilterType string            `json:"filter_type"`
+	SortBy     string            `json:"sort_by"`
+}
+
 // DownloadMediaResponse represents the response for download operation
 type DownloadMediaResponse struct {
 	Success    bool   `json:"success"`
@@ -430,7 +443,7 @@ func (a *App) DownloadMediaWithMetadata(req DownloadMediaWithMetadataRequest) (D
 		}
 	}
 
-	downloaded, skipped, failed, err := a.runDownloadGroup(items, outputDir, req.Username, req.Proxy, 0, len(items))
+	downloaded, skipped, failed, err := a.runDownloadItems(items, outputDir, req.Username, req.Proxy, len(items))
 	if err != nil {
 		return DownloadMediaResponse{
 			Success:    false,
@@ -449,14 +462,13 @@ func (a *App) DownloadMediaWithMetadata(req DownloadMediaWithMetadataRequest) (D
 	}, nil
 }
 
-func (a *App) runDownloadGroup(items []backend.MediaItem, outputDir, username, proxy string, completedOffset, totalItems int) (int, int, int, error) {
+func (a *App) runDownloadItems(items []backend.MediaItem, outputDir, username, proxy string, totalItems int) (int, int, int, error) {
 	progressCallback := func(current, _ int) {
-		globalCurrent := completedOffset + current
 		percent := 0
 		if totalItems > 0 {
-			percent = (globalCurrent * 100) / totalItems
+			percent = (current * 100) / totalItems
 		}
-		a.updateDownloadProgress(globalCurrent, totalItems, percent)
+		a.updateDownloadProgress(current, totalItems, percent)
 	}
 
 	itemStatusCallback := func(tweetID int64, index int, status string) {
@@ -468,6 +480,26 @@ func (a *App) runDownloadGroup(items []backend.MediaItem, outputDir, username, p
 	}
 
 	return backend.DownloadMediaWithMetadataProgressAndStatus(items, outputDir, username, progressCallback, itemStatusCallback, a.downloadCtx, proxy)
+}
+
+func (a *App) runSavedScopeDownloads(payloads []*backend.ScopeMediaDownloadPayload, outputDir, proxy string, totalItems int) (int, int, int, error) {
+	progressCallback := func(current, _ int) {
+		percent := 0
+		if totalItems > 0 {
+			percent = (current * 100) / totalItems
+		}
+		a.updateDownloadProgress(current, totalItems, percent)
+	}
+
+	itemStatusCallback := func(tweetID int64, index int, status string) {
+		runtime.EventsEmit(a.ctx, "download-item-status", DownloadItemStatus{
+			TweetID: tweetID,
+			Index:   index,
+			Status:  status,
+		})
+	}
+
+	return backend.DownloadScopePayloadsProgressAndStatus(payloads, outputDir, progressCallback, itemStatusCallback, a.downloadCtx, proxy)
 }
 
 func (a *App) SaveAccountSnapshotChunk(req SaveAccountSnapshotChunkRequest) error {
@@ -507,6 +539,23 @@ func (a *App) GetAccountSnapshotTweetIDs(scope FetchScopeRequest) ([]string, err
 
 func (a *App) GetAccountTimelinePage(req AccountTimelinePageRequest) (*backend.AccountTimelinePage, error) {
 	return backend.GetAccountTimelinePage(
+		toBackendFetchScope(req.Scope),
+		req.Offset,
+		req.Limit,
+		req.FilterType,
+		req.SortBy,
+	)
+}
+
+func (a *App) GetAccountTimelineBootstrap(req AccountTimelineBootstrapRequest) (*backend.AccountTimelineBootstrap, error) {
+	return backend.GetAccountTimelineBootstrap(
+		toBackendFetchScope(req.Scope),
+		req.FilterType,
+	)
+}
+
+func (a *App) GetAccountTimelineItemsPage(req AccountTimelineItemsPageRequest) (*backend.AccountTimelineItemsPage, error) {
+	return backend.GetAccountTimelineItemsPage(
 		toBackendFetchScope(req.Scope),
 		req.Offset,
 		req.Limit,
@@ -560,39 +609,15 @@ func (a *App) DownloadSavedScopes(req DownloadSavedScopesRequest) (DownloadMedia
 	}
 	defer a.finishDownloadSession()
 
-	downloaded := 0
-	skipped := 0
-	failed := 0
-	completedOffset := 0
-
-	for _, payload := range payloads {
-		groupOutputDir := outputDir
-		if payload.RootSubdirectory != "" {
-			groupOutputDir = filepath.Join(groupOutputDir, payload.RootSubdirectory)
-		}
-
-		groupDownloaded, groupSkipped, groupFailed, err := a.runDownloadGroup(
-			payload.Items,
-			groupOutputDir,
-			payload.Username,
-			req.Proxy,
-			completedOffset,
-			totalItems,
-		)
-		downloaded += groupDownloaded
-		skipped += groupSkipped
-		failed += groupFailed
-		completedOffset += len(payload.Items)
-
-		if err != nil {
-			return DownloadMediaResponse{
-				Success:    false,
-				Downloaded: downloaded,
-				Skipped:    skipped,
-				Failed:     failed,
-				Message:    err.Error(),
-			}, err
-		}
+	downloaded, skipped, failed, err := a.runSavedScopeDownloads(payloads, outputDir, req.Proxy, totalItems)
+	if err != nil {
+		return DownloadMediaResponse{
+			Success:    false,
+			Downloaded: downloaded,
+			Skipped:    skipped,
+			Failed:     failed,
+			Message:    err.Error(),
+		}, err
 	}
 
 	return DownloadMediaResponse{
@@ -689,6 +714,10 @@ func (a *App) GetAllAccountsFromDB() ([]backend.AccountListItem, error) {
 	return backend.GetAllAccounts()
 }
 
+func (a *App) GetSavedAccountsWorkspaceData() (*backend.SavedAccountsWorkspaceData, error) {
+	return backend.GetSavedAccountsWorkspaceData()
+}
+
 // GetAccountSnapshotFromDB returns saved response JSON for an exact fetch scope.
 func (a *App) GetAccountSnapshotFromDB(username, mediaType, timelineType string, retweets bool, queryKey string) (string, error) {
 	return backend.GetAccountResponseByScope(username, mediaType, timelineType, retweets, queryKey)
@@ -775,6 +804,7 @@ type ConvertGIFsResponse struct {
 type CheckDownloadIntegrityRequest struct {
 	DownloadPath string `json:"download_path"`
 	Proxy        string `json:"proxy,omitempty"`
+	Mode         string `json:"mode,omitempty"`
 }
 
 // StoredAuthTokensResponse represents locally persisted auth tokens for this device.
@@ -820,7 +850,7 @@ func (a *App) ConvertGIFs(req ConvertGIFsRequest) (ConvertGIFsResponse, error) {
 
 // CheckDownloadIntegrity scans the current download directory for partial and truncated files.
 func (a *App) CheckDownloadIntegrity(req CheckDownloadIntegrityRequest) (backend.DownloadIntegrityReport, error) {
-	return backend.CheckDownloadIntegrity(req.DownloadPath, req.Proxy)
+	return backend.CheckDownloadIntegrity(req.DownloadPath, req.Proxy, req.Mode)
 }
 
 // GetStoredAuthTokens returns locally persisted auth tokens for this device.

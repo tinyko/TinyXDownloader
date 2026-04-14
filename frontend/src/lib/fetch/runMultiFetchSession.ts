@@ -2,27 +2,16 @@ import type { MutableRefObject } from "react";
 
 import { logger } from "@/lib/logger";
 import {
-  clearCursor,
-  clearFetchState,
-  saveCursor,
-  saveFetchState,
-} from "@/lib/fetch/state";
-import {
-  appendUniqueEntries,
   buildFetchScope,
-  collectIncrementalEntries,
-  createTimelineAccumulator,
   resolveFetchTimelineType,
 } from "@/lib/fetch/session";
 import {
   loadSnapshotSummaryFromDB,
   loadSnapshotTweetIdsFromDB,
-  normalizeStructuredResponse,
-  saveAccountSnapshotChunk,
 } from "@/lib/fetch/snapshot-client";
+import { runTimelineFetchLoop } from "@/lib/fetch/runTimelineFetchLoop";
 import type { FetchMode, MultipleAccount, PrivateType } from "@/types/fetch";
 import type { TwitterResponse } from "@/types/api";
-import { ExtractTimelineStructured } from "../../../wailsjs/go/main/App";
 import { main } from "../../../wailsjs/go/models";
 
 interface RunMultiFetchSessionOptions {
@@ -101,13 +90,8 @@ export async function runMultiFetchSession({
     ? new Set(savedTweetIds)
     : new Set<string>();
   const seenSessionEntryKeys = new Set<string>();
-  const queuedEntryAccumulator = createTimelineAccumulator();
-  let overlapReached = false;
   let accountInfo: TwitterResponse["account_info"] | null =
     savedSummary?.account_info || null;
-  let cursor: string | undefined;
-  let hasMore = true;
-  let page = 0;
   const incrementalBaseCount = hasIncrementalBoundary
     ? savedSummary?.total_urls || 0
     : 0;
@@ -132,107 +116,66 @@ export async function runMultiFetchSession({
   accountStartTimesRef.current.set(accountId, Date.now());
   accountTimeoutSecondsRef.current.set(accountId, timeoutSeconds);
 
-  try {
-    if (stopAllRef.current) {
-      clearAccountRuntimeState(accountId);
-      const mediaCount =
-        accountMediaCountRef.current.get(accountId) || account.mediaCount || 0;
-      queueMultipleAccountUpdate(accountId, {
-        status: mediaCount === 0 ? "failed" : "incomplete",
-        mediaCount,
-      });
-      flushMultipleAccountUpdates();
-      return;
-    }
+  if (stopAllRef.current) {
+    clearAccountRuntimeState(accountId);
+    const mediaCount =
+      accountMediaCountRef.current.get(accountId) || account.mediaCount || 0;
+    queueMultipleAccountUpdate(accountId, {
+      status: mediaCount === 0 ? "failed" : "incomplete",
+      mediaCount,
+    });
+    flushMultipleAccountUpdates();
+    return;
+  }
 
-    while (hasMore && !stopAllRef.current) {
-      if (accountStopFlagsRef.current.get(accountId)) {
-        if (accountInfo && currentMediaCount > 0) {
-          saveFetchState({
-            ...accountScope,
-            cursor: cursor || "",
-            accountInfo,
-            totalFetched: currentMediaCount,
-            completed: false,
-          });
-
-          try {
-            await saveAccountSnapshotChunk(
-              accountScope,
-              accountInfo,
-              [],
-              cursor,
-              false,
-              currentMediaCount
-            );
-          } catch (err) {
-            console.error("Failed to save timeout state to database:", err);
-          }
-        }
-        break;
+  const loopResult = await runTimelineFetchLoop({
+    scope: accountScope,
+    initialAccountInfo: accountInfo,
+    incrementalBaseCount,
+    knownTweetIds,
+    seenSessionEntryKeys,
+    readStopReason: () => {
+      if (stopAllRef.current || accountStopFlagsRef.current.get(accountId)) {
+        return "stopped";
       }
-
-      const requestId = crypto.randomUUID();
+      const startedAt = accountStartTimesRef.current.get(accountId);
+      if (startedAt) {
+        const elapsed = Math.floor((Date.now() - startedAt) / 1000);
+        if (elapsed >= timeoutSeconds) {
+          return "timeout";
+        }
+      }
+      return "continue";
+    },
+    buildRequest: (page, nextCursor, requestId) =>
+      new main.TimelineRequest({
+        username:
+          accountMode === "private" && accountPrivateType === "bookmarks"
+            ? ""
+            : cleanUsername,
+        auth_token: resolvedAuthToken.trim(),
+        timeline_type: multipleTimelineType,
+        batch_size: batchSize,
+        page,
+        media_type: accountMediaType,
+        retweets: accountRetweets,
+        request_id: requestId,
+        cursor: nextCursor,
+      }),
+    onAttemptStart: (requestId) => {
       activeAccountRequestIdsRef.current.set(accountId, requestId);
-
-      const structuredData = await ExtractTimelineStructured(
-        new main.TimelineRequest({
-          username:
-            accountMode === "private" && accountPrivateType === "bookmarks"
-              ? ""
-              : cleanUsername,
-          auth_token: resolvedAuthToken.trim(),
-          timeline_type: multipleTimelineType,
-          batch_size: batchSize,
-          page,
-          media_type: accountMediaType,
-          retweets: accountRetweets,
-          request_id: requestId,
-          cursor,
-        })
-      ).finally(() => {
-        if (activeAccountRequestIdsRef.current.get(accountId) === requestId) {
-          activeAccountRequestIdsRef.current.delete(accountId);
-        }
-      });
-      const data = normalizeStructuredResponse(structuredData);
-      if (!data) {
-        throw new Error("Empty timeline response");
+    },
+    onAttemptFinish: (requestId) => {
+      if (activeAccountRequestIdsRef.current.get(accountId) === requestId) {
+        activeAccountRequestIdsRef.current.delete(accountId);
+      }
+    },
+    onBatch: ({ accountInfo: nextAccountInfo, currentTotalFetched, cursor, overlapReached }) => {
+      if (nextAccountInfo && !accountInfo) {
+        accountInfo = nextAccountInfo;
       }
 
-      if (!accountInfo && data.account_info) {
-        accountInfo = data.account_info;
-      }
-
-      let batchNewEntries = data.timeline;
-
-      if (hasIncrementalBoundary) {
-        const { freshEntries, overlapReached: batchOverlapReached } =
-          collectIncrementalEntries(data.timeline, knownTweetIds, seenSessionEntryKeys);
-
-        batchNewEntries = appendUniqueEntries(queuedEntryAccumulator, freshEntries);
-        currentMediaCount = incrementalBaseCount + queuedEntryAccumulator.timeline.length;
-        overlapReached = overlapReached || batchOverlapReached;
-      } else {
-        batchNewEntries = appendUniqueEntries(queuedEntryAccumulator, data.timeline);
-        currentMediaCount = queuedEntryAccumulator.timeline.length;
-      }
-
-      cursor = data.cursor;
-      hasMore = !!data.cursor && !data.completed;
-      if (overlapReached) {
-        hasMore = false;
-        cursor = undefined;
-        logger.info(
-          `@${account.username}: reached saved overlap boundary, stopping refresh early.`
-        );
-      }
-      page += 1;
-
-      if (cursor && hasMore) {
-        saveCursor(accountScope, cursor);
-      }
-
+      currentMediaCount = currentTotalFetched;
       accountMediaCountRef.current.set(accountId, currentMediaCount);
       const hasNewItems = currentMediaCount > previousMediaCount;
 
@@ -249,133 +192,71 @@ export async function runMultiFetchSession({
 
       previousMediaCount = currentMediaCount;
 
-      if (accountInfo) {
-        saveFetchState({
-          ...accountScope,
-          cursor: cursor || "",
-          accountInfo,
-          totalFetched: currentMediaCount,
-          completed: !hasMore,
-        });
-
-        try {
-          await saveAccountSnapshotChunk(
-            accountScope,
-            accountInfo,
-            batchNewEntries,
-            cursor,
-            !hasMore,
-            currentMediaCount
-          );
-        } catch (err) {
-          console.error("Failed to save progress to database:", err);
-        }
-      }
-    }
-
-    const startTime = accountStartTimesRef.current.get(accountId);
-    const elapsedSecs = startTime ? Math.floor((Date.now() - startTime) / 1000) : 0;
-
-    clearAccountRuntimeState(accountId);
-    activeAccountRequestIdsRef.current.delete(accountId);
-
-    const finalMediaCount = currentMediaCount;
-    accountMediaCountRef.current.set(accountId, finalMediaCount);
-
-    const wasTimeout = accountStopFlagsRef.current.get(accountId);
-
-    if (wasTimeout) {
-      logger.warning(
-        `@${account.username}: timeout - ${finalMediaCount} items (${elapsedSecs}s)`
-      );
-      queueMultipleAccountUpdate(accountId, {
-        status: finalMediaCount === 0 ? "failed" : "incomplete",
-      });
-    } else if (stopAllRef.current) {
-      logger.info(
-        `@${account.username}: stopped - ${finalMediaCount} items (${elapsedSecs}s)`
-      );
-      queueMultipleAccountUpdate(accountId, {
-        status: finalMediaCount === 0 ? "failed" : "incomplete",
-      });
-    } else if (hasMore) {
-      logger.warning(
-        `@${account.username}: incomplete - ${finalMediaCount} items (${elapsedSecs}s)`
-      );
-      queueMultipleAccountUpdate(accountId, {
-        status: finalMediaCount === 0 ? "failed" : "incomplete",
-      });
-    } else {
-      logger.success(
-        `@${account.username}: completed - ${finalMediaCount} items (${elapsedSecs}s)`
-      );
-      clearFetchState(accountScope);
-      clearCursor(accountScope);
-      queueMultipleAccountUpdate(accountId, {
-        status: "completed",
-        cursor: undefined,
-      });
-    }
-    flushMultipleAccountUpdates();
-  } catch (error) {
-    const startTime = accountStartTimesRef.current.get(accountId);
-    const elapsedSecs = startTime ? Math.floor((Date.now() - startTime) / 1000) : 0;
-    const errorMsg = error instanceof Error ? error.message : String(error);
-    const isCanceled =
-      stopAllRef.current ||
-      accountStopFlagsRef.current.get(accountId) === true ||
-      errorMsg.toLowerCase().includes("extractor canceled");
-
-    clearAccountRuntimeState(accountId);
-    activeAccountRequestIdsRef.current.delete(accountId);
-
-    if (isCanceled && accountInfo && currentMediaCount > 0) {
-      saveFetchState({
-        ...accountScope,
-        cursor: cursor || "",
-        accountInfo,
-        totalFetched: currentMediaCount,
-        completed: false,
-      });
-
-      try {
-        await saveAccountSnapshotChunk(
-          accountScope,
-          accountInfo,
-          [],
-          cursor,
-          false,
-          currentMediaCount
+      if (overlapReached) {
+        logger.info(
+          `@${account.username}: reached saved overlap boundary, stopping refresh early.`
         );
-      } catch (dbErr) {
-        console.error("Failed to save canceled state to database:", dbErr);
       }
-    }
+    },
+  });
 
-    const mediaCount = accountMediaCountRef.current.get(accountId) || 0;
-    const isAuthError =
-      errorMsg.toLowerCase().includes("401") ||
-      errorMsg.toLowerCase().includes("unauthorized") ||
-      errorMsg.toLowerCase().includes("auth token may be invalid") ||
-      errorMsg.toLowerCase().includes("auth token may be expired") ||
-      errorMsg.toLowerCase().includes("invalid or expired");
+  accountInfo = loopResult.accountInfo;
+  currentMediaCount = loopResult.currentTotalFetched;
 
-    const status =
-      isAuthError || mediaCount === 0 ? ("failed" as const) : ("incomplete" as const);
+  const startTime = accountStartTimesRef.current.get(accountId);
+  const elapsedSecs = startTime ? Math.floor((Date.now() - startTime) / 1000) : 0;
 
-    accountMediaCountRef.current.delete(accountId);
+  clearAccountRuntimeState(accountId);
+  activeAccountRequestIdsRef.current.delete(accountId);
+  accountMediaCountRef.current.set(accountId, currentMediaCount);
 
+  if (loopResult.reason === "timeout") {
+    logger.warning(`@${account.username}: timeout - ${currentMediaCount} items (${elapsedSecs}s)`);
     queueMultipleAccountUpdate(accountId, {
-      status,
-      error: isCanceled ? undefined : errorMsg,
-      mediaCount,
+      status: currentMediaCount === 0 ? "failed" : "incomplete",
     });
     flushMultipleAccountUpdates();
-
-    if (isCanceled) {
-      logger.info(`@${account.username}: stopped - ${mediaCount} items (${elapsedSecs}s)`);
-    } else {
-      logger.error(`@${account.username}: failed - ${errorMsg} (${elapsedSecs}s)`);
-    }
+    return;
   }
+
+  if (loopResult.reason === "stopped") {
+    logger.info(`@${account.username}: stopped - ${currentMediaCount} items (${elapsedSecs}s)`);
+    queueMultipleAccountUpdate(accountId, {
+      status: currentMediaCount === 0 ? "failed" : "incomplete",
+      mediaCount: currentMediaCount,
+    });
+    flushMultipleAccountUpdates();
+    return;
+  }
+
+  if (loopResult.reason === "completed") {
+    logger.success(
+      `@${account.username}: completed - ${currentMediaCount} items (${elapsedSecs}s)`
+    );
+    queueMultipleAccountUpdate(accountId, {
+      status: "completed",
+      cursor: undefined,
+    });
+    flushMultipleAccountUpdates();
+    return;
+  }
+
+  const errorMsg =
+    loopResult.error instanceof Error
+      ? loopResult.error.message
+      : String(loopResult.error);
+  const isAuthError =
+    errorMsg.toLowerCase().includes("401") ||
+    errorMsg.toLowerCase().includes("unauthorized") ||
+    errorMsg.toLowerCase().includes("auth token may be invalid") ||
+    errorMsg.toLowerCase().includes("auth token may be expired") ||
+    errorMsg.toLowerCase().includes("invalid or expired");
+
+  queueMultipleAccountUpdate(accountId, {
+    status: isAuthError || currentMediaCount === 0 ? "failed" : "incomplete",
+    error: errorMsg,
+    mediaCount: currentMediaCount,
+  });
+  flushMultipleAccountUpdates();
+  logger.error(`@${account.username}: failed - ${errorMsg} (${elapsedSecs}s)`);
 }

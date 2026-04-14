@@ -60,7 +60,7 @@ export function useDatabaseMutationActions({
     }
   };
 
-  const handleUpdateSelected = () => {
+  const handleUpdateSelected = async () => {
     const idsToUpdate =
       selectedIds.size > 0
         ? Array.from(selectedIds)
@@ -80,8 +80,11 @@ export function useDatabaseMutationActions({
     }
 
     if (onUpdateSelected) {
-      onUpdateSelected(usernames);
-      toast.success(`Added ${usernames.length.toLocaleString()} account(s) to multiple fetch`);
+      try {
+        await onUpdateSelected(usernames);
+      } catch {
+        toast.error("Failed to start account updates");
+      }
     }
   };
 

@@ -5,7 +5,7 @@ import type {
   GlobalDownloadSessionMeta,
   GlobalDownloadState,
 } from "@/types/download";
-import type { FetchType, MultipleAccount } from "@/types/fetch";
+import type { FetchType, MultiFetchSession } from "@/types/fetch";
 import type { ResumableFetchInfo } from "@/lib/fetch/state";
 import type { TwitterResponse } from "@/types/api";
 
@@ -15,7 +15,7 @@ interface UseActivityPanelStateArgs {
   username: string;
   elapsedTime: number;
   remainingTime: number | null;
-  multipleAccounts: MultipleAccount[];
+  activeSession: MultiFetchSession | null;
   result: TwitterResponse | null;
   resumeInfo: ResumableFetchInfo | null;
   globalDownloadState: GlobalDownloadState | null;
@@ -29,7 +29,7 @@ export function useActivityPanelState({
   username,
   elapsedTime,
   remainingTime,
-  multipleAccounts,
+  activeSession,
   result,
   resumeInfo,
   globalDownloadState,
@@ -37,6 +37,7 @@ export function useActivityPanelState({
   globalDownloadHistory,
 }: UseActivityPanelStateArgs) {
   return useMemo(() => {
+    const multipleAccounts = activeSession?.accounts || [];
     const multipleStatusCounts = multipleAccounts.reduce(
       (counts, account) => {
         counts[account.status] += 1;
@@ -53,14 +54,16 @@ export function useActivityPanelState({
 
     const activeFetchTitle =
       fetchType === "multiple"
-        ? "Multiple Fetch Queue"
+        ? activeSession?.title || "Multi-Account Queue"
         : username.trim()
           ? `@${username.trim()}`
           : "Idle";
 
     const activeFetchDescription =
       fetchType === "multiple"
-        ? `${multipleStatusCounts.fetching} fetching • ${multipleStatusCounts.completed} completed`
+        ? activeSession
+          ? `${multipleStatusCounts.fetching} fetching • ${multipleStatusCounts.completed} completed`
+          : "No active multi-account session"
         : loading
           ? "Fetch is running"
           : result
@@ -80,10 +83,14 @@ export function useActivityPanelState({
 
     const failures =
       multipleStatusCounts.failed + multipleStatusCounts.incomplete;
+    const fetchIsRunning =
+      fetchType === "multiple"
+        ? Boolean(activeSession) && multipleStatusCounts.fetching > 0
+        : loading;
 
     return {
       fetch: {
-        loading,
+        loading: fetchIsRunning,
         fetchType,
         title: activeFetchTitle,
         description: activeFetchDescription,
@@ -112,7 +119,7 @@ export function useActivityPanelState({
     globalDownloadMeta,
     globalDownloadState,
     loading,
-    multipleAccounts,
+    activeSession,
     remainingTime,
     result,
     resumeInfo,

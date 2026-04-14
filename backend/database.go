@@ -47,6 +47,16 @@ type AccountListItem struct {
 	StatusesCount  int    `json:"statuses_count"`
 }
 
+type GroupInfo struct {
+	Name  string `json:"name"`
+	Color string `json:"color"`
+}
+
+type SavedAccountsWorkspaceData struct {
+	Accounts []AccountListItem `json:"accounts"`
+	Groups   []GroupInfo       `json:"groups"`
+}
+
 var db *sql.DB
 
 // GetDBPath returns the database file path

@@ -36,6 +36,8 @@ function formatIntegrityReason(reason: string): string {
       return "Text export is empty";
     case "empty_file":
       return "Downloaded file is empty";
+    case "missing_file":
+      return "Tracked file is missing on disk";
     default:
       return reason.replace(/_/g, " ");
   }
@@ -62,7 +64,8 @@ export function IntegrityReportDialog({
         <DialogHeader>
           <DialogTitle>Download Integrity Report</DialogTitle>
           <DialogDescription>
-            Checked {report?.checked_files ?? 0} tracked file(s) under{" "}
+            {report?.mode === "deep" ? "Deep check" : "Quick check"} inspected{" "}
+            {report?.checked_files ?? 0} tracked file(s) under{" "}
             {report?.download_path || fallbackDownloadPath}
           </DialogDescription>
         </DialogHeader>
@@ -84,6 +87,12 @@ export function IntegrityReportDialog({
                   <div className="text-lg font-semibold">{value}</div>
                 </div>
               ))}
+            </div>
+
+            <div className="rounded-lg border p-3 text-xs text-muted-foreground">
+              {report.mode === "deep"
+                ? "Deep check included remote file size validation where the origin exposed a size."
+                : "Quick check stayed local and did not request remote file sizes."}
             </div>
 
             {report.issues.length > 0 ? (

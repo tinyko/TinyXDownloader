@@ -17,6 +17,10 @@ type timelineMediaProjection struct {
 }
 
 func loadMediaItemsByFetchKey(fetchKey string, fallbackUsername string) ([]MediaItem, error) {
+	if err := ensureTimelineProjectionHydrated(fetchKey); err != nil {
+		return nil, err
+	}
+
 	rows, err := db.Query(`
 		SELECT
 			url,
@@ -25,8 +29,7 @@ func loadMediaItemsByFetchKey(fetchKey string, fallbackUsername string) ([]Media
 			type,
 			content,
 			author_username,
-			original_filename,
-			entry_json
+			original_filename
 		FROM account_timeline_items
 		WHERE fetch_key = ?
 		ORDER BY date_unix_ms DESC, tweet_id_num DESC, entry_key ASC
@@ -47,7 +50,6 @@ func loadMediaItemsByFetchKey(fetchKey string, fallbackUsername string) ([]Media
 			&row.Content,
 			&row.AuthorUsername,
 			&row.OriginalFilename,
-			&row.EntryJSON,
 		); err != nil {
 			return nil, err
 		}

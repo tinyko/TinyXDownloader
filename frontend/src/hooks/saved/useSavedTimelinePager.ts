@@ -1,9 +1,9 @@
 import { startTransition, useCallback, useEffect, useRef, useState } from "react";
 
 import { getTimelineItemKey } from "@/hooks/media/useMediaTimelineModel";
-import { loadAccountTimelinePage } from "@/lib/fetch/snapshot-client";
+import { loadSavedTimelineItemsPage } from "@/lib/fetch/snapshot-client";
 import type { FetchScope } from "@/lib/fetch/state";
-import type { AccountTimelinePage, SavedTimelineItem } from "@/types/api";
+import type { AccountTimelineItemsPage, SavedTimelineItem } from "@/types/api";
 
 interface UseSavedTimelinePagerOptions {
   pageSize?: number;
@@ -17,8 +17,11 @@ export function useSavedTimelinePager(
 ) {
   const { pageSize = 120 } = options;
   const loadMoreRef = useRef<HTMLDivElement>(null);
+  const scopeResetKey = `${scope.username}|${scope.mediaType}|${scope.timelineType}|${
+    scope.retweets ? "1" : "0"
+  }|${scope.queryKey}|${filterType}|${sortBy}|${pageSize}`;
 
-  const [page, setPage] = useState<AccountTimelinePage | null>(null);
+  const [page, setPage] = useState<AccountTimelineItemsPage | null>(null);
   const [items, setItems] = useState<SavedTimelineItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -35,7 +38,13 @@ export function useSavedTimelinePager(
       }
 
       try {
-        const data = await loadAccountTimelinePage(scope, offset, pageSize, filterType, sortBy);
+        const data = await loadSavedTimelineItemsPage(
+          scope,
+          offset,
+          pageSize,
+          filterType,
+          sortBy
+        );
         if (!data) {
           return;
         }
@@ -57,12 +66,21 @@ export function useSavedTimelinePager(
         setLoadingMore(false);
       }
     },
-    [filterType, pageSize, scope, sortBy]
+    [
+      filterType,
+      pageSize,
+      scope.mediaType,
+      scope.queryKey,
+      scope.retweets,
+      scope.timelineType,
+      scope.username,
+      sortBy,
+    ]
   );
 
   useEffect(() => {
     void loadPage(0, false);
-  }, [loadPage]);
+  }, [loadPage, scopeResetKey]);
 
   useEffect(() => {
     if (!loadMoreRef.current || !hasMore || loadingMore) {

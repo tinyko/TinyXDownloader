@@ -195,3 +195,31 @@ type DateRangeRequest struct {
 	Retweets    bool   `json:"retweets"`
 	RequestID   string `json:"request_id,omitempty"`
 }
+
+type extractorWorkerPayload struct {
+	URL        string   `json:"url"`
+	AuthToken  string   `json:"auth_token,omitempty"`
+	Guest      bool     `json:"guest,omitempty"`
+	Retweets   string   `json:"retweets,omitempty"`
+	NoVideos   bool     `json:"no_videos,omitempty"`
+	Size       string   `json:"size,omitempty"`
+	Limit      int      `json:"limit,omitempty"`
+	Metadata   bool     `json:"metadata,omitempty"`
+	TextTweets bool     `json:"text_tweets,omitempty"`
+	Type       string   `json:"type,omitempty"`
+	Verbose    bool     `json:"verbose,omitempty"`
+	Set        []string `json:"set,omitempty"`
+	Cursor     string   `json:"cursor,omitempty"`
+}
+
+type extractorWorkerRequest struct {
+	ID      string                 `json:"id"`
+	Request extractorWorkerPayload `json:"request"`
+}
+
+type extractorWorkerResponse struct {
+	ID     string          `json:"id"`
+	OK     bool            `json:"ok"`
+	Result json.RawMessage `json:"result,omitempty"`
+	Error  string          `json:"error,omitempty"`
+}

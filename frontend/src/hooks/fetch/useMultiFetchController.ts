@@ -1,10 +1,15 @@
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 
 import { toastWithSound as toast } from "@/lib/toast-with-sound";
 import { getSettings } from "@/lib/settings";
 import { runMultiFetchQueue } from "@/lib/fetch/runMultiFetchQueue";
 import { useMultiFetchRuntime } from "@/hooks/fetch/useMultiFetchRuntime";
-import type { FetchMode, MultipleAccount, PrivateType } from "@/types/fetch";
+import type {
+  FetchMode,
+  MultipleAccount,
+  MultiFetchSessionSource,
+  PrivateType,
+} from "@/types/fetch";
 
 const BATCH_SIZE = 200;
 const MULTIPLE_FETCH_CONCURRENCY = 2;
@@ -17,20 +22,32 @@ export interface MultiFetchOptions {
   authToken?: string;
 }
 
+export interface MultiFetchSessionMeta {
+  source: MultiFetchSessionSource;
+  title: string;
+}
+
 export function useMultiFetchController() {
   const [isFetchingAll, setIsFetchingAll] = useState(false);
+  const currentQueuePromiseRef = useRef<Promise<void> | null>(null);
   const {
-    multipleAccounts,
+    activeSession,
+    recentSessions,
     setMultipleAccountsState,
     stopAllRef,
     accountStartTimesRef,
     accountStopFlagsRef,
     accountMediaCountRef,
     accountTimeoutSecondsRef,
-    multipleAccountsRef,
+    activeSessionRef,
     diffVisibilityRef,
     activeAccountRequestIdsRef,
     resetRuntimeState,
+    replaceActiveSession,
+    removeCurrentSession,
+    removeRecentSession,
+    clearRecentSessions,
+    setActiveSessionStatus,
     queueMultipleAccountUpdate,
     flushMultipleAccountUpdates,
     clearAccountRuntimeState,
@@ -40,22 +57,52 @@ export function useMultiFetchController() {
 
   const resetMultipleQueueState = useCallback(() => {
     setIsFetchingAll(false);
+    currentQueuePromiseRef.current = null;
     resetRuntimeState();
   }, [resetRuntimeState]);
+
+  const stopCurrentQueueForReplacement = useCallback(async () => {
+    if (!isFetchingAll) {
+      return;
+    }
+
+    stopAllRef.current = true;
+    setIsFetchingAll(false);
+    setActiveSessionStatus("stopped");
+    await cancelAllActiveAccountRequests();
+    try {
+      await currentQueuePromiseRef.current;
+    } catch {
+      // The outgoing session is being replaced anyway.
+    } finally {
+      currentQueuePromiseRef.current = null;
+    }
+  }, [cancelAllActiveAccountRequests, isFetchingAll, setActiveSessionStatus]);
+
+  const createPendingSession = useCallback(
+    (
+      accounts: MultipleAccount[],
+      meta: MultiFetchSessionMeta
+    ) => {
+      if (isFetchingAll) {
+        return stopCurrentQueueForReplacement().then(() =>
+          replaceActiveSession(accounts, meta, "ready")
+        );
+      }
+      return Promise.resolve(replaceActiveSession(accounts, meta, "ready"));
+    },
+    [isFetchingAll, replaceActiveSession, stopCurrentQueueForReplacement]
+  );
 
   const handleFetchAll = useCallback(
     async (
       accountsOverride?: MultipleAccount[],
-      options?: MultiFetchOptions
+      options?: MultiFetchOptions,
+      sessionMeta?: MultiFetchSessionMeta
     ) => {
-      const requestedAccounts = accountsOverride ?? multipleAccountsRef.current;
+      const requestedAccounts = accountsOverride ?? activeSessionRef.current?.accounts ?? [];
       if (requestedAccounts.length === 0) {
         toast.error("No accounts to fetch");
-        return;
-      }
-
-      if (isFetchingAll) {
-        toast.warning("A queue is already in progress");
         return;
       }
 
@@ -75,6 +122,21 @@ export function useMultiFetchController() {
         return;
       }
 
+      if (isFetchingAll) {
+        await stopCurrentQueueForReplacement();
+        toast.info("Stopped current queue and started a new session");
+      }
+
+      const session =
+        replaceActiveSession(
+          requestedAccounts,
+          sessionMeta ?? {
+            source: "manual-fetch",
+            title: `Fetching ${requestedAccounts.length} Accounts`,
+          },
+          "running"
+        );
+
       setIsFetchingAll(true);
       stopAllRef.current = false;
       activeAccountRequestIdsRef.current.clear();
@@ -83,48 +145,96 @@ export function useMultiFetchController() {
       const fetchSettings = getSettings();
       const isSingleModeMultiple = fetchSettings.fetchMode === "single";
       const batchSizeMultiple = isSingleModeMultiple ? 0 : BATCH_SIZE;
-      const { completed } = await runMultiFetchQueue({
-        requestedAccounts,
-        queueMode,
-        queuePrivateType,
-        queueMediaType,
-        queueRetweets,
-        timeoutSeconds,
-        resolvedAuthToken,
-        batchSize: batchSizeMultiple,
-        concurrency: MULTIPLE_FETCH_CONCURRENCY,
-        stopAllRef,
-        accountStartTimesRef,
-        accountStopFlagsRef,
-        accountMediaCountRef,
-        accountTimeoutSecondsRef,
-        activeAccountRequestIdsRef,
-        setMultipleAccountsState,
-        queueMultipleAccountUpdate,
-        flushMultipleAccountUpdates,
-        clearAccountRuntimeState,
-        markAccountDiffVisible,
-      });
 
-      setIsFetchingAll(false);
-      activeAccountRequestIdsRef.current.clear();
-      if (completed) {
-        toast.success("All accounts fetched");
-      }
+      let runPromise: Promise<void> | null = null;
+      runPromise = (async () => {
+        try {
+          const { completed } = await runMultiFetchQueue({
+            requestedAccounts,
+            queueMode,
+            queuePrivateType,
+            queueMediaType,
+            queueRetweets,
+            timeoutSeconds,
+            resolvedAuthToken,
+            batchSize: batchSizeMultiple,
+            concurrency: MULTIPLE_FETCH_CONCURRENCY,
+            stopAllRef,
+            accountStartTimesRef,
+            accountStopFlagsRef,
+            accountMediaCountRef,
+            accountTimeoutSecondsRef,
+            activeAccountRequestIdsRef,
+            setMultipleAccountsState,
+            queueMultipleAccountUpdate,
+            flushMultipleAccountUpdates,
+            clearAccountRuntimeState,
+            markAccountDiffVisible,
+          });
+
+          if (activeSessionRef.current?.id !== session.id) {
+            return;
+          }
+
+          if (!completed) {
+            setActiveSessionStatus("stopped");
+            return;
+          }
+
+          const latestAccounts = activeSessionRef.current?.accounts ?? [];
+          const hasIssues = latestAccounts.some(
+            (account) =>
+              account.status === "failed" || account.status === "incomplete"
+          );
+          setActiveSessionStatus(hasIssues ? "failed" : "completed");
+          if (hasIssues) {
+            toast.warning("Queue finished with some accounts needing review");
+          } else {
+            toast.success("All accounts fetched");
+          }
+        } catch (error) {
+          if (activeSessionRef.current?.id === session.id) {
+            setActiveSessionStatus("failed");
+          }
+          const message = error instanceof Error ? error.message : String(error);
+          toast.error(message || "Queue failed");
+        } finally {
+          if (activeSessionRef.current?.id === session.id) {
+            setIsFetchingAll(false);
+            activeAccountRequestIdsRef.current.clear();
+          }
+          if (currentQueuePromiseRef.current === runPromise) {
+            currentQueuePromiseRef.current = null;
+          }
+        }
+      })();
+
+      currentQueuePromiseRef.current = runPromise;
+      await runPromise;
     },
     [
+      accountMediaCountRef,
+      accountStartTimesRef,
+      accountStopFlagsRef,
+      accountTimeoutSecondsRef,
+      activeAccountRequestIdsRef,
+      activeSessionRef,
       clearAccountRuntimeState,
       flushMultipleAccountUpdates,
       isFetchingAll,
       markAccountDiffVisible,
       queueMultipleAccountUpdate,
+      replaceActiveSession,
+      setActiveSessionStatus,
       setMultipleAccountsState,
+      stopCurrentQueueForReplacement,
     ]
   );
 
   const handleStopAll = useCallback(() => {
     stopAllRef.current = true;
     setIsFetchingAll(false);
+    setActiveSessionStatus("stopped");
 
     accountStartTimesRef.current.clear();
     accountTimeoutSecondsRef.current.clear();
@@ -143,14 +253,27 @@ export function useMultiFetchController() {
 
     void cancelAllActiveAccountRequests();
     toast.info("Stopped all fetches");
-  }, [cancelAllActiveAccountRequests, setMultipleAccountsState]);
+  }, [
+    accountMediaCountRef,
+    accountStartTimesRef,
+    accountTimeoutSecondsRef,
+    cancelAllActiveAccountRequests,
+    diffVisibilityRef,
+    setActiveSessionStatus,
+    setMultipleAccountsState,
+  ]);
 
   return {
-    multipleAccounts,
+    activeSession,
+    recentSessions,
     isFetchingAll,
     setMultipleAccountsState,
+    createPendingSession,
     resetMultipleQueueState,
     handleFetchAll,
     handleStopAll,
+    removeCurrentSession,
+    removeRecentSession,
+    clearRecentSessions,
   };
 }

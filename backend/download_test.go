@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 )
@@ -198,5 +199,103 @@ func TestCreateDownloadHTTPClientUsesExtendedTimeout(t *testing.T) {
 
 	if client.Timeout != downloadRequestTimeout {
 		t.Fatalf("unexpected download timeout: got %v want %v", client.Timeout, downloadRequestTimeout)
+	}
+}
+
+func TestDownloadScopePayloadsProgressAndStatusUsesUnifiedBatch(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Length", "4")
+		_, _ = w.Write([]byte("data"))
+	}))
+	defer server.Close()
+
+	outputDir := t.TempDir()
+	payloads := []*ScopeMediaDownloadPayload{
+		{
+			Username: "alice",
+			Items: []MediaItem{
+				{
+					URL:     server.URL + "/alice-1.jpg",
+					Date:    "2026-04-14T12:00:00",
+					TweetID: 1001,
+					Type:    "photo",
+					Content: "alice one",
+				},
+			},
+		},
+		{
+			Username:         "bob",
+			RootSubdirectory: "My Bookmarks",
+			Items: []MediaItem{
+				{
+					URL:     server.URL + "/bob-1.jpg",
+					Date:    "2026-04-14T12:00:01",
+					TweetID: 2001,
+					Type:    "photo",
+					Content: "bob one",
+				},
+				{
+					URL:     server.URL + "/bob-2.jpg",
+					Date:    "2026-04-14T12:00:02",
+					TweetID: 2002,
+					Type:    "photo",
+					Content: "bob two",
+				},
+			},
+		},
+	}
+
+	var progressEvents [][2]int
+	progress := func(current, total int) {
+		progressEvents = append(progressEvents, [2]int{current, total})
+	}
+
+	downloaded, skipped, failed, err := DownloadScopePayloadsProgressAndStatus(
+		payloads,
+		outputDir,
+		progress,
+		nil,
+		context.Background(),
+		"",
+	)
+	if err != nil {
+		t.Fatalf("download scope payloads: %v", err)
+	}
+	if downloaded != 3 || skipped != 0 || failed != 0 {
+		t.Fatalf("unexpected download counts: downloaded=%d skipped=%d failed=%d", downloaded, skipped, failed)
+	}
+	if len(progressEvents) == 0 {
+		t.Fatal("expected progress events")
+	}
+	lastProgress := progressEvents[len(progressEvents)-1]
+	if lastProgress[0] != 3 || lastProgress[1] != 3 {
+		t.Fatalf("expected final unified progress 3/3, got %d/%d", lastProgress[0], lastProgress[1])
+	}
+
+	aliceFiles, err := os.ReadDir(filepath.Join(outputDir, "alice", "images"))
+	if err != nil {
+		t.Fatalf("read alice image dir: %v", err)
+	}
+	if len(aliceFiles) != 1 {
+		t.Fatalf("expected 1 alice file, got %d", len(aliceFiles))
+	}
+
+	bobFiles, err := os.ReadDir(filepath.Join(outputDir, "My Bookmarks", "bob", "images"))
+	if err != nil {
+		t.Fatalf("read bob image dir: %v", err)
+	}
+	if len(bobFiles) != 2 {
+		t.Fatalf("expected 2 bob files, got %d", len(bobFiles))
+	}
+
+	names := []string{bobFiles[0].Name(), bobFiles[1].Name()}
+	slices.Sort(names)
+	for _, name := range names {
+		if filepath.Ext(name) != ".jpg" {
+			t.Fatalf("expected jpg output, got %q", name)
+		}
+		if _, err := os.Stat(filepath.Join(outputDir, "My Bookmarks", "bob", "images", name+partialDownloadSuffix)); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("expected no partial file for %q, got err=%v", name, err)
+		}
 	}
 }

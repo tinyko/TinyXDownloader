@@ -78,6 +78,7 @@ async function fetchDefaultPath(): Promise<string> {
 }
 
 const SETTINGS_KEY = "twitter-media-downloader-settings";
+export const SETTINGS_CHANGED_EVENT = "xdownloader:settings-changed";
 
 export function getSettings(): Settings {
   try {
@@ -106,6 +107,13 @@ export async function getSettingsWithDefaults(): Promise<Settings> {
 export function saveSettings(settings: Settings): void {
   try {
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(
+        new CustomEvent(SETTINGS_CHANGED_EVENT, {
+          detail: settings,
+        })
+      );
+    }
   } catch (error) {
     console.error("Failed to save settings:", error);
   }

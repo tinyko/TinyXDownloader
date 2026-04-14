@@ -32,3 +32,37 @@ export interface MultipleAccount {
   showDiff?: boolean;
   cursor?: string;
 }
+
+export type MultiFetchSessionSource = "manual-fetch" | "saved-update";
+export type MultiFetchSessionStatus =
+  | "ready"
+  | "running"
+  | "completed"
+  | "stopped"
+  | "failed";
+
+export interface MultiFetchSession {
+  id: string;
+  source: MultiFetchSessionSource;
+  title: string;
+  createdAt: number;
+  status: MultiFetchSessionStatus;
+  accounts: MultipleAccount[];
+}
+
+export interface MultiFetchSessionSummary {
+  id: string;
+  source: MultiFetchSessionSource;
+  title: string;
+  createdAt: number;
+  status: MultiFetchSessionStatus;
+  accountCount: number;
+  totalMedia: number;
+  counts: {
+    pending: number;
+    fetching: number;
+    completed: number;
+    incomplete: number;
+    failed: number;
+  };
+}

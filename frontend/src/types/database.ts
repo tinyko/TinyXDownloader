@@ -7,6 +7,11 @@ export interface GroupInfo {
   color: string;
 }
 
+export interface SavedAccountsWorkspaceData {
+  accounts: AccountListItem[];
+  groups: GroupInfo[];
+}
+
 export type DatabaseAccountViewMode = "public" | "private";
 
 export type DatabaseSortOrder =

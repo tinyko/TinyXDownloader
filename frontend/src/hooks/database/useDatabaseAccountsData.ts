@@ -1,17 +1,21 @@
-import { startTransition, useCallback, useEffect, useState } from "react";
+import { startTransition, useCallback, useEffect, useRef, useState } from "react";
 
 import type {
   AccountListItem,
   GroupInfo,
 } from "@/types/database";
 import { resolveAccountFolderName } from "@/lib/database/helpers";
-import { getSettings } from "@/lib/settings";
+import {
+  getSettings,
+  SETTINGS_CHANGED_EVENT,
+  type Settings,
+} from "@/lib/settings";
 import { toastWithSound as toast } from "@/lib/toast-with-sound";
 import {
-  GetAllAccountsFromDB,
-  GetAllGroups,
   GetDownloadDirectorySnapshot,
+  GetSavedAccountsWorkspaceData,
 } from "../../../wailsjs/go/main/App";
+import { normalizeSavedAccountsWorkspaceData } from "@/lib/fetch/snapshot-client";
 
 export function useDatabaseAccountsData() {
   const [accounts, setAccounts] = useState<AccountListItem[]>([]);
@@ -20,79 +24,103 @@ export function useDatabaseAccountsData() {
   const [folderExistence, setFolderExistence] = useState<Map<number, boolean>>(
     new Map()
   );
+  const initialLoadRef = useRef(true);
+  const folderSnapshotCacheRef = useRef<{
+    downloadPath: string;
+    folders: Set<string>;
+  } | null>(null);
+  const lastDownloadPathRef = useRef("");
 
-  const checkFolderExistence = useCallback(async (accountsList: AccountListItem[]) => {
-    const settings = getSettings();
+  const buildFolderExistenceMap = useCallback(
+    (accountsList: AccountListItem[], existingFolders: Set<string>) => {
+      const folderMap = new Map<number, boolean>();
+      for (const account of accountsList) {
+        folderMap.set(
+          account.id,
+          existingFolders.has(resolveAccountFolderName(account))
+        );
+      }
+      return folderMap;
+    },
+    []
+  );
+
+  const getFolderSnapshot = useCallback(
+    async (downloadPath: string, forceRefresh: boolean) => {
+      if (!downloadPath) {
+        folderSnapshotCacheRef.current = {
+          downloadPath: "",
+          folders: new Set(),
+        };
+        lastDownloadPathRef.current = "";
+        return new Set<string>();
+      }
+
+      const cached = folderSnapshotCacheRef.current;
+      if (!forceRefresh && cached && cached.downloadPath === downloadPath) {
+        return cached.folders;
+      }
+
+      const snapshot = await GetDownloadDirectorySnapshot(downloadPath);
+      const folders = new Set(snapshot || []);
+      folderSnapshotCacheRef.current = {
+        downloadPath,
+        folders,
+      };
+      lastDownloadPathRef.current = downloadPath;
+      return folders;
+    },
+    []
+  );
+
+  const checkFolderExistence = useCallback(async (
+    accountsList: AccountListItem[],
+    forceRefresh = false,
+    explicitSettings?: Settings
+  ) => {
+    const settings = explicitSettings || getSettings();
     const basePath = settings.downloadPath;
     if (!basePath || accountsList.length === 0) {
       setFolderExistence(new Map());
+      lastDownloadPathRef.current = basePath;
       return;
     }
 
-    const snapshot = await GetDownloadDirectorySnapshot(basePath);
-    const existingFolders = new Set(snapshot || []);
-
-    const folderMap = new Map<number, boolean>();
-    for (const account of accountsList) {
-      folderMap.set(
-        account.id,
-        existingFolders.has(resolveAccountFolderName(account))
-      );
-    }
-
-    setFolderExistence(folderMap);
-  }, []);
-
-  const loadSecondaryData = useCallback(
-    async (accountsList: AccountListItem[]) => {
-      try {
-        const groupsData = await GetAllGroups();
-        if (groupsData) {
-          setGroups(
-            groupsData.map((group) => ({
-              name: group.name || "",
-              color: group.color || "",
-            }))
-          );
-        }
-      } catch (error) {
-        console.error("Failed to load groups:", error);
-      }
-
-      try {
-        window.setTimeout(() => {
-          void checkFolderExistence(accountsList);
-        }, 0);
-      } catch (error) {
-        console.error("Failed to check folder existence:", error);
-      }
-    },
-    [checkFolderExistence]
-  );
+    const existingFolders = await getFolderSnapshot(basePath, forceRefresh);
+    setFolderExistence(buildFolderExistenceMap(accountsList, existingFolders));
+  }, [buildFolderExistenceMap, getFolderSnapshot]);
 
   const loadAccounts = useCallback(async () => {
-    setLoading(true);
-    setFolderExistence(new Map());
+    if (initialLoadRef.current) {
+      setLoading(true);
+    }
+
     try {
-      const data = await GetAllAccountsFromDB();
-      const accountList = data || [];
+      const workspaceData = normalizeSavedAccountsWorkspaceData(
+        await GetSavedAccountsWorkspaceData()
+      );
+      const accountList = workspaceData?.accounts || [];
+      const groupList = workspaceData?.groups || [];
+
       startTransition(() => {
         setAccounts(accountList);
+        setGroups(groupList);
         setLoading(false);
+        initialLoadRef.current = false;
       });
 
       window.setTimeout(() => {
-        void loadSecondaryData(accountList);
+        void checkFolderExistence(accountList);
       }, 0);
     } catch (error) {
       console.error("Failed to load accounts:", error);
       toast.error("Failed to load accounts");
       setLoading(false);
     }
-  }, [loadSecondaryData]);
+  }, [checkFolderExistence]);
 
   const refreshFolderExistence = useCallback(async () => {
-    await checkFolderExistence(accounts);
+    await checkFolderExistence(accounts, true);
   }, [accounts, checkFolderExistence]);
 
   useEffect(() => {
@@ -101,6 +129,26 @@ export function useDatabaseAccountsData() {
     }, 0);
     return () => window.clearTimeout(timer);
   }, [loadAccounts]);
+
+  useEffect(() => {
+    const handleSettingsChanged = (event: Event) => {
+      const nextSettings = (event as CustomEvent<Settings>).detail || getSettings();
+      const nextDownloadPath = nextSettings.downloadPath || "";
+      if (nextDownloadPath === lastDownloadPathRef.current) {
+        return;
+      }
+
+      void checkFolderExistence(accounts, true, nextSettings);
+    };
+
+    window.addEventListener(SETTINGS_CHANGED_EVENT, handleSettingsChanged as EventListener);
+    return () => {
+      window.removeEventListener(
+        SETTINGS_CHANGED_EVENT,
+        handleSettingsChanged as EventListener
+      );
+    };
+  }, [accounts, checkFolderExistence]);
 
   return {
     accounts,

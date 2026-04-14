@@ -82,6 +82,18 @@ export interface AccountTimelinePage {
   next_offset: number;
 }
 
+export interface AccountTimelineBootstrap {
+  summary: SnapshotSummary;
+  media_counts: MediaTypeCounts;
+  total_items: number;
+}
+
+export interface AccountTimelineItemsPage {
+  items: SavedTimelineItem[];
+  has_more: boolean;
+  next_offset: number;
+}
+
 export interface TimelineRequest {
   username: string;
   auth_token: string;

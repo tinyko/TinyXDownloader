@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"testing"
+	"time"
 )
 
 func withTestDB(t *testing.T, fn func()) {
@@ -195,6 +196,76 @@ func TestGetAccountResponseByScopeReturnsExactSnapshot(t *testing.T) {
 		}
 		if decoded.Completed {
 			t.Fatalf("expected incomplete snapshot")
+		}
+	})
+}
+
+func TestGetAccountByIDReturnsStructuredResponseJSON(t *testing.T) {
+	withTestDB(t, func() {
+		if err := ensureAccountsSchema(); err != nil {
+			t.Fatalf("ensure schema: %v", err)
+		}
+
+		scope := FetchScopeRecord{
+			Username:     "raw_json_user",
+			MediaType:    "all",
+			TimelineType: "media",
+			Retweets:     false,
+			QueryKey:     "",
+		}
+		accountInfo := AccountInfo{
+			Name:           "raw_json_user",
+			Nick:           "Raw JSON User",
+			FollowersCount: 123,
+			StatusesCount:  456,
+		}
+		timeline := []TimelineEntry{
+			{
+				URL:            "https://example.com/one.jpg",
+				Date:           "2026-04-14T10:00:00",
+				TweetID:        TweetIDString(4101),
+				Type:           "photo",
+				AuthorUsername: "raw_json_user",
+			},
+			{
+				URL:            "https://example.com/two.jpg",
+				Date:           "2026-04-14T09:00:00",
+				TweetID:        TweetIDString(4100),
+				Type:           "photo",
+				AuthorUsername: "raw_json_user",
+			},
+		}
+
+		if err := SaveAccountSnapshotChunk(scope, accountInfo, timeline, "cursor-4101", true, len(timeline)); err != nil {
+			t.Fatalf("save account snapshot chunk: %v", err)
+		}
+
+		var id int64
+		if err := db.QueryRow(`SELECT id FROM accounts WHERE fetch_key = ?`, buildFetchKeyFromScope(scope)).Scan(&id); err != nil {
+			t.Fatalf("load account id: %v", err)
+		}
+
+		acc, err := GetAccountByID(id)
+		if err != nil {
+			t.Fatalf("get account by id: %v", err)
+		}
+
+		var decoded TwitterResponse
+		if err := json.Unmarshal([]byte(acc.ResponseJSON), &decoded); err != nil {
+			t.Fatalf("unmarshal account response json: %v", err)
+		}
+
+		if decoded.AccountInfo.Name != "raw_json_user" || decoded.AccountInfo.Nick != "Raw JSON User" {
+			t.Fatalf("unexpected account info: %+v", decoded.AccountInfo)
+		}
+		if decoded.Cursor != "cursor-4101" || decoded.Metadata.Cursor != "cursor-4101" {
+			t.Fatalf("expected cursor cursor-4101, got response=%q metadata=%q", decoded.Cursor, decoded.Metadata.Cursor)
+		}
+		if len(decoded.Timeline) != 2 {
+			t.Fatalf("expected 2 timeline items, got %d", len(decoded.Timeline))
+		}
+		if int64(decoded.Timeline[0].TweetID) != 4101 || int64(decoded.Timeline[1].TweetID) != 4100 {
+			t.Fatalf("expected tweet ids to survive JSON path, got %+v", decoded.Timeline)
 		}
 	})
 }
@@ -589,6 +660,37 @@ func TestGetAccountTimelinePageUsesProjectionPagination(t *testing.T) {
 			t.Fatalf("save snapshot chunk: %v", err)
 		}
 
+		bootstrap, err := GetAccountTimelineBootstrap(scope, "all")
+		if err != nil {
+			t.Fatalf("get timeline bootstrap: %v", err)
+		}
+		if bootstrap == nil {
+			t.Fatal("expected bootstrap, got nil")
+		}
+		if bootstrap.TotalItems != 3 {
+			t.Fatalf("expected bootstrap total items 3, got %d", bootstrap.TotalItems)
+		}
+		if bootstrap.MediaCounts.Photo != 1 || bootstrap.MediaCounts.Video != 1 || bootstrap.MediaCounts.GIF != 1 {
+			t.Fatalf("unexpected bootstrap media counts: %+v", bootstrap.MediaCounts)
+		}
+
+		itemsPage, err := GetAccountTimelineItemsPage(scope, 0, 2, "all", "date-desc")
+		if err != nil {
+			t.Fatalf("get timeline items page: %v", err)
+		}
+		if itemsPage == nil {
+			t.Fatal("expected items page, got nil")
+		}
+		if len(itemsPage.Items) != 2 {
+			t.Fatalf("expected 2 items page entries, got %d", len(itemsPage.Items))
+		}
+		if !itemsPage.HasMore || itemsPage.NextOffset != 2 {
+			t.Fatalf("expected items page hasMore with next offset 2, got hasMore=%v next=%d", itemsPage.HasMore, itemsPage.NextOffset)
+		}
+		if itemsPage.Items[0].TweetID != "1003" || itemsPage.Items[1].TweetID != "1002" {
+			t.Fatalf("unexpected items page order: %+v", itemsPage.Items)
+		}
+
 		page, err := GetAccountTimelinePage(scope, 0, 2, "all", "date-desc")
 		if err != nil {
 			t.Fatalf("get timeline page: %v", err)
@@ -665,18 +767,41 @@ func TestGetAccountTimelinePageFallsBackToEntryJSON(t *testing.T) {
 			t.Fatalf("clear projection columns: %v", err)
 		}
 
-		page, err := GetAccountTimelinePage(scope, 0, 10, "all", "date-desc")
+		bootstrap, err := GetAccountTimelineBootstrap(scope, "all")
 		if err != nil {
-			t.Fatalf("get timeline page: %v", err)
+			t.Fatalf("get timeline bootstrap: %v", err)
 		}
-		if page == nil {
-			t.Fatal("expected page, got nil")
+		if bootstrap == nil {
+			t.Fatal("expected bootstrap, got nil")
 		}
-		if len(page.Items) != 1 {
-			t.Fatalf("expected 1 page item, got %d", len(page.Items))
+		if bootstrap.TotalItems != 1 {
+			t.Fatalf("expected bootstrap total items 1, got %d", bootstrap.TotalItems)
 		}
 
-		item := page.Items[0]
+		var bootstrapContent, bootstrapAuthor, bootstrapFilename sql.NullString
+		if err := db.QueryRow(`
+			SELECT content, author_username, original_filename
+			FROM account_timeline_items
+			WHERE fetch_key = ?
+		`, fetchKey).Scan(&bootstrapContent, &bootstrapAuthor, &bootstrapFilename); err != nil {
+			t.Fatalf("read projection columns after bootstrap: %v", err)
+		}
+		if bootstrapContent.Valid || bootstrapAuthor.Valid || bootstrapFilename.Valid {
+			t.Fatal("expected bootstrap fast path to avoid hydrating projection columns")
+		}
+
+		itemsPage, err := GetAccountTimelineItemsPage(scope, 0, 10, "all", "date-desc")
+		if err != nil {
+			t.Fatalf("get timeline items page: %v", err)
+		}
+		if itemsPage == nil {
+			t.Fatal("expected items page, got nil")
+		}
+		if len(itemsPage.Items) != 1 {
+			t.Fatalf("expected 1 page item, got %d", len(itemsPage.Items))
+		}
+
+		item := itemsPage.Items[0]
 		if item.Content != "fallback page content" {
 			t.Fatalf("expected fallback content, got %q", item.Content)
 		}
@@ -685,6 +810,216 @@ func TestGetAccountTimelinePageFallsBackToEntryJSON(t *testing.T) {
 		}
 		if item.OriginalFilename != "fallback-page.jpg" {
 			t.Fatalf("expected fallback original filename, got %q", item.OriginalFilename)
+		}
+
+		var hydratedContent, hydratedAuthor, hydratedFilename sql.NullString
+		if err := db.QueryRow(`
+			SELECT content, author_username, original_filename
+			FROM account_timeline_items
+			WHERE fetch_key = ?
+		`, fetchKey).Scan(&hydratedContent, &hydratedAuthor, &hydratedFilename); err != nil {
+			t.Fatalf("read hydrated projection columns: %v", err)
+		}
+		if !hydratedContent.Valid || !hydratedAuthor.Valid || !hydratedFilename.Valid {
+			t.Fatal("expected projection columns to be hydrated in-place")
+		}
+		if hydratedContent.String != "fallback page content" {
+			t.Fatalf("expected hydrated content, got %q", hydratedContent.String)
+		}
+	})
+}
+
+func TestListDownloadMediaIndexRepairCandidatesIdentifiesMissingStaleAndMismatchedScopes(t *testing.T) {
+	withTestDB(t, func() {
+		if err := ensureAccountsSchema(); err != nil {
+			t.Fatalf("ensure schema: %v", err)
+		}
+
+		makeScope := func(username string) FetchScopeRecord {
+			return FetchScopeRecord{
+				Username:     username,
+				MediaType:    "all",
+				TimelineType: "media",
+				Retweets:     false,
+				QueryKey:     "",
+			}
+		}
+		makeEntry := func(tweetID int64, suffix string) TimelineEntry {
+			return TimelineEntry{
+				URL:     "https://example.com/" + suffix,
+				Date:    "2026-04-13T12:00:00",
+				TweetID: TweetIDString(tweetID),
+				Type:    "photo",
+			}
+		}
+
+		if err := SaveAccountSnapshotChunk(makeScope("fresh_scope"), AccountInfo{Name: "fresh_scope"}, []TimelineEntry{
+			makeEntry(1001, "fresh.jpg"),
+		}, "", true, 1); err != nil {
+			t.Fatalf("save fresh scope: %v", err)
+		}
+
+		if err := SaveAccountSnapshotChunk(makeScope("missing_scope"), AccountInfo{Name: "missing_scope"}, []TimelineEntry{
+			makeEntry(1002, "missing.jpg"),
+		}, "", true, 1); err != nil {
+			t.Fatalf("save missing scope: %v", err)
+		}
+
+		if err := SaveAccountSnapshotChunk(makeScope("stale_scope"), AccountInfo{Name: "stale_scope"}, []TimelineEntry{
+			makeEntry(1003, "stale.jpg"),
+		}, "", true, 1); err != nil {
+			t.Fatalf("save stale scope: %v", err)
+		}
+
+		if err := SaveAccountSnapshotChunk(makeScope("mismatch_scope"), AccountInfo{Name: "mismatch_scope"}, []TimelineEntry{
+			makeEntry(1004, "mismatch-a.jpg"),
+			makeEntry(1005, "mismatch-b.jpg"),
+		}, "", true, 2); err != nil {
+			t.Fatalf("save mismatch scope: %v", err)
+		}
+
+		if err := SaveAccountSnapshotChunk(makeScope("empty_scope"), AccountInfo{Name: "empty_scope"}, nil, "", true, 0); err != nil {
+			t.Fatalf("save empty scope: %v", err)
+		}
+
+		missingFetchKey := buildFetchKeyFromScope(makeScope("missing_scope"))
+		if _, err := db.Exec(`DELETE FROM download_media_index WHERE fetch_key = ?`, missingFetchKey); err != nil {
+			t.Fatalf("delete missing scope index rows: %v", err)
+		}
+
+		staleFetchKey := buildFetchKeyFromScope(makeScope("stale_scope"))
+		staleLastFetched := time.Now().Add(5 * time.Minute)
+		if _, err := db.Exec(`UPDATE accounts SET last_fetched = ? WHERE fetch_key = ?`, staleLastFetched, staleFetchKey); err != nil {
+			t.Fatalf("mark stale scope last fetched: %v", err)
+		}
+
+		mismatchFetchKey := buildFetchKeyFromScope(makeScope("mismatch_scope"))
+		if _, err := db.Exec(`
+			DELETE FROM download_media_index
+			WHERE fetch_key = ?
+			AND entry_key = ?
+		`, mismatchFetchKey, buildTimelineEntryStorageKey(makeEntry(1005, "mismatch-b.jpg"))); err != nil {
+			t.Fatalf("delete mismatch scope index row: %v", err)
+		}
+
+		candidateFetchKeys, err := listDownloadMediaIndexRepairFetchKeys()
+		if err != nil {
+			t.Fatalf("list repair fetch keys: %v", err)
+		}
+
+		candidateKeys := make(map[string]struct{}, len(candidateFetchKeys))
+		for _, fetchKey := range candidateFetchKeys {
+			candidateKeys[fetchKey] = struct{}{}
+		}
+
+		if _, ok := candidateKeys[buildFetchKeyFromScope(makeScope("fresh_scope"))]; ok {
+			t.Fatal("did not expect fresh scope to need repair")
+		}
+		if _, ok := candidateKeys[buildFetchKeyFromScope(makeScope("empty_scope"))]; ok {
+			t.Fatal("did not expect empty scope to need repair")
+		}
+		if _, ok := candidateKeys[missingFetchKey]; !ok {
+			t.Fatal("expected missing scope to need repair")
+		}
+		if _, ok := candidateKeys[staleFetchKey]; !ok {
+			t.Fatal("expected stale scope to need repair")
+		}
+		if _, ok := candidateKeys[mismatchFetchKey]; !ok {
+			t.Fatal("expected mismatched scope to need repair")
+		}
+	})
+}
+
+func TestLoadTrackedMediaIndexRepairsOnlyStaleScopes(t *testing.T) {
+	withTestDB(t, func() {
+		if err := ensureAccountsSchema(); err != nil {
+			t.Fatalf("ensure schema: %v", err)
+		}
+
+		freshScope := FetchScopeRecord{
+			Username:     "fresh_integrity",
+			MediaType:    "all",
+			TimelineType: "media",
+			Retweets:     false,
+			QueryKey:     "",
+		}
+		missingScope := FetchScopeRecord{
+			Username:     "missing_integrity",
+			MediaType:    "all",
+			TimelineType: "media",
+			Retweets:     false,
+			QueryKey:     "",
+		}
+
+		freshEntry := TimelineEntry{
+			URL:     "https://example.com/fresh-integrity.jpg",
+			Date:    "2026-04-13T12:00:00",
+			TweetID: TweetIDString(3001),
+			Type:    "photo",
+		}
+		missingEntry := TimelineEntry{
+			URL:     "https://example.com/missing-integrity.jpg",
+			Date:    "2026-04-13T12:00:00",
+			TweetID: TweetIDString(3002),
+			Type:    "photo",
+		}
+
+		if err := SaveAccountSnapshotChunk(freshScope, AccountInfo{Name: freshScope.Username}, []TimelineEntry{freshEntry}, "", true, 1); err != nil {
+			t.Fatalf("save fresh scope: %v", err)
+		}
+		if err := SaveAccountSnapshotChunk(missingScope, AccountInfo{Name: missingScope.Username}, []TimelineEntry{missingEntry}, "", true, 1); err != nil {
+			t.Fatalf("save missing scope: %v", err)
+		}
+
+		freshFetchKey := buildFetchKeyFromScope(freshScope)
+		missingFetchKey := buildFetchKeyFromScope(missingScope)
+
+		var freshUpdatedBefore sql.NullInt64
+		if err := db.QueryRow(`
+			SELECT CAST(MAX(strftime('%s', updated_at)) AS INTEGER)
+			FROM download_media_index
+			WHERE fetch_key = ?
+		`, freshFetchKey).Scan(&freshUpdatedBefore); err != nil {
+			t.Fatalf("read fresh scope updated_at before: %v", err)
+		}
+
+		if _, err := db.Exec(`DELETE FROM download_media_index WHERE fetch_key = ?`, missingFetchKey); err != nil {
+			t.Fatalf("delete missing scope index rows: %v", err)
+		}
+
+		tracked, err := loadTrackedMediaIndex(t.TempDir())
+		if err != nil {
+			t.Fatalf("load tracked media index: %v", err)
+		}
+		if len(tracked) != 2 {
+			t.Fatalf("expected 2 tracked files after repair, got %d", len(tracked))
+		}
+
+		var missingIndexCount int
+		if err := db.QueryRow(`
+			SELECT COUNT(*)
+			FROM download_media_index
+			WHERE fetch_key = ?
+		`, missingFetchKey).Scan(&missingIndexCount); err != nil {
+			t.Fatalf("count repaired missing scope rows: %v", err)
+		}
+		if missingIndexCount != 1 {
+			t.Fatalf("expected missing scope to be rebuilt with 1 row, got %d", missingIndexCount)
+		}
+
+		var freshUpdatedAfter sql.NullInt64
+		if err := db.QueryRow(`
+			SELECT CAST(MAX(strftime('%s', updated_at)) AS INTEGER)
+			FROM download_media_index
+			WHERE fetch_key = ?
+		`, freshFetchKey).Scan(&freshUpdatedAfter); err != nil {
+			t.Fatalf("read fresh scope updated_at after: %v", err)
+		}
+		if !freshUpdatedBefore.Valid || !freshUpdatedAfter.Valid {
+			t.Fatalf("expected valid updated_at timestamps, before=%+v after=%+v", freshUpdatedBefore, freshUpdatedAfter)
+		}
+		if freshUpdatedAfter.Int64 != freshUpdatedBefore.Int64 {
+			t.Fatalf("expected fresh scope index timestamp to remain unchanged, before=%v after=%v", freshUpdatedBefore, freshUpdatedAfter)
 		}
 	})
 }

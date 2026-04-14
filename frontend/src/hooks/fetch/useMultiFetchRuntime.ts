@@ -1,44 +1,135 @@
 import { startTransition, useCallback, useEffect, useRef, useState } from "react";
 
-import type { MultipleAccount } from "@/types/fetch";
+import type {
+  MultiFetchSession,
+  MultiFetchSessionSource,
+  MultiFetchSessionStatus,
+  MultiFetchSessionSummary,
+  MultipleAccount,
+} from "@/types/fetch";
 import { CancelExtractorRequest } from "../../../wailsjs/go/main/App";
 
 const MULTIPLE_PROGRESS_FLUSH_INTERVAL = 2000;
 const DIFF_VISIBILITY_MS = 1000;
 
+function countSessionStatuses(accounts: MultipleAccount[]) {
+  return accounts.reduce(
+    (counts, account) => {
+      counts[account.status] += 1;
+      return counts;
+    },
+    {
+      pending: 0,
+      fetching: 0,
+      completed: 0,
+      incomplete: 0,
+      failed: 0,
+    }
+  );
+}
+
+function summarizeMultiFetchSession(
+  session: MultiFetchSession,
+  statusOverride?: MultiFetchSessionStatus
+): MultiFetchSessionSummary {
+  const counts = countSessionStatuses(session.accounts);
+  return {
+    id: session.id,
+    source: session.source,
+    title: session.title,
+    createdAt: session.createdAt,
+    status: statusOverride ?? session.status,
+    accountCount: session.accounts.length,
+    totalMedia: session.accounts.reduce((sum, account) => sum + account.mediaCount, 0),
+    counts,
+  };
+}
+
+function createMultiFetchSession(
+  accounts: MultipleAccount[],
+  meta: {
+    source: MultiFetchSessionSource;
+    title: string;
+  },
+  status: MultiFetchSessionStatus
+): MultiFetchSession {
+  return {
+    id: crypto.randomUUID(),
+    source: meta.source,
+    title: meta.title,
+    createdAt: Date.now(),
+    status,
+    accounts,
+  };
+}
+
 export function useMultiFetchRuntime() {
-  const [multipleAccounts, setMultipleAccounts] = useState<MultipleAccount[]>([]);
+  const [activeSession, setActiveSession] = useState<MultiFetchSession | null>(null);
+  const [recentSessions, setRecentSessions] = useState<MultiFetchSessionSummary[]>([]);
 
   const stopAllRef = useRef(false);
   const accountStartTimesRef = useRef<Map<string, number>>(new Map());
   const accountStopFlagsRef = useRef<Map<string, boolean>>(new Map());
   const accountMediaCountRef = useRef<Map<string, number>>(new Map());
   const accountTimeoutSecondsRef = useRef<Map<string, number>>(new Map());
-  const multipleAccountsRef = useRef<MultipleAccount[]>([]);
+  const activeSessionRef = useRef<MultiFetchSession | null>(null);
   const pendingAccountUpdatesRef = useRef<Map<string, Partial<MultipleAccount>>>(new Map());
   const diffVisibilityRef = useRef<Map<string, number>>(new Map());
   const activeAccountRequestIdsRef = useRef<Map<string, string>>(new Map());
 
-  const setMultipleAccountsState = useCallback(
+  const setActiveSessionState = useCallback(
     (
       value:
-        | MultipleAccount[]
-        | ((previous: MultipleAccount[]) => MultipleAccount[])
+        | MultiFetchSession
+        | null
+        | ((previous: MultiFetchSession | null) => MultiFetchSession | null)
     ) => {
-      setMultipleAccounts((previous) => {
+      setActiveSession((previous) => {
         const next =
           typeof value === "function"
-            ? (value as (previous: MultipleAccount[]) => MultipleAccount[])(previous)
+            ? (value as (previous: MultiFetchSession | null) => MultiFetchSession | null)(
+                previous
+              )
             : value;
-        multipleAccountsRef.current = next;
+        activeSessionRef.current = next;
         return next;
       });
     },
     []
   );
 
-  const resetRuntimeState = useCallback(() => {
-    setMultipleAccountsState([]);
+  const setActiveSessionAccounts = useCallback(
+    (
+      value:
+        | MultipleAccount[]
+        | ((previous: MultipleAccount[]) => MultipleAccount[])
+    ) => {
+      setActiveSessionState((previous) => {
+        if (!previous) {
+          const baseAccounts =
+            typeof value === "function" ? value([]) : value;
+          return createMultiFetchSession(
+            baseAccounts,
+            {
+              source: "manual-fetch",
+              title: "Multi-Account Session",
+            },
+            "ready"
+          );
+        }
+
+        const nextAccounts =
+          typeof value === "function" ? value(previous.accounts) : value;
+        return {
+          ...previous,
+          accounts: nextAccounts,
+        };
+      });
+    },
+    [setActiveSessionState]
+  );
+
+  const clearRuntimeRefs = useCallback(() => {
     stopAllRef.current = true;
     accountStartTimesRef.current.clear();
     accountTimeoutSecondsRef.current.clear();
@@ -47,7 +138,85 @@ export function useMultiFetchRuntime() {
     pendingAccountUpdatesRef.current.clear();
     diffVisibilityRef.current.clear();
     activeAccountRequestIdsRef.current.clear();
-  }, [setMultipleAccountsState]);
+  }, []);
+
+  const archiveCurrentSession = useCallback(
+    (statusOverride?: MultiFetchSessionStatus) => {
+      const current = activeSessionRef.current;
+      if (!current) {
+        return;
+      }
+
+      const summary = summarizeMultiFetchSession(current, statusOverride);
+      setRecentSessions((previous) => [
+        summary,
+        ...previous.filter((item) => item.id !== summary.id),
+      ]);
+      setActiveSessionState(null);
+    },
+    [setActiveSessionState]
+  );
+
+  const replaceActiveSession = useCallback(
+    (
+      accounts: MultipleAccount[],
+      meta: {
+        source: MultiFetchSessionSource;
+        title: string;
+      },
+      status: MultiFetchSessionStatus = "ready"
+    ) => {
+      const current = activeSessionRef.current;
+      if (current) {
+        setRecentSessions((previous) => [
+          summarizeMultiFetchSession(current),
+          ...previous.filter((item) => item.id !== current.id),
+        ]);
+      }
+
+      clearRuntimeRefs();
+      const session = createMultiFetchSession(accounts, meta, status);
+      stopAllRef.current = false;
+      setActiveSessionState(session);
+      return session;
+    },
+    [clearRuntimeRefs, setActiveSessionState]
+  );
+
+  const removeCurrentSession = useCallback(() => {
+    clearRuntimeRefs();
+    setActiveSessionState(null);
+  }, [clearRuntimeRefs, setActiveSessionState]);
+
+  const removeRecentSession = useCallback((sessionId: string) => {
+    setRecentSessions((previous) =>
+      previous.filter((session) => session.id !== sessionId)
+    );
+  }, []);
+
+  const clearRecentSessions = useCallback(() => {
+    setRecentSessions([]);
+  }, []);
+
+  const setActiveSessionStatus = useCallback(
+    (status: MultiFetchSessionStatus) => {
+      setActiveSessionState((previous) =>
+        previous
+          ? {
+              ...previous,
+              status,
+            }
+          : previous
+      );
+    },
+    [setActiveSessionState]
+  );
+
+  const resetRuntimeState = useCallback(() => {
+    clearRuntimeRefs();
+    setActiveSessionState(null);
+    setRecentSessions([]);
+  }, [clearRuntimeRefs, setActiveSessionState]);
 
   const queueMultipleAccountUpdate = useCallback(
     (accountId: string, patch: Partial<MultipleAccount>) => {
@@ -69,14 +238,14 @@ export function useMultiFetchRuntime() {
     pendingAccountUpdatesRef.current.clear();
 
     startTransition(() => {
-      setMultipleAccountsState((previous) =>
+      setActiveSessionAccounts((previous) =>
         previous.map((account) => {
           const patch = queuedUpdates.get(account.id);
           return patch ? { ...account, ...patch } : account;
         })
       );
     });
-  }, [setMultipleAccountsState]);
+  }, [setActiveSessionAccounts]);
 
   const clearAccountRuntimeState = useCallback(
     (accountId: string) => {
@@ -127,8 +296,8 @@ export function useMultiFetchRuntime() {
   }, []);
 
   useEffect(() => {
-    multipleAccountsRef.current = multipleAccounts;
-  }, [multipleAccounts]);
+    activeSessionRef.current = activeSession;
+  }, [activeSession]);
 
   useEffect(() => {
     const interval = window.setInterval(() => {
@@ -173,7 +342,9 @@ export function useMultiFetchRuntime() {
 
       if (timedOutAccountIds.length > 0) {
         Promise.all(
-          timedOutAccountIds.map((accountId) => cancelAccountActiveRequest(accountId))
+          timedOutAccountIds.map((accountId) =>
+            cancelAccountActiveRequest(accountId)
+          )
         ).catch(() => {});
       }
     }, MULTIPLE_PROGRESS_FLUSH_INTERVAL);
@@ -189,17 +360,24 @@ export function useMultiFetchRuntime() {
   ]);
 
   return {
-    multipleAccounts,
-    setMultipleAccountsState,
+    activeSession,
+    recentSessions,
+    setMultipleAccountsState: setActiveSessionAccounts,
     stopAllRef,
     accountStartTimesRef,
     accountStopFlagsRef,
     accountMediaCountRef,
     accountTimeoutSecondsRef,
-    multipleAccountsRef,
+    activeSessionRef,
     diffVisibilityRef,
     activeAccountRequestIdsRef,
     resetRuntimeState,
+    replaceActiveSession,
+    archiveCurrentSession,
+    removeCurrentSession,
+    removeRecentSession,
+    clearRecentSessions,
+    setActiveSessionStatus,
     queueMultipleAccountUpdate,
     flushMultipleAccountUpdates,
     clearAccountRuntimeState,
