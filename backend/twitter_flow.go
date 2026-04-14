@@ -179,8 +179,8 @@ func executeExtractorSpec(exePath string, requestID string, spec extractorReques
 }
 
 func decodeCLIResponseOutput(output []byte) (*CLIResponse, error) {
-	jsonStr := extractJSON(string(output))
-	if jsonStr == "" {
+	jsonBytes := extractJSONBytes(output)
+	if len(jsonBytes) == 0 {
 		outputStr := string(output)
 		if strings.TrimSpace(outputStr) == "" {
 			return nil, fmt.Errorf("empty_response: Extractor returned no data. The timeline may be empty or inaccessible")
@@ -189,7 +189,7 @@ func decodeCLIResponseOutput(output []byte) (*CLIResponse, error) {
 	}
 
 	var cliResponse CLIResponse
-	if err := json.Unmarshal([]byte(jsonStr), &cliResponse); err != nil {
+	if err := json.Unmarshal(jsonBytes, &cliResponse); err != nil {
 		return nil, fmt.Errorf("json_error: Failed to parse JSON response: %v", err)
 	}
 
@@ -209,10 +209,9 @@ func buildDateRangeResponseFromCLIResponse(req DateRangeRequest, spec extractorR
 }
 
 func buildTimelineEntriesFromCLIResponse(cliResponse *CLIResponse, textOnly bool) []TimelineEntry {
-	mediaTweetIDs := collectMediaTweetIDs(cliResponse)
-
 	switch {
 	case textOnly:
+		mediaTweetIDs := collectMediaTweetIDs(cliResponse)
 		timeline := make([]TimelineEntry, 0, len(cliResponse.Metadata))
 		for _, meta := range cliResponse.Metadata {
 			if !mediaTweetIDs[int64(meta.TweetID)] {
