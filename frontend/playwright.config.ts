@@ -7,7 +7,7 @@ import { resolveBrowserExecutablePath } from "./tests/e2e/support/resolveBrowser
 
 const executablePath = resolveBrowserExecutablePath();
 const CONFIG_DIR = path.dirname(fileURLToPath(import.meta.url));
-const PNPM_BIN = process.env.PNPM_BIN || "/opt/homebrew/bin/pnpm";
+const PNPM_BIN = process.env.PNPM_BIN || "pnpm";
 
 export default defineConfig({
   testDir: "./tests/e2e",
