@@ -311,6 +311,7 @@ export function DatabaseWorkspace({
                   <div
                     ref={loadMoreRef}
                     className={`h-4 ${!hasMore ? "hidden" : ""}`}
+                    data-testid="saved-load-more-sentinel"
                   />
                 </>
               ) : (
@@ -337,6 +338,7 @@ export function DatabaseWorkspace({
                         variant="outline"
                         onClick={() => void loadMore()}
                         disabled={loadingMore}
+                        data-testid="saved-load-more"
                       >
                         {loadingMore ? "Loading..." : "Load More"}
                       </Button>

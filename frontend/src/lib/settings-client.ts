@@ -96,26 +96,27 @@ export function openSettingsFolder(path: string) {
 function normalizeIntegrityTaskStatus(
   data: RawIntegrityTaskStatus | null | undefined
 ): DownloadIntegrityTaskStatus {
-  let status: TaskLifecycleStatus = "completed";
-  switch (data?.status) {
-    case "running":
-    case "cancelling":
-    case "completed":
-    case "failed":
-    case "cancelled":
-      status = data.status;
-      break;
-    default:
-      if (data?.cancelled) {
-        status = "cancelled";
-      } else if (data?.in_progress) {
-        status = "running";
-      } else if (data?.error) {
-        status = "failed";
-      } else {
-        status = "completed";
-      }
-  }
+  const status: TaskLifecycleStatus = (() => {
+    switch (data?.status) {
+      case "running":
+      case "cancelling":
+      case "completed":
+      case "failed":
+      case "cancelled":
+        return data.status;
+      default:
+        if (data?.cancelled) {
+          return "cancelled";
+        }
+        if (data?.in_progress) {
+          return "running";
+        }
+        if (data?.error) {
+          return "failed";
+        }
+        return "completed";
+    }
+  })();
 
   const mode =
     data?.mode === "quick" || data?.mode === "deep" ? data.mode : "";

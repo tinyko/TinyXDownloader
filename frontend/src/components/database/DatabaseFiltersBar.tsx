@@ -70,6 +70,7 @@ export function DatabaseFiltersBar({
               value={searchQuery}
               onChange={(event) => onSearchQueryChange(event.target.value)}
               className="h-9 pl-9"
+              data-testid="saved-search-input"
             />
             {searchQuery ? (
               <button
@@ -90,7 +91,7 @@ export function DatabaseFiltersBar({
             value={sortOrder}
             onValueChange={(value) => onSortOrderChange(value as DatabaseSortOrder)}
           >
-            <SelectTrigger className="w-auto">
+            <SelectTrigger className="w-auto" data-testid="saved-sort-order-trigger">
               <ArrowUpDown className="mr-2 h-4 w-4" />
               <SelectValue placeholder="Sort" />
             </SelectTrigger>
@@ -111,7 +112,7 @@ export function DatabaseFiltersBar({
 
         {accountViewMode === "public" ? (
           <Select value={filterMediaType} onValueChange={onFilterMediaTypeChange}>
-            <SelectTrigger className="w-auto">
+            <SelectTrigger className="w-auto" data-testid="saved-media-filter-trigger">
               <Filter className="mr-2 h-4 w-4" />
               <SelectValue placeholder="Filter by type" />
             </SelectTrigger>
@@ -157,7 +158,7 @@ export function DatabaseFiltersBar({
             onValueChange={onFilterGroupChange}
             disabled={groups.length === 0}
           >
-            <SelectTrigger className="w-auto">
+            <SelectTrigger className="w-auto" data-testid="saved-group-filter-trigger">
               <Tag className="mr-2 h-4 w-4" />
               <SelectValue placeholder="Filter by group" />
             </SelectTrigger>
@@ -189,6 +190,7 @@ export function DatabaseFiltersBar({
               className="h-10 w-10 rounded-r-none"
               onClick={() => onGridViewChange("gallery")}
               aria-label="Show gallery view"
+              data-testid="saved-view-gallery"
             >
               <LayoutGrid className="h-4 w-4" />
             </Button>
@@ -198,6 +200,7 @@ export function DatabaseFiltersBar({
               className="h-10 w-10 rounded-l-none border-l"
               onClick={() => onGridViewChange("list")}
               aria-label="Show list view"
+              data-testid="saved-view-list"
             >
               <List className="h-4 w-4" />
             </Button>

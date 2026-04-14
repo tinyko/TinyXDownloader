@@ -9,7 +9,6 @@ import {
   getFetchState,
   getResumableInfo,
   type FetchScope,
-  type FetchState,
   type ResumableFetchInfo,
 } from "@/lib/fetch/state";
 import {
@@ -97,7 +96,6 @@ export async function runSingleFetchSession({
   const isBookmarks = mode === "private" && privateType === "bookmarks";
   const isLikes = mode === "private" && privateType === "likes";
 
-  let existingState: FetchState | null = null;
   let cursor: string | undefined;
   let accountInfo: TwitterResponse["account_info"] | null = null;
   let savedCompletedSnapshot: TwitterResponse | null = null;
@@ -109,7 +107,7 @@ export async function runSingleFetchSession({
   let isIncrementalRefresh = false;
 
   if (isResume) {
-    existingState = getFetchState(fetchScope);
+    const existingState = getFetchState(fetchScope);
     const savedSnapshot = await loadSnapshotFromDB(fetchScope);
     if (savedSnapshot && savedSnapshot.cursor && !savedSnapshot.completed) {
       cursor = savedSnapshot.cursor;

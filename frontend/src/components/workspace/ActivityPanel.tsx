@@ -67,14 +67,19 @@ function SectionCard({
   subtitle,
   children,
   action,
+  testId,
 }: {
   title: string;
   subtitle?: string;
   children: React.ReactNode;
   action?: React.ReactNode;
+  testId?: string;
 }) {
   return (
-    <section className="rounded-2xl border border-border/70 bg-card/95 px-3 py-2.5 shadow-sm">
+    <section
+      className="rounded-2xl border border-border/70 bg-card/95 px-3 py-2.5 shadow-sm"
+      data-testid={testId}
+    >
       <div className="mb-2.5 flex items-start justify-between gap-3">
         <div className="min-w-0">
           <h3 className="text-sm font-semibold">{title}</h3>
@@ -138,6 +143,7 @@ export function ActivityPanel({
         <SectionCard
           title="Fetch"
           subtitle={fetch.description}
+          testId="activity-fetch-card"
           action={
             <div className="flex h-8 items-center gap-2 rounded-full border border-border/70 bg-muted/40 px-3 text-xs font-medium text-muted-foreground">
               <Wifi className="h-3.5 w-3.5" />
@@ -155,7 +161,10 @@ export function ActivityPanel({
                     : "Single-account fetch"}
                 </p>
               </div>
-              <Badge className={cn("border", getStatusTone(fetch.status))}>
+              <Badge
+                className={cn("border", getStatusTone(fetch.status))}
+                data-testid="activity-fetch-status"
+              >
                 {getStatusLabel(fetch.status)}
               </Badge>
             </div>
@@ -231,6 +240,7 @@ export function ActivityPanel({
                 className="h-10 w-full justify-center gap-2"
                 onClick={() => void onStopFetch()}
                 disabled={fetch.status === "cancelling"}
+                data-testid="activity-fetch-cancel"
               >
                 <StopCircle className="h-4 w-4" />
                 {fetch.status === "cancelling" ? "Cancelling..." : "Cancel Fetch"}
@@ -257,6 +267,7 @@ export function ActivityPanel({
         <SectionCard
           title="Download"
           subtitle={download.meta?.subtitle || download.description}
+          testId="activity-download-card"
           action={
             <div className="flex h-8 items-center gap-2 rounded-full border border-border/70 bg-muted/40 px-3 text-xs font-medium text-muted-foreground">
               <Download className="h-3.5 w-3.5" />
@@ -274,16 +285,23 @@ export function ActivityPanel({
                       {download.progress.current.toLocaleString()} / {download.progress.total.toLocaleString()} completed
                     </p>
                   </div>
-                  <Badge className={cn("border", getStatusTone(download.status))}>
-                    {download.progress.percent}%
+                  <Badge
+                    className={cn("border", getStatusTone(download.status))}
+                    data-testid="activity-download-status"
+                  >
+                    {getStatusLabel(download.status)}
                   </Badge>
                 </div>
                 <Progress value={download.progress.percent} className="h-2.5" />
+                <p className="text-xs text-muted-foreground">
+                  {download.progress.percent}% complete
+                </p>
                 <Button
                   variant="destructive"
                   className="h-10 w-full justify-center gap-2"
                   onClick={() => void onStopDownload()}
                   disabled={download.status === "cancelling"}
+                  data-testid="activity-download-cancel"
                 >
                   <StopCircle className="h-4 w-4" />
                   {download.status === "cancelling" ? "Cancelling..." : "Cancel Download"}
@@ -306,7 +324,11 @@ export function ActivityPanel({
                 <p className="text-sm text-muted-foreground">No recent download tasks yet.</p>
               ) : (
                 download.history.slice(0, 6).map((item) => (
-                  <div key={item.id} className="rounded-xl bg-muted/50 p-3">
+                  <div
+                    key={item.id}
+                    className="rounded-xl bg-muted/50 p-3"
+                    data-testid={`activity-download-history-${item.id}`}
+                  >
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <p className="truncate font-medium">{item.title}</p>
@@ -314,7 +336,10 @@ export function ActivityPanel({
                           {item.subtitle || "Recent download task"}
                         </p>
                       </div>
-                      <Badge className={cn("border", getStatusTone(item.status))}>
+                      <Badge
+                        className={cn("border", getStatusTone(item.status))}
+                        data-testid={`activity-download-history-status-${item.id}`}
+                      >
                         {getStatusLabel(item.status)}
                       </Badge>
                     </div>
@@ -332,6 +357,7 @@ export function ActivityPanel({
         <SectionCard
           title="Integrity"
           subtitle={integrity.description}
+          testId="activity-integrity-card"
           action={
             <div className="flex h-8 items-center gap-2 rounded-full border border-border/70 bg-muted/40 px-3 text-xs font-medium text-muted-foreground">
               <FileCheck className="h-3.5 w-3.5" />
@@ -347,7 +373,10 @@ export function ActivityPanel({
                   {integrity.phase || "Background integrity task status."}
                 </p>
               </div>
-              <Badge className={cn("border", getStatusTone(integrity.status))}>
+              <Badge
+                className={cn("border", getStatusTone(integrity.status))}
+                data-testid="activity-integrity-status"
+              >
                 {getStatusLabel(integrity.status)}
               </Badge>
             </div>
@@ -383,6 +412,7 @@ export function ActivityPanel({
                 className="h-10 w-full justify-center gap-2"
                 onClick={() => void onStopIntegrity()}
                 disabled={integrity.status === "cancelling"}
+                data-testid="activity-integrity-cancel"
               >
                 <StopCircle className="h-4 w-4" />
                 {integrity.status === "cancelling" ? "Cancelling..." : "Cancel Integrity Check"}

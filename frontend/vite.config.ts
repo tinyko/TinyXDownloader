@@ -2,7 +2,7 @@ import fs from "node:fs"
 import path from "path"
 import tailwindcss from "@tailwindcss/vite"
 import react from "@vitejs/plugin-react"
-import { defineConfig } from "vitest/config"
+import { configDefaults, defineConfig } from "vitest/config"
 
 const wailsConfigPath = path.resolve(__dirname, "..", "wails.json")
 const wailsConfig = JSON.parse(fs.readFileSync(wailsConfigPath, "utf-8")) as {
@@ -24,6 +24,7 @@ export default defineConfig({
     setupFiles: ["./tests/setup.ts"],
     clearMocks: true,
     restoreMocks: true,
+    exclude: [...configDefaults.exclude, "tests/e2e/**"],
   },
   build: {
     rollupOptions: {

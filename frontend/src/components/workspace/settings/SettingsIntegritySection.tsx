@@ -48,7 +48,13 @@ export function SettingsIntegritySection({
       <div className="flex items-center gap-2">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="outline" size="sm" className="h-9" disabled={checkingIntegrity}>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-9"
+              disabled={checkingIntegrity}
+              data-testid="integrity-trigger"
+            >
               {checkingIntegrity ? (
                 <>
                   <Spinner />
@@ -67,12 +73,14 @@ export function SettingsIntegritySection({
             <DropdownMenuItem
               disabled={checkingIntegrity}
               onClick={() => void onCheckIntegrity("quick")}
+              data-testid="integrity-action-quick"
             >
               Quick Check
             </DropdownMenuItem>
             <DropdownMenuItem
               disabled={checkingIntegrity}
               onClick={() => void onCheckIntegrity("deep")}
+              data-testid="integrity-action-deep"
             >
               Deep Check
             </DropdownMenuItem>
@@ -84,6 +92,7 @@ export function SettingsIntegritySection({
             size="sm"
             className="h-9"
             onClick={() => void onCancelIntegrityCheck()}
+            data-testid="integrity-cancel"
           >
             Cancel
           </Button>

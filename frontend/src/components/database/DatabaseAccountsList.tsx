@@ -70,10 +70,12 @@ export function DatabaseAccountsList({
       data={accounts}
       style={{ height: "68vh" }}
       className="rounded-2xl border border-border/70 bg-background/40"
+      data-testid="saved-accounts-list"
     >
       {(account, index) => (
         <div
           key={account.id}
+          data-testid={`saved-account-row-${account.username}`}
           className={cn(
             "border-b border-border/60 px-4 py-3 transition-colors",
             selectedIds.has(account.id) ? "bg-primary/6" : "hover:bg-muted/35"
@@ -159,6 +161,7 @@ export function DatabaseAccountsList({
                   size="icon"
                   onClick={() => void onStopDownload?.()}
                   aria-label={`Stop download for ${account.username}`}
+                  data-testid={`saved-account-stop-download-${account.username}`}
                 >
                   <StopCircle className="h-4 w-4 text-destructive" />
                 </Button>
@@ -169,6 +172,7 @@ export function DatabaseAccountsList({
                   onClick={() => void onDownload(account.id, account.username)}
                   disabled={isDownloading}
                   aria-label={`Download saved media for ${account.username}`}
+                  data-testid={`saved-account-download-${account.username}`}
                 >
                   {isDownloading && downloadingAccountId === account.id ? (
                     <Spinner className="h-4 w-4" />

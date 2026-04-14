@@ -26,17 +26,10 @@ export function useFetchHistory() {
   }, []);
 
   const addToHistory = useCallback((data: TwitterResponse, inputUsername: string) => {
-    let cleanUsername = inputUsername.trim();
-    if (cleanUsername.startsWith("@")) {
-      cleanUsername = cleanUsername.slice(1);
-    }
-    if (cleanUsername.includes("x.com/") || cleanUsername.includes("twitter.com/")) {
-      const match = cleanUsername.match(/(?:x\.com|twitter\.com)\/([^/?]+)/);
-      if (match) cleanUsername = match[1];
-    }
+    const trimmedInputUsername = inputUsername.trim();
 
     setFetchHistory((prev) => {
-      const apiUsername = data.account_info.name;
+      const apiUsername = data.account_info.name || trimmedInputUsername;
       const filtered = prev.filter((h) => h.username.toLowerCase() !== apiUsername.toLowerCase());
       const newItem: HistoryItem = {
         id: crypto.randomUUID(),

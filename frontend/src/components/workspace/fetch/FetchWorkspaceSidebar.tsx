@@ -148,6 +148,7 @@ export function FetchWorkspaceSidebar({
               variant={mode === "public" ? "secondary" : "outline"}
               className={`${toggleButtonClass} justify-center`}
               onClick={() => onModeChange?.("public")}
+              data-testid="fetch-mode-public"
             >
               <Globe className="h-4 w-4" />
               <span className="truncate">Public</span>
@@ -156,6 +157,7 @@ export function FetchWorkspaceSidebar({
               variant={mode === "private" ? "secondary" : "outline"}
               className={`${toggleButtonClass} justify-center`}
               onClick={() => onModeChange?.("private")}
+              data-testid="fetch-mode-private"
             >
               <Lock className="h-4 w-4" />
               <span className="truncate">Private</span>
@@ -168,6 +170,7 @@ export function FetchWorkspaceSidebar({
                 variant={privateType === "bookmarks" ? "secondary" : "outline"}
                 className={`${toggleButtonClass} justify-center`}
                 onClick={() => onModeChange?.("private", "bookmarks")}
+                data-testid="fetch-private-bookmarks"
               >
                 <Bookmark className="h-4 w-4" />
                 <span className="truncate">Bookmarks</span>
@@ -176,6 +179,7 @@ export function FetchWorkspaceSidebar({
                 variant={privateType === "likes" ? "secondary" : "outline"}
                 className={`${toggleButtonClass} justify-center`}
                 onClick={() => onModeChange?.("private", "likes")}
+                data-testid="fetch-private-likes"
               >
                 <Heart className="h-4 w-4" />
                 <span className="truncate">Likes</span>
@@ -209,6 +213,7 @@ export function FetchWorkspaceSidebar({
                   onChange={(event) => onUsernameChange(event.target.value)}
                   className="dark:bg-input/30 border-input placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive h-full min-h-[280px] w-full resize-none rounded-xl border bg-transparent px-3 py-2.5 pr-10 text-sm shadow-xs outline-none transition-[color,box-shadow] focus-visible:ring-[3px]"
                   spellCheck={false}
+                  data-testid="fetch-input-textarea"
                 />
                 {username ? (
                   <Button
@@ -237,6 +242,7 @@ export function FetchWorkspaceSidebar({
                 variant="destructive"
                 className="h-10 flex-1 rounded-xl"
                 onClick={onStopFetch}
+                data-testid="fetch-primary-action"
               >
                 <StopCircle className="h-4 w-4" />
                 Stop Fetch
@@ -246,6 +252,7 @@ export function FetchWorkspaceSidebar({
                 variant="destructive"
                 className="h-10 flex-1 rounded-xl"
                 onClick={onStopAll}
+                data-testid="fetch-primary-action"
               >
                 <StopCircle className="h-4 w-4" />
                 Stop Queue
@@ -255,6 +262,7 @@ export function FetchWorkspaceSidebar({
                 className="h-10 flex-1 rounded-xl"
                 onClick={handleFetch}
                 disabled={!hasAuthToken || (!isBookmarksMode && detectedAccountCount === 0)}
+                data-testid="fetch-primary-action"
               >
                 {isBookmarksMode ? (
                   <Bookmark className="h-4 w-4" />

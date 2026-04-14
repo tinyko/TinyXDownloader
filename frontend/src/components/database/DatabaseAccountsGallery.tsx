@@ -65,10 +65,14 @@ export function DatabaseAccountsGallery({
   onStopDownload,
 }: DatabaseAccountsGalleryProps) {
   return (
-    <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4">
+    <div
+      className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4"
+      data-testid="saved-accounts-gallery"
+    >
       {accounts.map((account) => (
         <div
           key={account.id}
+          data-testid={`saved-account-card-${account.username}`}
           className={cn(
             "relative rounded-lg border p-4 transition-colors",
             selectedIds.has(account.id)
@@ -164,6 +168,7 @@ export function DatabaseAccountsGallery({
                   size="icon"
                   className="h-8 w-8"
                   onClick={() => void onStopDownload?.()}
+                  data-testid={`saved-account-stop-download-${account.username}`}
                 >
                   <StopCircle className="h-4 w-4 text-destructive" />
                 </Button>
@@ -174,6 +179,7 @@ export function DatabaseAccountsGallery({
                   className="h-8 w-8"
                   onClick={() => void onDownload(account.id, account.username)}
                   disabled={isDownloading}
+                  data-testid={`saved-account-download-${account.username}`}
                 >
                   <Download className="h-4 w-4" />
                 </Button>
