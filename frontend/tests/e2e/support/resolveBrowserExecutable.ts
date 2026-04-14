@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { chromium } from "@playwright/test";
 
 const CHROME_CANDIDATES = [
   process.env.PLAYWRIGHT_CHROME_PATH,
@@ -14,10 +15,10 @@ export function resolveBrowserExecutablePath() {
     }
   }
 
-  throw new Error(
-    [
-      "Could not find a Chrome/Chromium executable for Playwright smoke tests.",
-      "Set PLAYWRIGHT_CHROME_PATH or install Google Chrome / Chromium in /Applications.",
-    ].join(" "),
-  );
+  const playwrightChromiumPath = chromium.executablePath();
+  if (playwrightChromiumPath && fs.existsSync(playwrightChromiumPath)) {
+    return playwrightChromiumPath;
+  }
+
+  return undefined;
 }
