@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"twitterxmediabatchdownloader/backend"
+	"twitterxmediabatchdownloader/internal/desktop/smoke"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
@@ -285,4 +286,20 @@ func (a *App) GetDownloadStatus() DownloadStateResponse {
 	a.downloadMu.Lock()
 	defer a.downloadMu.Unlock()
 	return a.downloadState
+}
+
+func (a *App) runSmokeDownloadSession(totalItems int) (DownloadMediaResponse, error) {
+	if err := a.beginDownloadSession(totalItems); err != nil {
+		return DownloadMediaResponse{Success: false, Message: err.Error()}, err
+	}
+	defer a.finishDownloadSession()
+
+	result := smoke.RunDownloadSession(a.downloadCtx, totalItems, a.updateDownloadProgress)
+	return DownloadMediaResponse{
+		Success:    true,
+		Downloaded: result.Downloaded,
+		Skipped:    result.Skipped,
+		Failed:     result.Failed,
+		Message:    result.Message,
+	}, nil
 }

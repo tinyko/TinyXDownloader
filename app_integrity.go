@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"twitterxmediabatchdownloader/backend"
+	"twitterxmediabatchdownloader/internal/desktop/smoke"
 )
 
 const (
@@ -16,7 +17,7 @@ const (
 
 func (a *App) CheckDownloadIntegrity(req CheckDownloadIntegrityRequest) (backend.DownloadIntegrityReport, error) {
 	if a.smoke != nil {
-		return a.checkSmokeDownloadIntegrity(req)
+		return smoke.CheckDownloadIntegrity(req.DownloadPath, req.Mode), nil
 	}
 	return backend.CheckDownloadIntegrity(req.DownloadPath, req.Proxy, req.Mode)
 }
@@ -113,6 +114,90 @@ func (a *App) runIntegrityTask(ctx context.Context, downloadPath, proxy, mode st
 		a.integrityTask.Status = integrityTaskStatusCompleted
 		a.integrityTask.Error = ""
 	}
+	a.integrityCtx = nil
+	a.integrityCancel = nil
+}
+
+func (a *App) startSmokeIntegrityTask(req CheckDownloadIntegrityRequest) (DownloadIntegrityTaskStatusResponse, error) {
+	mode := backend.NormalizeDownloadIntegrityModeForApp(req.Mode)
+
+	a.integrityMu.Lock()
+	defer a.integrityMu.Unlock()
+
+	if a.integrityTask.InProgress {
+		return a.integrityTask, fmt.Errorf("integrity check already in progress")
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	a.integrityCtx = ctx
+	a.integrityCancel = cancel
+	a.integrityTask = DownloadIntegrityTaskStatusResponse{
+		Status:     integrityTaskStatusRunning,
+		InProgress: true,
+		Cancelled:  false,
+		Mode:       mode,
+		Phase:      "preparing-index",
+	}
+
+	go a.runSmokeIntegrityTask(ctx, req.DownloadPath, mode)
+
+	return a.integrityTask, nil
+}
+
+func (a *App) runSmokeIntegrityTask(ctx context.Context, downloadPath, mode string) {
+	report, err := smoke.RunIntegrityTask(ctx, downloadPath, mode, func(progress smoke.IntegrityProgress) {
+		a.integrityMu.Lock()
+		if ctx.Err() != nil || !a.integrityTask.InProgress {
+			a.integrityMu.Unlock()
+			return
+		}
+		a.integrityTask.Phase = progress.Phase
+		a.integrityTask.ScannedFiles = progress.ScannedFiles
+		a.integrityTask.CheckedFiles = progress.CheckedFiles
+		a.integrityTask.VerifiedFiles = progress.VerifiedFiles
+		a.integrityMu.Unlock()
+	})
+
+	a.integrityMu.Lock()
+	defer a.integrityMu.Unlock()
+
+	if ctx.Err() != nil {
+		a.finishSmokeIntegrityTaskCancelledLocked()
+		return
+	}
+
+	a.integrityTask.Status = integrityTaskStatusCompleted
+	a.integrityTask.InProgress = false
+	a.integrityTask.Cancelled = false
+	a.integrityTask.Phase = "completed"
+	a.integrityTask.Report = &report
+	a.integrityTask.Error = ""
+	a.integrityTask.ScannedFiles = report.ScannedFiles
+	a.integrityTask.CheckedFiles = report.CheckedFiles
+	a.integrityTask.VerifiedFiles = report.CheckedFiles
+	a.integrityTask.PartialFiles = report.PartialFiles
+	a.integrityTask.IncompleteFiles = report.IncompleteFiles
+	a.integrityTask.UntrackedFiles = report.UntrackedFiles
+	a.integrityTask.UnverifiableFiles = report.UnverifiableFiles
+	a.integrityTask.IssuesCount = len(report.Issues)
+	a.integrityCtx = nil
+	a.integrityCancel = nil
+
+	if err != nil {
+		a.integrityTask.Status = integrityTaskStatusFailed
+		a.integrityTask.Phase = "failed"
+		a.integrityTask.Error = err.Error()
+		a.integrityTask.Report = nil
+	}
+}
+
+func (a *App) finishSmokeIntegrityTaskCancelledLocked() {
+	a.integrityTask.Status = integrityTaskStatusCancelled
+	a.integrityTask.InProgress = false
+	a.integrityTask.Cancelled = true
+	a.integrityTask.Phase = "cancelled"
+	a.integrityTask.Report = nil
+	a.integrityTask.Error = ""
 	a.integrityCtx = nil
 	a.integrityCancel = nil
 }

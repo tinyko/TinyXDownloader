@@ -2,8 +2,11 @@ package main
 
 import (
 	"context"
+	"embed"
+	"encoding/json"
 	"sync"
 	"twitterxmediabatchdownloader/backend"
+	"twitterxmediabatchdownloader/internal/desktop/smoke"
 )
 
 type App struct {
@@ -18,7 +21,7 @@ type App struct {
 	integrityMu     sync.Mutex
 	integrityTask   DownloadIntegrityTaskStatusResponse
 
-	smoke *smokeHarness
+	smoke *smoke.Harness
 }
 
 func NewApp() *App {
@@ -30,7 +33,7 @@ func (a *App) startup(ctx context.Context) {
 	backend.InitDB()
 	backend.KillAllExtractorProcesses()
 	if backend.IsSmokeMode() {
-		a.smoke = newSmokeHarness()
+		a.smoke = smoke.NewHarness()
 	}
 	_ = backend.AppendBackendDiagnosticLog("info", "application startup completed")
 }
@@ -50,7 +53,7 @@ func (a *App) CleanupExtractorProcesses() {
 
 func (a *App) CancelExtractorRequest(requestID string) bool {
 	if a.smoke != nil {
-		return a.smoke.cancelRequest(requestID)
+		return a.smoke.CancelRequest(requestID)
 	}
 	return backend.CancelExtractorRequest(requestID)
 }
@@ -66,4 +69,50 @@ func (a *App) GetDefaults() map[string]string {
 
 func (a *App) Quit() {
 	panic("quit")
+}
+
+//go:embed wails.json
+var appConfigFS embed.FS
+
+type embeddedAppConfig struct {
+	Name string `json:"name"`
+	Info struct {
+		ProductName    string `json:"productName"`
+		ProductVersion string `json:"productVersion"`
+	} `json:"info"`
+}
+
+var (
+	embeddedAppConfigOnce sync.Once
+	embeddedAppConfigData embeddedAppConfig
+)
+
+func loadEmbeddedAppConfig() embeddedAppConfig {
+	embeddedAppConfigOnce.Do(func() {
+		data, err := appConfigFS.ReadFile("wails.json")
+		if err != nil {
+			return
+		}
+		_ = json.Unmarshal(data, &embeddedAppConfigData)
+	})
+	return embeddedAppConfigData
+}
+
+func AppName() string {
+	config := loadEmbeddedAppConfig()
+	if config.Info.ProductName != "" {
+		return config.Info.ProductName
+	}
+	if config.Name != "" {
+		return config.Name
+	}
+	return "TinyXDownloader"
+}
+
+func AppVersion() string {
+	config := loadEmbeddedAppConfig()
+	if config.Info.ProductVersion != "" {
+		return config.Info.ProductVersion
+	}
+	return "dev"
 }
