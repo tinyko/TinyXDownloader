@@ -35,17 +35,16 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 10.14.0
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 25.9.0
-          cache: pnpm
-          cache-dependency-path: frontend/pnpm-lock.yaml
+      - name: Verify self-hosted toolchain
+        shell: bash
+        run: |
+          source ./scripts/common.sh
+          normalize_macos_toolchain
+          require_command node
+          require_command pnpm
+          require_command python3
+          node --version
+          pnpm --version
 
       - name: Resolve release tag
         id: tag
