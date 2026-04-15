@@ -1,5 +1,10 @@
 # TinyXDownloader
 
+[![Release](https://img.shields.io/github/v/release/tinyko/TinyXDownloader?display_name=tag&label=release&logo=github)](https://github.com/tinyko/TinyXDownloader/releases)
+[![Runtime](https://img.shields.io/badge/runtime-Go--only-2f855a?logo=go&logoColor=white)](docs/extractor-engine-modes.md)
+[![Desktop](https://img.shields.io/badge/desktop-Wails%20%2B%20React-1f2937)](docs/workspace-overview.md)
+[![Platform](https://img.shields.io/badge/platform-macOS%20arm64-4a5568?logo=apple&logoColor=white)](https://github.com/tinyko/TinyXDownloader/releases)
+
 TinyXDownloader is a desktop-first X/Twitter fetch and download workspace built with Wails, React, and a native Go extractor runtime. The current app no longer depends on Python, gallery-dl, or helper binaries for build or runtime behavior.
 
 ## Latest Workspace
