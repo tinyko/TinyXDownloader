@@ -59,17 +59,20 @@ type SupportBundleOptions struct {
 }
 
 type supportBundleManifest struct {
-	FormatVersion         int                      `json:"format_version"`
-	AppName               string                   `json:"app_name"`
-	AppVersion            string                   `json:"app_version"`
-	WailsVersion          string                   `json:"wails_version"`
-	OS                    string                   `json:"os"`
-	GoVersion             string                   `json:"go_version"`
-	CreatedAt             string                   `json:"created_at"`
-	DatabaseSchemaVersion int                      `json:"database_schema_version"`
-	Counts                supportBundleDBSummary   `json:"counts"`
-	Tasks                 SupportBundleTaskSummary `json:"tasks"`
-	ExtractorMetrics      ExtractorMetricsSnapshot `json:"extractor_metrics"`
+	FormatVersion             int                      `json:"format_version"`
+	AppName                   string                   `json:"app_name"`
+	AppVersion                string                   `json:"app_version"`
+	WailsVersion              string                   `json:"wails_version"`
+	OS                        string                   `json:"os"`
+	GoVersion                 string                   `json:"go_version"`
+	PythonFallbackAvailable   bool                     `json:"python_fallback_available"`
+	PythonFallbackBuildFlavor string                   `json:"python_fallback_build_flavor,omitempty"`
+	AdHocParityAvailable      bool                     `json:"ad_hoc_parity_available"`
+	CreatedAt                 string                   `json:"created_at"`
+	DatabaseSchemaVersion     int                      `json:"database_schema_version"`
+	Counts                    supportBundleDBSummary   `json:"counts"`
+	Tasks                     SupportBundleTaskSummary `json:"tasks"`
+	ExtractorMetrics          ExtractorMetricsSnapshot `json:"extractor_metrics"`
 }
 
 type supportBundleDBSummary struct {
@@ -154,19 +157,23 @@ func ExportSupportBundle(outputPath string, options SupportBundleOptions) error 
 	if err != nil {
 		return err
 	}
+	pythonFallback := currentPythonFallbackStatus()
 
 	manifest := supportBundleManifest{
-		FormatVersion:         supportBundleFormatVersion,
-		AppName:               options.AppName,
-		AppVersion:            options.AppVersion,
-		WailsVersion:          currentWailsVersion(),
-		OS:                    runtime.GOOS + "/" + runtime.GOARCH,
-		GoVersion:             runtime.Version(),
-		CreatedAt:             time.Now().UTC().Format(time.RFC3339),
-		DatabaseSchemaVersion: GetDatabaseSchemaVersion(),
-		Counts:                buildSupportBundleDBSummary(),
-		Tasks:                 options.TaskSummary,
-		ExtractorMetrics:      GetExtractorMetricsSnapshot(),
+		FormatVersion:             supportBundleFormatVersion,
+		AppName:                   options.AppName,
+		AppVersion:                options.AppVersion,
+		WailsVersion:              currentWailsVersion(),
+		OS:                        runtime.GOOS + "/" + runtime.GOARCH,
+		GoVersion:                 runtime.Version(),
+		PythonFallbackAvailable:   pythonFallback.Available,
+		PythonFallbackBuildFlavor: pythonFallback.BuildFlavor,
+		AdHocParityAvailable:      pythonFallback.AdHocParityAvailable,
+		CreatedAt:                 time.Now().UTC().Format(time.RFC3339),
+		DatabaseSchemaVersion:     GetDatabaseSchemaVersion(),
+		Counts:                    buildSupportBundleDBSummary(),
+		Tasks:                     options.TaskSummary,
+		ExtractorMetrics:          GetExtractorMetricsSnapshot(),
 	}
 	extractorDiagnostics := GetExtractorDiagnosticsSnapshot()
 	runbookJSON, err := buildExtractorRunbookSnapshot()
@@ -174,6 +181,14 @@ func ExportSupportBundle(outputPath string, options SupportBundleOptions) error 
 		return err
 	}
 	rolloutJSON, err := buildExtractorRolloutPolicySnapshot()
+	if err != nil {
+		return err
+	}
+	soakJSON, err := buildExtractorSoakStateSnapshot()
+	if err != nil {
+		return err
+	}
+	soakEventsJSON, err := buildExtractorSoakEventsSnapshot()
 	if err != nil {
 		return err
 	}
@@ -202,6 +217,12 @@ func ExportSupportBundle(outputPath string, options SupportBundleOptions) error 
 			return err
 		}
 		if err := writeBytesZipEntry(writer, "extractor_rollout_policy.json", rolloutJSON); err != nil {
+			return err
+		}
+		if err := writeBytesZipEntry(writer, "extractor_soak_state.json", soakJSON); err != nil {
+			return err
+		}
+		if err := writeBytesZipEntry(writer, "extractor_soak_events.json", soakEventsJSON); err != nil {
 			return err
 		}
 		if err := writeBytesZipEntry(writer, "settings.redacted.json", settingsJSON); err != nil {
@@ -620,6 +641,36 @@ func buildExtractorRolloutPolicySnapshot() ([]byte, error) {
 		return nil, err
 	}
 	data, err := json.MarshalIndent(policy, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+	return append(data, '\n'), nil
+}
+
+func buildExtractorSoakStateSnapshot() ([]byte, error) {
+	state, err := loadExtractorSoakState()
+	if err != nil {
+		if os.IsNotExist(err) {
+			return []byte("{}\n"), nil
+		}
+		return nil, err
+	}
+	if strings.TrimSpace(state.CurrentReleaseVersion) == "" {
+		state.CurrentReleaseVersion = currentExtractorAppVersion()
+	}
+	data, err := json.MarshalIndent(state, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+	return append(data, '\n'), nil
+}
+
+func buildExtractorSoakEventsSnapshot() ([]byte, error) {
+	events, err := collectExtractorSoakBlockerEvents()
+	if err != nil {
+		return nil, err
+	}
+	data, err := json.MarshalIndent(events, "", "  ")
 	if err != nil {
 		return nil, err
 	}

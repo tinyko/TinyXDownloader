@@ -107,49 +107,11 @@ func (a *App) ExtractDateRangeStructured(req DateRangeRequest) (*backend.Twitter
 }
 
 func (a *App) CompareTimelineExtractorParity(req TimelineRequest) (*backend.ExtractorParityReport, error) {
-	if a.smoke != nil {
-		return nil, fmt.Errorf("extractor parity comparison is unavailable in smoke mode")
-	}
-
-	if req.Username == "" && req.TimelineType != "bookmarks" {
-		return nil, fmt.Errorf("username is required")
-	}
-	if req.AuthToken == "" {
-		return nil, fmt.Errorf("auth token is required")
-	}
-
-	report, err := backend.CompareTimelineExtractorParity(toBackendTimelineRequest(req))
-	if err != nil {
-		return report, fmt.Errorf("failed to compare timeline extractor parity: %v", err)
-	}
-
-	return report, nil
+	return nil, backend.RetiredExtractorControlError("timeline parity")
 }
 
 func (a *App) CompareDateRangeExtractorParity(req DateRangeRequest) (*backend.ExtractorParityReport, error) {
-	if a.smoke != nil {
-		return nil, fmt.Errorf("extractor parity comparison is unavailable in smoke mode")
-	}
-
-	if req.Username == "" {
-		return nil, fmt.Errorf("username is required")
-	}
-	if req.AuthToken == "" {
-		return nil, fmt.Errorf("auth token is required")
-	}
-	if req.StartDate == "" {
-		return nil, fmt.Errorf("start date is required")
-	}
-	if req.EndDate == "" {
-		return nil, fmt.Errorf("end date is required")
-	}
-
-	report, err := backend.CompareDateRangeExtractorParity(toBackendDateRangeRequest(req))
-	if err != nil {
-		return report, fmt.Errorf("failed to compare date range extractor parity: %v", err)
-	}
-
-	return report, nil
+	return nil, backend.RetiredExtractorControlError("date-range parity")
 }
 
 func marshalTwitterResponse(response *backend.TwitterResponse) (string, error) {

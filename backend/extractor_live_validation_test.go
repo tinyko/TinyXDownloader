@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-func TestRunExtractorLiveValidationSessionSkipsPrivatePresetsAndPublishesGates(t *testing.T) {
+func TestRunExtractorLiveValidationSessionExecutesPublicAndPrivatePresets(t *testing.T) {
 	withTempAppData(t, func(root string) {
 		_ = root
 		resetExtractorDiagnosticsForTests()
@@ -27,7 +27,16 @@ func TestRunExtractorLiveValidationSessionSkipsPrivatePresetsAndPublishesGates(t
 		timelineLiveCalls := 0
 		compareTimelineExtractorParityFn = func(req TimelineRequest) (*ExtractorParityReport, error) {
 			timelineParityCalls++
-			if req.TimelineType != "media" {
+			switch req.TimelineType {
+			case "media":
+				if req.AuthToken != "public-token" {
+					t.Fatalf("expected public token for media parity, got %+v", req)
+				}
+			case "bookmarks":
+				if req.AuthToken != "private-token" {
+					t.Fatalf("expected private token for bookmarks parity, got %+v", req)
+				}
+			default:
 				t.Fatalf("unexpected timeline parity request: %+v", req)
 			}
 			return &ExtractorParityReport{
@@ -44,10 +53,16 @@ func TestRunExtractorLiveValidationSessionSkipsPrivatePresetsAndPublishesGates(t
 		}
 		runTimelineLiveCandidateFn = func(req TimelineRequest, family ExtractorRequestFamily) (*TwitterResponse, extractorRuntimeTrace, error) {
 			timelineLiveCalls++
-			if family != ExtractorRequestFamilyMedia {
-				t.Fatalf("unexpected live family %q", family)
-			}
-			if req.TimelineType != "media" {
+			switch family {
+			case ExtractorRequestFamilyMedia:
+				if req.TimelineType != "media" || req.AuthToken != "public-token" {
+					t.Fatalf("unexpected public live request: %+v", req)
+				}
+			case ExtractorRequestFamilyBookmarks:
+				if req.TimelineType != "bookmarks" || req.AuthToken != "private-token" {
+					t.Fatalf("unexpected private live request: %+v", req)
+				}
+			default:
 				t.Fatalf("unexpected live request: %+v", req)
 			}
 			return sampleTwitterResponse(), extractorRuntimeTrace{
@@ -98,16 +113,16 @@ func TestRunExtractorLiveValidationSessionSkipsPrivatePresetsAndPublishesGates(t
 			t.Fatalf("run live validation session: %v", err)
 		}
 
-		if timelineLiveCalls != 1 {
-			t.Fatalf("expected 1 live timeline call, got %d", timelineLiveCalls)
+		if timelineLiveCalls != 2 {
+			t.Fatalf("expected 2 live timeline calls, got %d", timelineLiveCalls)
 		}
-		if timelineParityCalls != 1 {
-			t.Fatalf("expected 1 timeline parity call, got %d", timelineParityCalls)
+		if timelineParityCalls != 2 {
+			t.Fatalf("expected 2 timeline parity calls, got %d", timelineParityCalls)
 		}
 		if report.TotalCases != 2 {
 			t.Fatalf("expected 2 report cases, got %d", report.TotalCases)
 		}
-		if report.RuntimePassedCases != 1 || report.RuntimeSkippedCases != 1 || report.RuntimeFailedCases != 0 {
+		if report.RuntimePassedCases != 2 || report.RuntimeSkippedCases != 0 || report.RuntimeFailedCases != 0 {
 			t.Fatalf("unexpected runtime counts: %+v", report)
 		}
 		if report.LiveFamilyGates.Media.Gate != ExtractorValidationGateReady {
@@ -116,11 +131,17 @@ func TestRunExtractorLiveValidationSessionSkipsPrivatePresetsAndPublishesGates(t
 		if report.PromotionFamilyGates.Media.Gate != ExtractorValidationGateReady {
 			t.Fatalf("expected promotion media gate ready, got %q", report.PromotionFamilyGates.Media.Gate)
 		}
+		if report.PrivateLiveFamilyGates.Bookmarks.Gate != ExtractorValidationGateReady {
+			t.Fatalf("expected private live bookmarks gate ready, got %q", report.PrivateLiveFamilyGates.Bookmarks.Gate)
+		}
+		if report.PrivatePromotionFamilyGates.Bookmarks.Gate != ExtractorValidationGateReady {
+			t.Fatalf("expected private promotion bookmarks gate ready, got %q", report.PrivatePromotionFamilyGates.Bookmarks.Gate)
+		}
 		if report.Cases[0].Runtime.ModeSource != "live_validation" {
 			t.Fatalf("expected live candidate mode source, got %+v", report.Cases[0].Runtime)
 		}
-		if report.Cases[1].SkippedReason == "" || !strings.Contains(report.Cases[1].SkippedReason, "out_of_scope") {
-			t.Fatalf("expected private preset to be skipped as out_of_scope: %+v", report.Cases[1])
+		if report.Cases[1].Runtime.ModeSource != "live_validation" {
+			t.Fatalf("expected private live candidate mode source, got %+v", report.Cases[1].Runtime)
 		}
 		if report.ConfigUpdatedAt != savedConfig.UpdatedAt {
 			t.Fatalf("expected config_updated_at %q, got %q", savedConfig.UpdatedAt, report.ConfigUpdatedAt)
@@ -135,6 +156,12 @@ func TestRunExtractorLiveValidationSessionSkipsPrivatePresetsAndPublishesGates(t
 		}
 		if snapshot.PromotionFamilyGates.Media.Gate != ExtractorValidationGateReady {
 			t.Fatalf("expected snapshot promotion media gate ready, got %q", snapshot.PromotionFamilyGates.Media.Gate)
+		}
+		if snapshot.PrivateLiveFamilyGates.Bookmarks.Gate != ExtractorValidationGateReady {
+			t.Fatalf("expected snapshot private live bookmarks gate ready, got %q", snapshot.PrivateLiveFamilyGates.Bookmarks.Gate)
+		}
+		if snapshot.PrivatePromotionFamilyGates.Bookmarks.Gate != ExtractorValidationGateReady {
+			t.Fatalf("expected snapshot private promotion bookmarks gate ready, got %q", snapshot.PrivatePromotionFamilyGates.Bookmarks.Gate)
 		}
 	})
 }

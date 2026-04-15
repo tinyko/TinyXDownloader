@@ -30,6 +30,7 @@ func NewApp() *App {
 
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+	backend.SetExtractorAppVersion(AppVersion())
 	backend.InitDB()
 	backend.KillAllExtractorProcesses()
 	if backend.IsSmokeMode() {

@@ -133,6 +133,7 @@ type extractorRequestLogEntry struct {
 	SelectedEngine  string                    `json:"selected_engine,omitempty"`
 	FallbackFrom    string                    `json:"fallback_from,omitempty"`
 	FallbackReason  string                    `json:"fallback_reason,omitempty"`
+	FallbackCode    string                    `json:"fallback_code,omitempty"`
 	SupportReason   string                    `json:"support_reason,omitempty"`
 	Username        string                    `json:"username,omitempty"`
 	TimelineType    string                    `json:"timeline_type,omitempty"`
@@ -164,10 +165,12 @@ func parseExtractorEngineMode(value string) ExtractorEngineMode {
 		return ExtractorEngineModeGo
 	case string(ExtractorEngineModeAuto):
 		return ExtractorEngineModeAuto
-	case "", string(ExtractorEngineModePython):
-		fallthrough
-	default:
+	case string(ExtractorEngineModePython):
 		return ExtractorEngineModePython
+	case "":
+		return ExtractorEngineModeGo
+	default:
+		return ExtractorEngineModeGo
 	}
 }
 
@@ -258,6 +261,7 @@ func incrementParityComparisonCount(equal bool) {
 
 func appendExtractorLog(entry extractorRequestLogEntry) {
 	recordExtractorRequestLogEntry(entry)
+	recordExtractorSoakRequest(entry)
 	data, err := json.Marshal(entry)
 	if err != nil {
 		return
@@ -294,7 +298,7 @@ func extractTimelineWithEngineOverride(
 	ctx context.Context,
 	req TimelineRequest,
 	mode ExtractorEngineMode,
-	pythonEngine ExtractorEngine,
+	_ ExtractorEngine,
 	goEngine ExtractorEngine,
 	override *extractorExecutionOverride,
 ) (*TwitterResponse, extractorRuntimeTrace, error) {
@@ -312,123 +316,17 @@ func extractTimelineWithEngineOverride(
 			incrementRolloutTrialPythonBypassCount()
 		}
 	}
-
-	switch resolution.EffectiveMode {
-	case ExtractorEngineModeGo:
-		trace.SelectedEngine = goEngine.Name()
-		response, err := runTimelineEngine(ctx, req, resolution, goEngine, "", "")
-		return response, trace, err
-	case ExtractorEngineModeAuto:
-		if reason, pinned := timelineAutoBypassReason(req); pinned {
-			trace.SelectedEngine = pythonEngine.Name()
-			trace.FallbackReason = reason
-			trace.FallbackCode = "auto_bypass"
-			appendExtractorLog(extractorRequestLogEntry{
-				Event:          "extractor_bypass",
-				RequestKind:    "timeline",
-				Mode:           resolution.EffectiveMode,
-				ConfiguredMode: resolution.ConfiguredMode,
-				EffectiveMode:  resolution.EffectiveMode,
-				ModeSource:     resolution.ModeSource,
-				RequestFamily:  resolution.RequestFamily,
-				TrialArmed:     resolution.TrialArmed,
-				TrialActive:    resolution.TrialActive,
-				SelectedEngine: pythonEngine.Name(),
-				SupportReason:  reason,
-				Username:       strings.TrimSpace(req.Username),
-				TimelineType:   strings.TrimSpace(req.TimelineType),
-				MediaType:      strings.TrimSpace(req.MediaType),
-				Retweets:       req.Retweets,
-				Success:        true,
-			})
-			response, err := runTimelineEngine(ctx, req, resolution, pythonEngine, "", "")
-			return response, trace, err
-		}
-		if ok, reason := timelineSupport(goEngine, req); ok {
-			trace.SelectedEngine = goEngine.Name()
-			response, err := runTimelineEngine(ctx, req, resolution, goEngine, "", "")
-			if err == nil {
-				return response, trace, nil
-			}
-			if errors.Is(err, ErrEngineUnsupported) {
-				incrementUnsupportedCount()
-			}
-			if errors.Is(err, ErrEngineFallbackRequired) || errors.Is(err, ErrEngineUnsupported) {
-				incrementFallbackCount()
-				if errors.Is(err, ErrEngineFallbackRequired) {
-					incrementFallbackRequiredCount()
-				}
-				trace.SelectedEngine = pythonEngine.Name()
-				trace.FallbackFrom = goEngine.Name()
-				trace.FallbackReason = err.Error()
-				trace.FallbackCode = fallbackCodeForError(err)
-				response, fallbackErr := runTimelineEngine(ctx, req, resolution, pythonEngine, goEngine.Name(), err.Error())
-				return response, trace, fallbackErr
-			}
-			trace.FallbackReason = err.Error()
-			trace.FallbackCode = "engine_error"
-			return nil, trace, err
-		} else {
-			incrementUnsupportedCount()
-			trace.SelectedEngine = pythonEngine.Name()
-			trace.FallbackReason = reason
-			trace.FallbackCode = "unsupported"
-			appendExtractorLog(extractorRequestLogEntry{
-				Event:          "extractor_bypass",
-				RequestKind:    "timeline",
-				Mode:           resolution.EffectiveMode,
-				ConfiguredMode: resolution.ConfiguredMode,
-				EffectiveMode:  resolution.EffectiveMode,
-				ModeSource:     resolution.ModeSource,
-				RequestFamily:  resolution.RequestFamily,
-				TrialArmed:     resolution.TrialArmed,
-				TrialActive:    resolution.TrialActive,
-				SelectedEngine: pythonEngine.Name(),
-				SupportReason:  reason,
-				Username:       strings.TrimSpace(req.Username),
-				TimelineType:   strings.TrimSpace(req.TimelineType),
-				MediaType:      strings.TrimSpace(req.MediaType),
-				Retweets:       req.Retweets,
-				Success:        true,
-			})
-			response, err := runTimelineEngine(ctx, req, resolution, pythonEngine, "", "")
-			return response, trace, err
-		}
-	default:
-		if resolution.ModeSource == "rollout_policy" && resolution.TrialArmed && resolution.TrialInactiveReason != "" {
-			appendExtractorLog(extractorRequestLogEntry{
-				Event:          "extractor_bypass",
-				RequestKind:    "timeline",
-				Mode:           resolution.EffectiveMode,
-				ConfiguredMode: resolution.ConfiguredMode,
-				EffectiveMode:  resolution.EffectiveMode,
-				ModeSource:     resolution.ModeSource,
-				RequestFamily:  resolution.RequestFamily,
-				TrialArmed:     resolution.TrialArmed,
-				TrialActive:    resolution.TrialActive,
-				SelectedEngine: pythonEngine.Name(),
-				SupportReason:  resolution.TrialInactiveReason,
-				Username:       strings.TrimSpace(req.Username),
-				TimelineType:   strings.TrimSpace(req.TimelineType),
-				MediaType:      strings.TrimSpace(req.MediaType),
-				Retweets:       req.Retweets,
-				Success:        true,
-			})
-		}
-		trace.SelectedEngine = pythonEngine.Name()
-		response, err := runTimelineEngine(ctx, req, resolution, pythonEngine, "", "")
-		return response, trace, err
+	trace.SelectedEngine = goEngine.Name()
+	response, err := runTimelineEngine(ctx, req, resolution, goEngine, "", "", "")
+	if err != nil {
+		trace.FallbackReason = err.Error()
+		trace.FallbackCode = fallbackCodeForError(err)
 	}
+	return response, trace, err
 }
 
 func timelineAutoBypassReason(req TimelineRequest) (string, bool) {
-	spec := buildTimelineExtractorSpec(req)
-	switch strings.ToLower(strings.TrimSpace(spec.timelineType)) {
-	case "likes", "bookmarks":
-		return "go private timeline extraction remains pinned to python in auto mode", true
-	default:
-		return "", false
-	}
+	return "", false
 }
 
 func extractDateRangeWithEngines(
@@ -446,7 +344,7 @@ func extractDateRangeWithEngineOverride(
 	ctx context.Context,
 	req DateRangeRequest,
 	mode ExtractorEngineMode,
-	pythonEngine ExtractorEngine,
+	_ ExtractorEngine,
 	goEngine ExtractorEngine,
 	override *extractorExecutionOverride,
 ) (*TwitterResponse, extractorRuntimeTrace, error) {
@@ -464,94 +362,19 @@ func extractDateRangeWithEngineOverride(
 			incrementRolloutTrialPythonBypassCount()
 		}
 	}
-
-	switch resolution.EffectiveMode {
-	case ExtractorEngineModeGo:
-		trace.SelectedEngine = goEngine.Name()
-		response, err := runDateRangeEngine(ctx, req, resolution, goEngine, "", "")
-		return response, trace, err
-	case ExtractorEngineModeAuto:
-		if ok, reason := dateRangeSupport(goEngine, req); ok {
-			trace.SelectedEngine = goEngine.Name()
-			response, err := runDateRangeEngine(ctx, req, resolution, goEngine, "", "")
-			if err == nil {
-				return response, trace, nil
-			}
-			if errors.Is(err, ErrEngineUnsupported) {
-				incrementUnsupportedCount()
-			}
-			if errors.Is(err, ErrEngineFallbackRequired) || errors.Is(err, ErrEngineUnsupported) {
-				incrementFallbackCount()
-				if errors.Is(err, ErrEngineFallbackRequired) {
-					incrementFallbackRequiredCount()
-				}
-				trace.SelectedEngine = pythonEngine.Name()
-				trace.FallbackFrom = goEngine.Name()
-				trace.FallbackReason = err.Error()
-				trace.FallbackCode = fallbackCodeForError(err)
-				response, fallbackErr := runDateRangeEngine(ctx, req, resolution, pythonEngine, goEngine.Name(), err.Error())
-				return response, trace, fallbackErr
-			}
-			trace.FallbackReason = err.Error()
-			trace.FallbackCode = "engine_error"
-			return nil, trace, err
-		} else {
-			incrementUnsupportedCount()
-			trace.SelectedEngine = pythonEngine.Name()
-			trace.FallbackReason = reason
-			trace.FallbackCode = "unsupported"
-			appendExtractorLog(extractorRequestLogEntry{
-				Event:          "extractor_bypass",
-				RequestKind:    "date_range",
-				Mode:           resolution.EffectiveMode,
-				ConfiguredMode: resolution.ConfiguredMode,
-				EffectiveMode:  resolution.EffectiveMode,
-				ModeSource:     resolution.ModeSource,
-				RequestFamily:  resolution.RequestFamily,
-				TrialArmed:     resolution.TrialArmed,
-				TrialActive:    resolution.TrialActive,
-				SelectedEngine: pythonEngine.Name(),
-				SupportReason:  reason,
-				Username:       strings.TrimSpace(req.Username),
-				StartDate:      strings.TrimSpace(req.StartDate),
-				EndDate:        strings.TrimSpace(req.EndDate),
-				MediaType:      strings.TrimSpace(req.MediaFilter),
-				Retweets:       req.Retweets,
-				Success:        true,
-			})
-			response, err := runDateRangeEngine(ctx, req, resolution, pythonEngine, "", "")
-			return response, trace, err
-		}
-	default:
-		if resolution.ModeSource == "rollout_policy" && resolution.TrialArmed && resolution.TrialInactiveReason != "" {
-			appendExtractorLog(extractorRequestLogEntry{
-				Event:          "extractor_bypass",
-				RequestKind:    "date_range",
-				Mode:           resolution.EffectiveMode,
-				ConfiguredMode: resolution.ConfiguredMode,
-				EffectiveMode:  resolution.EffectiveMode,
-				ModeSource:     resolution.ModeSource,
-				RequestFamily:  resolution.RequestFamily,
-				TrialArmed:     resolution.TrialArmed,
-				TrialActive:    resolution.TrialActive,
-				SelectedEngine: pythonEngine.Name(),
-				SupportReason:  resolution.TrialInactiveReason,
-				Username:       strings.TrimSpace(req.Username),
-				StartDate:      strings.TrimSpace(req.StartDate),
-				EndDate:        strings.TrimSpace(req.EndDate),
-				MediaType:      strings.TrimSpace(req.MediaFilter),
-				Retweets:       req.Retweets,
-				Success:        true,
-			})
-		}
-		trace.SelectedEngine = pythonEngine.Name()
-		response, err := runDateRangeEngine(ctx, req, resolution, pythonEngine, "", "")
-		return response, trace, err
+	trace.SelectedEngine = goEngine.Name()
+	response, err := runDateRangeEngine(ctx, req, resolution, goEngine, "", "", "")
+	if err != nil {
+		trace.FallbackReason = err.Error()
+		trace.FallbackCode = fallbackCodeForError(err)
 	}
+	return response, trace, err
 }
 
 func fallbackCodeForError(err error) string {
 	switch {
+	case errors.Is(err, ErrExtractorControlRetired):
+		return "retired"
 	case errors.Is(err, ErrEngineFallbackRequired):
 		return "fallback_required"
 	case errors.Is(err, ErrEngineUnsupported):
@@ -570,6 +393,7 @@ func runTimelineEngine(
 	engine ExtractorEngine,
 	fallbackFrom string,
 	fallbackReason string,
+	fallbackCode string,
 ) (*TwitterResponse, error) {
 	startedAt := time.Now()
 	incrementSelectedEngineCount(engine.Name())
@@ -578,6 +402,10 @@ func runTimelineEngine(
 	}
 
 	response, err := engine.ExtractTimeline(ctx, req)
+	resolvedFallbackCode := strings.TrimSpace(fallbackCode)
+	if resolvedFallbackCode == "" {
+		resolvedFallbackCode = fallbackCodeForError(err)
+	}
 	appendExtractorLog(extractorRequestLogEntry{
 		Event:           "extractor_request",
 		RequestKind:     "timeline",
@@ -591,6 +419,7 @@ func runTimelineEngine(
 		SelectedEngine:  engine.Name(),
 		FallbackFrom:    fallbackFrom,
 		FallbackReason:  strings.TrimSpace(fallbackReason),
+		FallbackCode:    resolvedFallbackCode,
 		Username:        strings.TrimSpace(req.Username),
 		TimelineType:    strings.TrimSpace(req.TimelineType),
 		MediaType:       strings.TrimSpace(req.MediaType),
@@ -611,6 +440,7 @@ func runDateRangeEngine(
 	engine ExtractorEngine,
 	fallbackFrom string,
 	fallbackReason string,
+	fallbackCode string,
 ) (*TwitterResponse, error) {
 	startedAt := time.Now()
 	incrementSelectedEngineCount(engine.Name())
@@ -619,6 +449,10 @@ func runDateRangeEngine(
 	}
 
 	response, err := engine.ExtractDateRange(ctx, req)
+	resolvedFallbackCode := strings.TrimSpace(fallbackCode)
+	if resolvedFallbackCode == "" {
+		resolvedFallbackCode = fallbackCodeForError(err)
+	}
 	appendExtractorLog(extractorRequestLogEntry{
 		Event:           "extractor_request",
 		RequestKind:     "date_range",
@@ -632,6 +466,7 @@ func runDateRangeEngine(
 		SelectedEngine:  engine.Name(),
 		FallbackFrom:    fallbackFrom,
 		FallbackReason:  strings.TrimSpace(fallbackReason),
+		FallbackCode:    resolvedFallbackCode,
 		Username:        strings.TrimSpace(req.Username),
 		StartDate:       strings.TrimSpace(req.StartDate),
 		EndDate:         strings.TrimSpace(req.EndDate),

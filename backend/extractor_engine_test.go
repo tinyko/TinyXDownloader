@@ -51,16 +51,16 @@ func (s *stubExtractorEngine) ExtractDateRange(ctx context.Context, req DateRang
 	return s.dateRangeResponse, s.dateRangeError
 }
 
-func TestParseExtractorEngineModeDefaultsToPython(t *testing.T) {
+func TestParseExtractorEngineModeDefaultsToGo(t *testing.T) {
 	t.Run("empty", func(t *testing.T) {
-		if got := parseExtractorEngineMode(""); got != ExtractorEngineModePython {
-			t.Fatalf("expected python mode, got %q", got)
+		if got := parseExtractorEngineMode(""); got != ExtractorEngineModeGo {
+			t.Fatalf("expected go mode, got %q", got)
 		}
 	})
 
 	t.Run("invalid", func(t *testing.T) {
-		if got := parseExtractorEngineMode("invalid"); got != ExtractorEngineModePython {
-			t.Fatalf("expected python mode, got %q", got)
+		if got := parseExtractorEngineMode("invalid"); got != ExtractorEngineModeGo {
+			t.Fatalf("expected go mode, got %q", got)
 		}
 	})
 
@@ -77,41 +77,31 @@ func TestParseExtractorEngineModeDefaultsToPython(t *testing.T) {
 	})
 }
 
-func TestExtractTimelineWithEnginesAutoBypassesGoWhenUnsupported(t *testing.T) {
-	pythonResponse := sampleTwitterResponse()
-	pythonEngine := &stubExtractorEngine{
-		name:              "python-gallery-dl",
-		timelineSupported: true,
-		timelineResponse:  pythonResponse,
-	}
+func TestExtractTimelineWithEnginesAutoReturnsUnsupportedInGoOnlyRuntime(t *testing.T) {
+	pythonEngine := &stubExtractorEngine{name: "python-gallery-dl"}
 	goEngine := &stubExtractorEngine{
 		name:              "go-twitter",
-		timelineSupported: false,
-		timelineReason:    "not yet supported",
+		timelineSupported: true,
+		timelineError:     newEngineUnsupportedError("go-twitter", "not yet supported"),
 	}
 
 	response, err := extractTimelineWithEngines(context.Background(), TimelineRequest{Username: "example"}, ExtractorEngineModeAuto, pythonEngine, goEngine)
-	if err != nil {
-		t.Fatalf("extractTimelineWithEngines returned error: %v", err)
+	if err == nil {
+		t.Fatal("expected unsupported error")
 	}
-	if !reflect.DeepEqual(response, pythonResponse) {
-		t.Fatalf("unexpected response: %#v", response)
+	if response != nil {
+		t.Fatalf("expected nil response, got %#v", response)
 	}
-	if pythonEngine.timelineCalls != 1 {
-		t.Fatalf("expected python engine to run once, got %d", pythonEngine.timelineCalls)
+	if !errors.Is(err, ErrEngineUnsupported) {
+		t.Fatalf("expected unsupported error, got %v", err)
 	}
-	if goEngine.timelineCalls != 0 {
-		t.Fatalf("expected go engine to be bypassed, got %d calls", goEngine.timelineCalls)
+	if pythonEngine.timelineCalls != 0 || goEngine.timelineCalls != 1 {
+		t.Fatalf("expected only go engine to run, got go=%d python=%d", goEngine.timelineCalls, pythonEngine.timelineCalls)
 	}
 }
 
-func TestExtractTimelineWithEnginesAutoFallsBackOnFallbackRequired(t *testing.T) {
-	pythonResponse := sampleTwitterResponse()
-	pythonEngine := &stubExtractorEngine{
-		name:              "python-gallery-dl",
-		timelineSupported: true,
-		timelineResponse:  pythonResponse,
-	}
+func TestExtractTimelineWithEnginesAutoReturnsFallbackRequiredInGoOnlyRuntime(t *testing.T) {
+	pythonEngine := &stubExtractorEngine{name: "python-gallery-dl"}
 	goEngine := &stubExtractorEngine{
 		name:              "go-twitter",
 		timelineSupported: true,
@@ -119,28 +109,28 @@ func TestExtractTimelineWithEnginesAutoFallsBackOnFallbackRequired(t *testing.T)
 	}
 
 	response, err := extractTimelineWithEngines(context.Background(), TimelineRequest{Username: "example"}, ExtractorEngineModeAuto, pythonEngine, goEngine)
-	if err != nil {
-		t.Fatalf("extractTimelineWithEngines returned error: %v", err)
+	if err == nil {
+		t.Fatal("expected fallback-required error")
 	}
-	if !reflect.DeepEqual(response, pythonResponse) {
-		t.Fatalf("unexpected response: %#v", response)
+	if response != nil {
+		t.Fatalf("expected nil response, got %#v", response)
 	}
-	if pythonEngine.timelineCalls != 1 || goEngine.timelineCalls != 1 {
-		t.Fatalf("expected one go attempt and one python fallback, got go=%d python=%d", goEngine.timelineCalls, pythonEngine.timelineCalls)
+	if !errors.Is(err, ErrEngineFallbackRequired) {
+		t.Fatalf("expected fallback-required error, got %v", err)
+	}
+	if pythonEngine.timelineCalls != 0 || goEngine.timelineCalls != 1 {
+		t.Fatalf("expected only go engine to run, got go=%d python=%d", goEngine.timelineCalls, pythonEngine.timelineCalls)
 	}
 }
 
-func TestExtractTimelineWithEnginesAutoPinsPrivateLikesToPython(t *testing.T) {
-	pythonResponse := sampleTwitterResponse()
-	pythonEngine := &stubExtractorEngine{
-		name:              "python-gallery-dl",
-		timelineSupported: true,
-		timelineResponse:  pythonResponse,
-	}
+func TestExtractTimelineWithEnginesAutoUsesGoForPrivateLikes(t *testing.T) {
+	pythonEngine := &stubExtractorEngine{name: "python-gallery-dl"}
+	goResponse := sampleTwitterResponse()
+	goResponse.AccountInfo.Nick = "go-private-likes"
 	goEngine := &stubExtractorEngine{
 		name:              "go-twitter",
 		timelineSupported: true,
-		timelineResponse:  sampleTwitterResponse(),
+		timelineResponse:  goResponse,
 	}
 
 	response, err := extractTimelineWithEngines(context.Background(), TimelineRequest{
@@ -151,28 +141,22 @@ func TestExtractTimelineWithEnginesAutoPinsPrivateLikesToPython(t *testing.T) {
 	if err != nil {
 		t.Fatalf("extractTimelineWithEngines returned error: %v", err)
 	}
-	if !reflect.DeepEqual(response, pythonResponse) {
+	if !reflect.DeepEqual(response, goResponse) {
 		t.Fatalf("unexpected response: %#v", response)
 	}
-	if pythonEngine.timelineCalls != 1 {
-		t.Fatalf("expected python engine to run once, got %d", pythonEngine.timelineCalls)
-	}
-	if goEngine.timelineCalls != 0 {
-		t.Fatalf("expected go engine to be bypassed in auto mode, got %d calls", goEngine.timelineCalls)
+	if pythonEngine.timelineCalls != 0 || goEngine.timelineCalls != 1 {
+		t.Fatalf("expected only go engine to run, got go=%d python=%d", goEngine.timelineCalls, pythonEngine.timelineCalls)
 	}
 }
 
-func TestExtractTimelineWithEnginesAutoPinsPrivateBookmarksToPython(t *testing.T) {
-	pythonResponse := sampleTwitterResponse()
-	pythonEngine := &stubExtractorEngine{
-		name:              "python-gallery-dl",
-		timelineSupported: true,
-		timelineResponse:  pythonResponse,
-	}
+func TestExtractTimelineWithEnginesAutoUsesGoForPrivateBookmarks(t *testing.T) {
+	pythonEngine := &stubExtractorEngine{name: "python-gallery-dl"}
+	goResponse := sampleTwitterResponse()
+	goResponse.AccountInfo.Nick = "go-private-bookmarks"
 	goEngine := &stubExtractorEngine{
 		name:              "go-twitter",
 		timelineSupported: true,
-		timelineResponse:  sampleTwitterResponse(),
+		timelineResponse:  goResponse,
 	}
 
 	response, err := extractTimelineWithEngines(context.Background(), TimelineRequest{
@@ -183,14 +167,11 @@ func TestExtractTimelineWithEnginesAutoPinsPrivateBookmarksToPython(t *testing.T
 	if err != nil {
 		t.Fatalf("extractTimelineWithEngines returned error: %v", err)
 	}
-	if !reflect.DeepEqual(response, pythonResponse) {
+	if !reflect.DeepEqual(response, goResponse) {
 		t.Fatalf("unexpected response: %#v", response)
 	}
-	if pythonEngine.timelineCalls != 1 {
-		t.Fatalf("expected python engine to run once, got %d", pythonEngine.timelineCalls)
-	}
-	if goEngine.timelineCalls != 0 {
-		t.Fatalf("expected go engine to be bypassed in auto mode, got %d calls", goEngine.timelineCalls)
+	if pythonEngine.timelineCalls != 0 || goEngine.timelineCalls != 1 {
+		t.Fatalf("expected only go engine to run, got go=%d python=%d", goEngine.timelineCalls, pythonEngine.timelineCalls)
 	}
 }
 
@@ -243,17 +224,60 @@ func TestExtractTimelineWithEnginesGoModeReturnsUnsupported(t *testing.T) {
 	}
 }
 
-func TestExtractDateRangeWithEnginesAutoBypassesGoWhenUnsupported(t *testing.T) {
-	pythonResponse := sampleTwitterResponse()
-	pythonEngine := &stubExtractorEngine{
-		name:               "python-gallery-dl",
-		dateRangeSupported: true,
-		dateRangeResponse:  pythonResponse,
+func TestPythonGalleryDLEngineReturnsUnavailableWhenFallbackMissing(t *testing.T) {
+	resetPythonFallbackStatusForTests()
+	setPythonFallbackStatusForTests(PythonFallbackStatus{
+		Available:            false,
+		BuildFlavor:          PythonFallbackBuildFlavorGoOnly,
+		AdHocParityAvailable: false,
+		UnavailableReason:    "python fallback unavailable in this go-only build",
+	})
+	defer resetPythonFallbackStatusForTests()
+
+	engine := &PythonGalleryDLEngine{}
+	_, err := engine.ExtractTimeline(context.Background(), TimelineRequest{Username: "example"})
+	if err == nil {
+		t.Fatal("expected python fallback unavailable error")
 	}
+	if !errors.Is(err, ErrPythonFallbackUnavailable) {
+		t.Fatalf("expected python fallback unavailable error, got %v", err)
+	}
+}
+
+func TestExtractTimelineWithEnginesPythonModeStillUsesGoInGoOnlyRuntime(t *testing.T) {
+	resetPythonFallbackStatusForTests()
+	setPythonFallbackStatusForTests(PythonFallbackStatus{
+		Available:            false,
+		BuildFlavor:          PythonFallbackBuildFlavorGoOnly,
+		AdHocParityAvailable: false,
+		UnavailableReason:    "python fallback unavailable in this go-only build",
+	})
+	defer resetPythonFallbackStatusForTests()
+
+	goEngine := &stubExtractorEngine{
+		name:              "go-twitter",
+		timelineSupported: true,
+		timelineResponse:  sampleTwitterResponse(),
+	}
+
+	response, err := extractTimelineWithEngines(context.Background(), TimelineRequest{Username: "example"}, ExtractorEngineModePython, newPythonGalleryDLEngine(), goEngine)
+	if err != nil {
+		t.Fatalf("expected python mode alias to continue with go-only runtime, got %v", err)
+	}
+	if response == nil {
+		t.Fatal("expected go response")
+	}
+	if goEngine.timelineCalls != 1 {
+		t.Fatalf("expected go engine to run once in python mode alias, got %d calls", goEngine.timelineCalls)
+	}
+}
+
+func TestExtractDateRangeWithEnginesAutoReturnsUnsupportedInGoOnlyRuntime(t *testing.T) {
+	pythonEngine := &stubExtractorEngine{name: "python-gallery-dl"}
 	goEngine := &stubExtractorEngine{
 		name:               "go-twitter",
-		dateRangeSupported: false,
-		dateRangeReason:    "not yet supported",
+		dateRangeSupported: true,
+		dateRangeError:     newEngineUnsupportedError("go-twitter", "not yet supported"),
 	}
 
 	response, err := extractDateRangeWithEngines(
@@ -263,17 +287,17 @@ func TestExtractDateRangeWithEnginesAutoBypassesGoWhenUnsupported(t *testing.T) 
 		pythonEngine,
 		goEngine,
 	)
-	if err != nil {
-		t.Fatalf("extractDateRangeWithEngines returned error: %v", err)
+	if err == nil {
+		t.Fatal("expected unsupported error")
 	}
-	if !reflect.DeepEqual(response, pythonResponse) {
-		t.Fatalf("unexpected response: %#v", response)
+	if response != nil {
+		t.Fatalf("expected nil response, got %#v", response)
 	}
-	if pythonEngine.dateRangeCalls != 1 {
-		t.Fatalf("expected python engine to run once, got %d", pythonEngine.dateRangeCalls)
+	if !errors.Is(err, ErrEngineUnsupported) {
+		t.Fatalf("expected unsupported error, got %v", err)
 	}
-	if goEngine.dateRangeCalls != 0 {
-		t.Fatalf("expected go engine to be bypassed, got %d calls", goEngine.dateRangeCalls)
+	if pythonEngine.dateRangeCalls != 0 || goEngine.dateRangeCalls != 1 {
+		t.Fatalf("expected only go engine to run, got go=%d python=%d", goEngine.dateRangeCalls, pythonEngine.dateRangeCalls)
 	}
 }
 
@@ -285,6 +309,36 @@ func TestCompareTwitterResponsesDetectsDifferences(t *testing.T) {
 	differences := compareTwitterResponses(pythonResponse, goResponse, nil, nil)
 	if len(differences) == 0 {
 		t.Fatal("expected parity differences")
+	}
+}
+
+func TestCompareTimelineExtractorParityReturnsRetiredWhenGoOnlyRuntimeIsCutOver(t *testing.T) {
+	resetPythonFallbackStatusForTests()
+	setPythonFallbackStatusForTests(PythonFallbackStatus{
+		Available:            false,
+		BuildFlavor:          PythonFallbackBuildFlavorGoOnly,
+		AdHocParityAvailable: false,
+		UnavailableReason:    "python fallback unavailable in this go-only build",
+	})
+	defer resetPythonFallbackStatusForTests()
+
+	report, err := CompareTimelineExtractorParity(TimelineRequest{
+		Username:     "nasa",
+		TimelineType: "media",
+		MediaType:    "all",
+		AuthToken:    "public-token",
+	})
+	if err == nil {
+		t.Fatal("expected parity unavailable error")
+	}
+	if report == nil {
+		t.Fatal("expected parity report")
+	}
+	if report.PythonError == "" {
+		t.Fatal("expected parity report to include python error")
+	}
+	if !errors.Is(err, ErrExtractorControlRetired) {
+		t.Fatalf("expected retired control error, got %v", err)
 	}
 }
 

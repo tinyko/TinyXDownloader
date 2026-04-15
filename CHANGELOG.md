@@ -1,5 +1,11 @@
 # Changelog
 
+## V1.3.0 - 2026-04-15
+
+- cut the extractor runtime over to Go-only for public media, public timeline, public date-range, private likes, and private bookmarks
+- retired Python/gallery-dl parity and rollout controls into historical audit evidence while keeping diagnostics, support bundles, and soak state readable
+- removed Python/helper/venv build dependencies from normal development, CI, and macOS packaging paths
+
 ## V1.2.3 - 2026-04-15
 
 - hardened macOS release packaging with checksum output, stricter signing/notarization validation hooks, and release-ready artifacts

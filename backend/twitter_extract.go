@@ -41,7 +41,7 @@ func ExtractTimeline(req TimelineRequest) (*TwitterResponse, error) {
 		context.Background(),
 		req,
 		currentExtractorEngineMode(),
-		newPythonGalleryDLEngine(),
+		newGoTwitterEngine(),
 		newGoTwitterEngine(),
 	)
 }
@@ -51,7 +51,7 @@ func ExtractDateRange(req DateRangeRequest) (*TwitterResponse, error) {
 		context.Background(),
 		req,
 		currentExtractorEngineMode(),
-		newPythonGalleryDLEngine(),
+		newGoTwitterEngine(),
 		newGoTwitterEngine(),
 	)
 }

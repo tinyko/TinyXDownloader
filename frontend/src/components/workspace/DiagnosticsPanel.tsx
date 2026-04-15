@@ -22,12 +22,18 @@ import { logger, type LogEntry } from "@/lib/logger";
 import { toastWithSound as toast } from "@/lib/toast-with-sound";
 import type {
   DiagnosticsParityContext,
+  ExtractorDefaultRouteState,
   ExtractorDiagnosticsSnapshot,
   ExtractorFamilyGateSummary,
   ExtractorLiveValidationReportSummary,
+  ExtractorRequestFamily,
+  ExtractorSoakFamilyState,
+  ExtractorPrivateFamilyGates,
+  ExtractorPrivatePromotionStates,
+  ExtractorPrivateTrialStates,
+  ExtractorPublicPromotionState,
   ExtractorPublicTrialState,
   ExtractorRecentEvent,
-  ExtractorRequestFamily,
   ExtractorRolloutPolicy,
   ExtractorRunbookConfig,
   ExtractorRunbookPreset,
@@ -58,6 +64,11 @@ function formatTime(date: Date): string {
     minute: "2-digit",
     second: "2-digit",
   });
+}
+
+function formatEvidenceValue(value?: string): string {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : "n/a";
 }
 
 function createPresetID(): string {
@@ -143,11 +154,38 @@ function gateTone(gate: ExtractorValidationGate): string {
   }
 }
 
-const publicTrialFamilies: Array<{ family: ExtractorRequestFamily; label: string }> = [
+const publicTrialFamilies: Array<{ family: PublicExtractorRequestFamily; label: string }> = [
   { family: "media", label: "Media" },
   { family: "timeline", label: "Timeline" },
   { family: "date_range", label: "Date Range" },
 ];
+
+const privateRolloutFamilies: Array<{ family: PrivateExtractorRequestFamily; label: string }> = [
+  { family: "likes", label: "Likes" },
+  { family: "bookmarks", label: "Bookmarks" },
+];
+
+const soakFamilies: Array<{ family: ExtractorRequestFamily; label: string }> = [
+  { family: "media", label: "Media" },
+  { family: "timeline", label: "Timeline" },
+  { family: "date_range", label: "Date Range" },
+  { family: "likes", label: "Likes" },
+  { family: "bookmarks", label: "Bookmarks" },
+];
+
+type PublicExtractorRequestFamily = "media" | "timeline" | "date_range";
+type PrivateExtractorRequestFamily = "likes" | "bookmarks";
+
+function emptyFamilyGateSummary(): ExtractorFamilyGateSummary {
+  return {
+    gate: "incomplete",
+    enabled_cases: 0,
+    passed_cases: 0,
+    mismatch_cases: 0,
+    failed_cases: 0,
+    invalid_cases: 0,
+  };
+}
 
 function getFamilyGateSummary(
   gates:
@@ -155,29 +193,112 @@ function getFamilyGateSummary(
     | ExtractorDiagnosticsSnapshot["live_family_gates"]
     | ExtractorDiagnosticsSnapshot["promotion_family_gates"]
     | null,
-  family: ExtractorRequestFamily
+  family: PublicExtractorRequestFamily
 ): ExtractorFamilyGateSummary {
   if (!gates) {
-    return {
-      gate: "incomplete",
-      enabled_cases: 0,
-      passed_cases: 0,
-      mismatch_cases: 0,
-      failed_cases: 0,
-      invalid_cases: 0,
-    };
+    return emptyFamilyGateSummary();
   }
   return gates[family];
 }
 
+function getPrivateFamilyGateSummary(
+  gates:
+    | ExtractorDiagnosticsSnapshot["private_family_gates"]
+    | ExtractorDiagnosticsSnapshot["private_live_family_gates"]
+    | ExtractorDiagnosticsSnapshot["private_promotion_family_gates"]
+    | null,
+  family: PrivateExtractorRequestFamily
+): ExtractorFamilyGateSummary {
+  if (!gates) {
+    return emptyFamilyGateSummary();
+  }
+  return gates[family as keyof ExtractorPrivateFamilyGates];
+}
+
 function getPublicTrialState(
   snapshot: ExtractorDiagnosticsSnapshot | null,
-  family: ExtractorRequestFamily
+  family: PublicExtractorRequestFamily
 ): ExtractorPublicTrialState {
   if (!snapshot) {
     return { armed: false, gate: "incomplete", active: false };
   }
   return snapshot.public_trial_states[family];
+}
+
+function getPublicPromotionState(
+  snapshot: ExtractorDiagnosticsSnapshot | null,
+  family: PublicExtractorRequestFamily
+): ExtractorPublicPromotionState {
+  if (!snapshot) {
+    return {
+      promoted: false,
+      gate: "incomplete",
+      active: false,
+      current_config_matches_baseline: false,
+      latest_evidence_drifted: false,
+    };
+  }
+  return snapshot.public_promotion_states[family];
+}
+
+function getPrivateTrialState(
+  snapshot: ExtractorDiagnosticsSnapshot | null,
+  family: PrivateExtractorRequestFamily
+): ExtractorPublicTrialState {
+  if (!snapshot) {
+    return { armed: false, gate: "incomplete", active: false };
+  }
+  return snapshot.private_trial_states[family as keyof ExtractorPrivateTrialStates];
+}
+
+function getPrivatePromotionState(
+  snapshot: ExtractorDiagnosticsSnapshot | null,
+  family: PrivateExtractorRequestFamily
+): ExtractorPublicPromotionState {
+  if (!snapshot) {
+    return {
+      promoted: false,
+      gate: "incomplete",
+      active: false,
+      current_config_matches_baseline: false,
+      latest_evidence_drifted: false,
+    };
+  }
+  return snapshot.private_promotion_states[family as keyof ExtractorPrivatePromotionStates];
+}
+
+function getDefaultRouteState(
+  snapshot: ExtractorDiagnosticsSnapshot | null,
+  family: ExtractorRequestFamily
+): ExtractorDefaultRouteState {
+  if (!snapshot) {
+    return {
+      promoted: false,
+      baseline_active: false,
+      default_served_by_go: false,
+      fallback_served_by_python: false,
+      depythonization_ready: false,
+    };
+  }
+  return snapshot.default_route_states[family];
+}
+
+function getSoakFamilyState(
+  snapshot: ExtractorDiagnosticsSnapshot | null,
+  family: ExtractorRequestFamily
+): ExtractorSoakFamilyState {
+  if (!snapshot) {
+    return {
+      total_requests: 0,
+      go_selected_successes: 0,
+      python_fallbacks: 0,
+      fallback_required_count: 0,
+      runtime_failures: 0,
+      cursor_semantic_failures: 0,
+      blocker_open: false,
+    };
+  }
+  return snapshot.soak_family_states[family];
 }
 
 export function DiagnosticsPanel({
@@ -374,6 +495,13 @@ export function DiagnosticsPanel({
     if (!parityContext?.enabled || !parityContext.request_kind) {
       return;
     }
+    if (!extractorSnapshot?.ad_hoc_parity_available) {
+      toast.warning(
+        extractorSnapshot?.ad_hoc_parity_unavailable_reason ||
+          "Ad hoc parity is unavailable in this build"
+      );
+      return;
+    }
 
     setBusyAction("parity");
     try {
@@ -486,6 +614,13 @@ export function DiagnosticsPanel({
   };
 
   const handleRunValidation = async () => {
+    if (!extractorSnapshot?.ad_hoc_parity_available) {
+      toast.warning(
+        extractorSnapshot?.ad_hoc_parity_unavailable_reason ||
+          "Validation runs require a fallback-compatible build"
+      );
+      return;
+    }
     await runAsyncAction("runbook-validate", async () => {
       const report = await runExtractorValidationRunbook({
         public_auth_token: runbookTokens?.public_auth_token || "",
@@ -505,6 +640,13 @@ export function DiagnosticsPanel({
   };
 
   const handleRunLiveValidation = async () => {
+    if (!extractorSnapshot?.ad_hoc_parity_available) {
+      toast.warning(
+        extractorSnapshot?.ad_hoc_parity_unavailable_reason ||
+          "Live validation requires a fallback-compatible build"
+      );
+      return;
+    }
     await runAsyncAction("runbook-live-validate", async () => {
       const report = await runExtractorLiveValidationSession({
         public_auth_token: runbookTokens?.public_auth_token || "",
@@ -523,7 +665,7 @@ export function DiagnosticsPanel({
     });
   };
 
-  const handleTogglePublicTrial = async (family: ExtractorRequestFamily, armed: boolean) => {
+  const handleTogglePublicTrial = async (family: PublicExtractorRequestFamily, armed: boolean) => {
     const currentPolicy = extractorSnapshot?.rollout_policy;
     const currentState = extractorSnapshot ? getPublicTrialState(extractorSnapshot, family) : null;
     if (!currentPolicy || !currentState) {
@@ -553,6 +695,102 @@ export function DiagnosticsPanel({
     });
   };
 
+  const handleTogglePublicPromotion = async (
+    family: PublicExtractorRequestFamily,
+    promoted: boolean
+  ) => {
+    const currentPolicy = extractorSnapshot?.rollout_policy;
+    const currentState = extractorSnapshot ? getPublicPromotionState(extractorSnapshot, family) : null;
+    if (!currentPolicy || !currentState) {
+      return;
+    }
+    if (promoted && !currentState.promoted && currentState.gate !== "ready") {
+      toast.warning("This public family can only be promoted when its promotion gate is ready");
+      return;
+    }
+
+    const nextPolicy: ExtractorRolloutPolicy = {
+      ...currentPolicy,
+      public_promotions: {
+        ...currentPolicy.public_promotions,
+        [family]: {
+          ...currentPolicy.public_promotions[family],
+          promoted,
+        },
+      },
+    };
+
+    await runAsyncAction(`public-promotion-${family}`, async () => {
+      await persistRolloutPolicy(
+        nextPolicy,
+        promoted ? `${family} public promotion enabled` : `${family} public promotion disabled`
+      );
+    });
+  };
+
+  const handleTogglePrivateTrial = async (family: PrivateExtractorRequestFamily, armed: boolean) => {
+    const currentPolicy = extractorSnapshot?.rollout_policy;
+    const currentState = extractorSnapshot ? getPrivateTrialState(extractorSnapshot, family) : null;
+    if (!currentPolicy || !currentState) {
+      return;
+    }
+    if (armed && !currentState.armed && currentState.gate !== "ready") {
+      toast.warning("This private family can only be armed when its gate is ready");
+      return;
+    }
+
+    const nextPolicy: ExtractorRolloutPolicy = {
+      ...currentPolicy,
+      private_trials: {
+        ...currentPolicy.private_trials,
+        [family]: {
+          ...currentPolicy.private_trials[family as keyof typeof currentPolicy.private_trials],
+          armed,
+        },
+      },
+    };
+
+    await runAsyncAction(`private-trial-${family}`, async () => {
+      await persistRolloutPolicy(
+        nextPolicy,
+        armed ? `${family} private trial armed` : `${family} private trial disarmed`
+      );
+    });
+  };
+
+  const handleTogglePrivatePromotion = async (
+    family: PrivateExtractorRequestFamily,
+    promoted: boolean
+  ) => {
+    const currentPolicy = extractorSnapshot?.rollout_policy;
+    const currentState = extractorSnapshot ? getPrivatePromotionState(extractorSnapshot, family) : null;
+    if (!currentPolicy || !currentState) {
+      return;
+    }
+    if (promoted && !currentState.promoted && currentState.gate !== "ready") {
+      toast.warning("This private family can only be promoted when its promotion gate is ready");
+      return;
+    }
+
+    const nextPolicy: ExtractorRolloutPolicy = {
+      ...currentPolicy,
+      private_promotions: {
+        ...currentPolicy.private_promotions,
+        [family]: {
+          ...currentPolicy.private_promotions[family as keyof typeof currentPolicy.private_promotions],
+          promoted,
+        },
+      },
+    };
+
+    await runAsyncAction(`private-promotion-${family}`, async () => {
+      await persistRolloutPolicy(
+        nextPolicy,
+        promoted ? `${family} private promotion enabled` : `${family} private promotion disabled`
+      );
+    });
+  };
+
   const snapshot = extractorSnapshot;
   const metrics = snapshot?.metrics;
   const recentEvents = snapshot?.recent_events || [];
@@ -561,11 +799,22 @@ export function DiagnosticsPanel({
   const runbookPresets = runbookConfig.presets || [];
   const recentValidationReports = snapshot?.recent_validation_reports || [];
   const recentLiveReports = snapshot?.recent_live_reports || [];
-  const canAddCurrentContext = Boolean(parityContext?.enabled && parityContext.request_kind);
-  const canRunValidation = runbookPresets.length > 0;
-  const canRunLiveValidation = runbookPresets.some(
-    (preset) => preset.enabled && preset.scope === "public"
+  const adHocParityAvailable = snapshot?.ad_hoc_parity_available ?? true;
+  const parityUnavailableReason =
+    snapshot?.ad_hoc_parity_unavailable_reason || "Ad hoc parity is unavailable in this build";
+  const historicalEvidenceOnly = snapshot?.historical_evidence_only ?? false;
+  const controlsRetiredReason = historicalEvidenceOnly
+    ? "Go-only runtime is active. Parity, runbook, live validation, trial, and promotion controls are retired; review saved evidence instead."
+    : "";
+  const canAddCurrentContext = Boolean(
+    parityContext?.enabled && parityContext.request_kind && !historicalEvidenceOnly
   );
+  const canRunParity = Boolean(
+    parityContext?.enabled && parityContext.request_kind && adHocParityAvailable && !historicalEvidenceOnly
+  );
+  const canRunValidation = runbookPresets.length > 0 && adHocParityAvailable && !historicalEvidenceOnly;
+  const canRunLiveValidation =
+    runbookPresets.some((preset) => preset.enabled) && adHocParityAvailable && !historicalEvidenceOnly;
 
   return (
     <div
@@ -595,11 +844,11 @@ export function DiagnosticsPanel({
             variant="outline"
             size="sm"
             onClick={() => void handleRunParity()}
-            disabled={busyAction !== null || !parityContext?.enabled || !parityContext?.request_kind}
+            disabled={busyAction !== null || !canRunParity}
             className="gap-1.5"
             data-testid="diagnostics-run-parity"
           >
-            Run Parity
+            {historicalEvidenceOnly ? "Parity Retired" : "Run Parity"}
           </Button>
           <Button
             variant="outline"
@@ -666,7 +915,7 @@ export function DiagnosticsPanel({
           <div className="space-y-1">
             <h2 className="text-sm font-semibold tracking-tight">Extractor</h2>
             <p className="text-xs text-muted-foreground">
-              Current Go rollout readiness, parity, fallback diagnostics, and validation runbook.
+              Go-only runtime health, soak evidence, and historical extractor rollout audit trail.
             </p>
           </div>
           <div className="space-y-1 text-left lg:max-w-md lg:text-right">
@@ -675,6 +924,10 @@ export function DiagnosticsPanel({
             </p>
             {!parityContext?.enabled && parityContext?.disabled_reason ? (
               <p className="text-xs text-muted-foreground">{parityContext.disabled_reason}</p>
+            ) : historicalEvidenceOnly ? (
+              <p className="text-xs text-muted-foreground">{controlsRetiredReason}</p>
+            ) : !adHocParityAvailable ? (
+              <p className="text-xs text-muted-foreground">{parityUnavailableReason}</p>
             ) : null}
           </div>
         </div>
@@ -684,11 +937,64 @@ export function DiagnosticsPanel({
             {extractorLoadError}
           </div>
         ) : null}
+        {snapshot && !snapshot.python_fallback_available ? (
+          <div
+            className="rounded-xl border border-yellow-500/30 bg-yellow-500/5 px-3 py-2 text-xs text-yellow-700 dark:text-yellow-300"
+            data-testid="diagnostics-python-fallback-status"
+          >
+            This is a {snapshot.python_fallback_build_flavor || "go-only"} build. Python fallback is unavailable,
+            so ad hoc parity and fresh validation runs are read-only until you use a fallback-compatible build.
+          </div>
+        ) : null}
+        {snapshot?.go_only_runtime ? (
+          <div
+            className="rounded-xl border border-green-500/30 bg-green-500/5 px-3 py-2 text-xs text-green-700 dark:text-green-300"
+            data-testid="diagnostics-go-only-runtime"
+          >
+            Go-only runtime is active for all supported extractor families. Historical rollout evidence remains available for audit, but parity and rollout controls are retired.
+          </div>
+        ) : null}
 
         <div className="flex flex-wrap items-center gap-2">
           <Badge variant="secondary" data-testid="diagnostics-extractor-mode">
             Mode: {snapshot?.current_mode || "loading"}
           </Badge>
+          {snapshot?.python_fallback_build_flavor ? (
+            <Badge variant="outline" data-testid="diagnostics-build-flavor">
+              Build: {snapshot.python_fallback_build_flavor}
+            </Badge>
+          ) : null}
+          {snapshot ? (
+            <Badge
+              variant="outline"
+              data-testid="diagnostics-python-fallback-availability"
+              className={
+                snapshot.python_fallback_available
+                  ? "border-green-500/40 bg-green-500/10 text-green-700 dark:text-green-300"
+                  : "border-yellow-500/40 bg-yellow-500/10 text-yellow-700 dark:text-yellow-300"
+              }
+            >
+              {snapshot.python_fallback_available ? "Python fallback available" : "Python fallback unavailable"}
+            </Badge>
+          ) : null}
+          {!adHocParityAvailable ? (
+            <Badge
+              variant="outline"
+              className="border-yellow-500/40 bg-yellow-500/10 text-yellow-700 dark:text-yellow-300"
+              data-testid="diagnostics-ad-hoc-parity-unavailable"
+            >
+              Ad hoc parity unavailable
+            </Badge>
+          ) : null}
+          {snapshot?.python_deprecated_notice ? (
+            <Badge
+              variant="outline"
+              className="border-yellow-500/40 bg-yellow-500/10 text-yellow-700 dark:text-yellow-300"
+              data-testid="diagnostics-python-deprecated"
+            >
+              Python deprecated
+            </Badge>
+          ) : null}
           {snapshot?.private_auto_pinned ? (
             <Badge
               variant="outline"
@@ -718,7 +1024,19 @@ export function DiagnosticsPanel({
               Trial requests: {metrics.rollout_trial_requests.toLocaleString()}
             </Badge>
           ) : null}
+          {snapshot ? (
+            <Badge variant="outline" data-testid="diagnostics-phase7-ready">
+              Phase 7: {snapshot.phase7_ready ? "ready" : "not ready"}
+            </Badge>
+          ) : null}
+          {snapshot?.go_only_runtime ? <Badge variant="outline">Go-only runtime</Badge> : null}
         </div>
+
+        {snapshot?.python_deprecated_notice ? (
+          <div className="rounded-xl border border-yellow-500/40 bg-yellow-500/10 px-3 py-2 text-xs text-yellow-800 dark:text-yellow-200">
+            {snapshot.python_deprecated_notice}
+          </div>
+        ) : null}
 
         {snapshot ? (
           <>
@@ -732,6 +1050,91 @@ export function DiagnosticsPanel({
               <MetricCard label="Trial go selected" value={metrics?.rollout_trial_go_selected || 0} />
             </div>
 
+            <div
+              className="space-y-3 rounded-xl border border-border/60 bg-muted/20 p-3"
+              data-testid="diagnostics-default-soak-panel"
+            >
+              <div className="space-y-1">
+                <h3 className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                  Default Soak
+                </h3>
+                <p className="text-xs text-muted-foreground">
+                  Real python-default traffic served by promoted Go families for release {snapshot.soak_release_version || "dev"}.
+                </p>
+              </div>
+
+              <div className="grid gap-3 xl:grid-cols-5">
+                {soakFamilies.map(({ family, label }) => {
+                  const routeState = getDefaultRouteState(snapshot, family);
+                  const soakState = getSoakFamilyState(snapshot, family);
+
+                  return (
+                    <div
+                      key={`default-soak-${family}`}
+                      className="rounded-lg border border-border/60 bg-background/70 p-3"
+                      data-testid={`diagnostics-default-soak-${family}`}
+                    >
+                      <div className="space-y-1">
+                        <p className="text-sm font-medium">{label}</p>
+                        <div className="flex flex-wrap gap-1.5">
+                          <Badge variant="outline">
+                            {routeState.default_served_by_go ? "default served by Go" : "default not on Go"}
+                          </Badge>
+                          {routeState.fallback_served_by_python ? (
+                            <Badge variant="outline">fallback served by Python</Badge>
+                          ) : null}
+                          <Badge variant="outline">
+                            {routeState.baseline_active ? "baseline active" : "baseline inactive"}
+                          </Badge>
+                          <Badge variant="outline">
+                            {routeState.depythonization_ready ? "depythonization ready" : "depythonization pending"}
+                          </Badge>
+                        </div>
+                      </div>
+
+                      <div className="mt-2 flex flex-wrap gap-1.5 text-muted-foreground">
+                        <Badge variant="outline">requests {soakState.total_requests}</Badge>
+                        <Badge variant="outline">go ok {soakState.go_selected_successes}</Badge>
+                        <Badge variant="outline">py fallback {soakState.python_fallbacks}</Badge>
+                        <Badge variant="outline">fallback req {soakState.fallback_required_count}</Badge>
+                        <Badge variant="outline">runtime fail {soakState.runtime_failures}</Badge>
+                        <Badge variant="outline">cursor fail {soakState.cursor_semantic_failures}</Badge>
+                        <Badge variant="outline">{soakState.blocker_open ? "blocker open" : "no blocker"}</Badge>
+                      </div>
+
+                      {routeState.last_failure_reason ? (
+                        <p className="mt-2 text-xs text-muted-foreground">
+                          Last failure: {routeState.last_failure_reason}
+                        </p>
+                      ) : null}
+                      {routeState.inactive_reason ? (
+                        <p
+                          className="mt-2 text-xs text-muted-foreground"
+                          data-testid={`diagnostics-default-soak-status-${family}`}
+                        >
+                          {routeState.inactive_reason}
+                        </p>
+                      ) : routeState.default_served_by_go ? (
+                        <p
+                          className="mt-2 text-xs text-muted-foreground"
+                          data-testid={`diagnostics-default-soak-status-${family}`}
+                        >
+                          Default route currently serves Go for python-default requests in this family.
+                        </p>
+                      ) : (
+                        <p
+                          className="mt-2 text-xs text-muted-foreground"
+                          data-testid={`diagnostics-default-soak-status-${family}`}
+                        >
+                          This family is not yet defaulting to Go in python-default mode.
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
             <div className="space-y-3 rounded-xl border border-border/60 bg-muted/20 p-3" data-testid="diagnostics-runbook-panel">
               <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                 <div className="space-y-1">
@@ -739,8 +1142,13 @@ export function DiagnosticsPanel({
                     Validation Runbook
                   </h3>
                   <p className="text-xs text-muted-foreground">
-                    Capture parity-eligible contexts into a reusable rollout matrix and save validation reports.
+                    Historical validation matrix retained for audit. New validation runs are retired in go-only runtime.
                   </p>
+                  {historicalEvidenceOnly ? (
+                    <p className="text-xs text-muted-foreground">{controlsRetiredReason}</p>
+                  ) : !adHocParityAvailable ? (
+                    <p className="text-xs text-muted-foreground">{parityUnavailableReason}</p>
+                  ) : null}
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   <GateBadge scope="Public" gate={snapshot.public_gate} />
@@ -775,18 +1183,17 @@ export function DiagnosticsPanel({
                       Presets ({runbookPresets.length})
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      Stored in app data and included in support bundles.
+                      Stored in app data and kept in support bundles for cutover audit.
                     </p>
                   </div>
                   <div className="space-y-2" data-testid="diagnostics-runbook-presets">
                     {runbookPresets.length === 0 ? (
                       <p className="rounded-lg border border-dashed border-border/60 bg-background/60 px-3 py-3 text-xs text-muted-foreground">
-                        No validation presets yet. Add the current parity context to start building a rollout matrix.
+                        No historical validation presets were saved before cutover.
                       </p>
                     ) : (
                       runbookPresets.map((preset) => {
                         const labelDraft = presetLabelDrafts[preset.id] ?? preset.label;
-                        const labelChanged = labelDraft.trim() !== preset.label;
                         return (
                           <div
                             key={preset.id}
@@ -806,6 +1213,7 @@ export function DiagnosticsPanel({
                                     }
                                     placeholder="Preset label"
                                     className="h-8 text-sm"
+                                    disabled
                                     data-testid={`diagnostics-runbook-label-${preset.id}`}
                                   />
                                   <div className="flex flex-wrap gap-1.5">
@@ -829,7 +1237,7 @@ export function DiagnosticsPanel({
                                       onCheckedChange={(value) =>
                                         void handleTogglePreset(preset.id, Boolean(value))
                                       }
-                                      disabled={busyAction !== null}
+                                      disabled
                                       data-testid={`diagnostics-runbook-toggle-${preset.id}`}
                                     />
                                     <span className="text-xs text-muted-foreground">
@@ -840,7 +1248,7 @@ export function DiagnosticsPanel({
                                     variant="outline"
                                     size="sm"
                                     onClick={() => void handleSavePresetLabel(preset.id)}
-                                    disabled={busyAction !== null || !labelChanged}
+                                    disabled
                                     data-testid={`diagnostics-runbook-save-${preset.id}`}
                                   >
                                     Save
@@ -849,7 +1257,7 @@ export function DiagnosticsPanel({
                                     variant="outline"
                                     size="sm"
                                     onClick={() => void handleDeletePreset(preset.id)}
-                                    disabled={busyAction !== null}
+                                    disabled
                                     data-testid={`diagnostics-runbook-delete-${preset.id}`}
                                   >
                                     Delete
@@ -893,13 +1301,20 @@ export function DiagnosticsPanel({
                     Live Validation
                   </h3>
                   <p className="text-xs text-muted-foreground">
-                    Run release-grade runtime plus parity validation against the enabled public runbook presets.
+                    Historical live validation sessions retained for audit. New runtime-plus-parity sessions are retired in go-only runtime.
                   </p>
+                  {historicalEvidenceOnly ? (
+                    <p className="text-xs text-muted-foreground">{controlsRetiredReason}</p>
+                  ) : !adHocParityAvailable ? (
+                    <p className="text-xs text-muted-foreground">{parityUnavailableReason}</p>
+                  ) : null}
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   <GateBadge scope="Media live" gate={snapshot.live_family_gates.media.gate} />
                   <GateBadge scope="Timeline live" gate={snapshot.live_family_gates.timeline.gate} />
                   <GateBadge scope="Date Range live" gate={snapshot.live_family_gates.date_range.gate} />
+                  <GateBadge scope="Likes live" gate={snapshot.private_live_family_gates.likes.gate} />
+                  <GateBadge scope="Bookmarks live" gate={snapshot.private_live_family_gates.bookmarks.gate} />
                   <Button
                     size="sm"
                     onClick={() => void handleRunLiveValidation()}
@@ -942,6 +1357,37 @@ export function DiagnosticsPanel({
                       );
                     })}
                   </div>
+                  <div className="grid gap-3 xl:grid-cols-2">
+                    {privateRolloutFamilies.map(({ family, label }) => {
+                      const parityGate = getPrivateFamilyGateSummary(snapshot.private_family_gates, family);
+                      const liveGate = getPrivateFamilyGateSummary(snapshot.private_live_family_gates, family);
+                      const promotionGate = getPrivateFamilyGateSummary(
+                        snapshot.private_promotion_family_gates,
+                        family
+                      );
+
+                      return (
+                        <div
+                          key={`live-private-family-${family}`}
+                          className="rounded-lg border border-border/60 bg-background/70 p-3"
+                          data-testid={`diagnostics-live-private-family-${family}`}
+                        >
+                          <p className="text-sm font-medium">{label}</p>
+                          <div className="mt-2 flex flex-wrap gap-1.5">
+                            <GateBadge scope={`${label} parity`} gate={parityGate.gate} />
+                            <GateBadge scope={`${label} live`} gate={liveGate.gate} />
+                            <GateBadge scope={`${label} promotion`} gate={promotionGate.gate} />
+                          </div>
+                          <div className="mt-2 flex flex-wrap gap-1.5 text-muted-foreground">
+                            <Badge variant="outline">enabled {promotionGate.enabled_cases}</Badge>
+                            <Badge variant="outline">live pass {liveGate.passed_cases}</Badge>
+                            <Badge variant="outline">live blocked {liveGate.failed_cases}</Badge>
+                            <Badge variant="outline">live skipped {liveGate.invalid_cases}</Badge>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
 
                 <div className="space-y-3">
@@ -966,13 +1412,263 @@ export function DiagnosticsPanel({
               </div>
             </div>
 
+            <div
+              className="space-y-3 rounded-xl border border-border/60 bg-muted/20 p-3"
+              data-testid="diagnostics-public-promotion-panel"
+            >
+              <div className="space-y-1">
+                <h3 className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                  Public Promotion
+                </h3>
+                <p className="text-xs text-muted-foreground">
+                  Historical public promotion baselines retained for audit. Promotion controls are retired in go-only runtime.
+                </p>
+              </div>
+              <div className="grid gap-3 xl:grid-cols-3">
+                {publicTrialFamilies.map(({ family, label }) => {
+                  const promotionGate = getFamilyGateSummary(snapshot.promotion_family_gates, family);
+                  const promotionState = getPublicPromotionState(snapshot, family);
+                  const hasBaseline = Boolean(
+                    promotionState.baseline_captured_at &&
+                      promotionState.baseline_config_updated_at &&
+                      promotionState.baseline_validation_report_id &&
+                      promotionState.baseline_live_report_id
+                  );
+
+                  return (
+                    <div
+                      key={`promotion-${family}`}
+                      className="rounded-lg border border-border/60 bg-background/70 p-3"
+                      data-testid={`diagnostics-public-promotion-${family}`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="space-y-1">
+                          <p className="text-sm font-medium">{label}</p>
+                          <GateBadge scope={`${label} promotion`} gate={promotionGate.gate} />
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Switch
+                            checked={promotionState.promoted}
+                            onCheckedChange={(value) =>
+                              void handleTogglePublicPromotion(family, Boolean(value))
+                            }
+                            disabled
+                            data-testid={`diagnostics-public-promotion-toggle-${family}`}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        <Badge variant="outline">
+                          {promotionState.promoted ? "promoted" : "not promoted"}
+                        </Badge>
+                        <Badge variant="outline">
+                          {promotionState.active ? "promotion active" : "promotion inactive"}
+                        </Badge>
+                        <Badge variant="outline">
+                          {hasBaseline ? "baseline captured" : "baseline missing"}
+                        </Badge>
+                        {promotionState.latest_evidence_drifted ? (
+                          <Badge variant="outline">evidence drifted</Badge>
+                        ) : null}
+                      </div>
+
+                      <div className="mt-2 flex flex-wrap gap-1.5 text-muted-foreground">
+                        <Badge variant="outline">enabled {promotionGate.enabled_cases}</Badge>
+                        <Badge variant="outline">pass {promotionGate.passed_cases}</Badge>
+                        <Badge variant="outline">mismatch {promotionGate.mismatch_cases}</Badge>
+                        <Badge variant="outline">failed {promotionGate.failed_cases}</Badge>
+                        <Badge variant="outline">invalid {promotionGate.invalid_cases}</Badge>
+                      </div>
+
+                      {promotionState.promoted ? (
+                        <div className="mt-2 space-y-1 text-xs text-muted-foreground">
+                          <p>Baseline config: {formatEvidenceValue(promotionState.baseline_config_updated_at)}</p>
+                          <p>Validation report: {formatEvidenceValue(promotionState.baseline_validation_report_id)}</p>
+                          <p>Live report: {formatEvidenceValue(promotionState.baseline_live_report_id)}</p>
+                          <p>Current gate: {promotionState.current_promotion_gate || promotionGate.gate}</p>
+                          <p>
+                            {promotionState.current_config_matches_baseline
+                              ? "Current runbook config matches the approved baseline."
+                              : "Current runbook config differs from the approved baseline."}
+                          </p>
+                        </div>
+                      ) : null}
+
+                      {promotionState.inactive_reason ? (
+                        <p
+                          className="mt-2 text-xs text-muted-foreground"
+                          data-testid={`diagnostics-public-promotion-status-${family}`}
+                        >
+                          {promotionState.inactive_reason}
+                        </p>
+                      ) : promotionState.active && promotionState.latest_evidence_drifted ? (
+                        <p
+                          className="mt-2 text-xs text-muted-foreground"
+                          data-testid={`diagnostics-public-promotion-status-${family}`}
+                        >
+                          Promoted and active on approved baseline, but latest evidence has drifted.
+                        </p>
+                      ) : promotionState.active ? (
+                        <p
+                          className="mt-2 text-xs text-muted-foreground"
+                          data-testid={`diagnostics-public-promotion-status-${family}`}
+                        >
+                          Promoted and active on approved baseline. Default route serves Go for python-default requests in this family.
+                        </p>
+                      ) : promotionGate.gate === "ready" ? (
+                        <p
+                          className="mt-2 text-xs text-muted-foreground"
+                          data-testid={`diagnostics-public-promotion-status-${family}`}
+                        >
+                          Historical promotion evidence shows this family was ready at cutover.
+                        </p>
+                      ) : (
+                        <p
+                          className="mt-2 text-xs text-muted-foreground"
+                          data-testid={`diagnostics-public-promotion-status-${family}`}
+                        >
+                          Historical evidence for this family never reached promotion readiness before cutover.
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div
+              className="space-y-3 rounded-xl border border-border/60 bg-muted/20 p-3"
+              data-testid="diagnostics-private-promotion-panel"
+            >
+              <div className="space-y-1">
+                <h3 className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                  Private Promotion
+                </h3>
+                <p className="text-xs text-muted-foreground">
+                  Historical private promotion baselines retained for audit. Promotion controls are retired in go-only runtime.
+                </p>
+              </div>
+              <div className="grid gap-3 xl:grid-cols-2">
+                {privateRolloutFamilies.map(({ family, label }) => {
+                  const promotionGate = getPrivateFamilyGateSummary(snapshot.private_promotion_family_gates, family);
+                  const promotionState = getPrivatePromotionState(snapshot, family);
+                  const hasBaseline = Boolean(
+                    promotionState.baseline_captured_at &&
+                      promotionState.baseline_config_updated_at &&
+                      promotionState.baseline_validation_report_id &&
+                      promotionState.baseline_live_report_id
+                  );
+
+                  return (
+                    <div
+                      key={`private-promotion-${family}`}
+                      className="rounded-lg border border-border/60 bg-background/70 p-3"
+                      data-testid={`diagnostics-private-promotion-${family}`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="space-y-1">
+                          <p className="text-sm font-medium">{label}</p>
+                          <GateBadge scope={`${label} promotion`} gate={promotionGate.gate} />
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Switch
+                            checked={promotionState.promoted}
+                            onCheckedChange={(value) =>
+                              void handleTogglePrivatePromotion(family, Boolean(value))
+                            }
+                            disabled
+                            data-testid={`diagnostics-private-promotion-toggle-${family}`}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        <Badge variant="outline">
+                          {promotionState.promoted ? "promoted" : "not promoted"}
+                        </Badge>
+                        <Badge variant="outline">
+                          {promotionState.active ? "promotion active" : "promotion inactive"}
+                        </Badge>
+                        <Badge variant="outline">
+                          {hasBaseline ? "baseline captured" : "baseline missing"}
+                        </Badge>
+                        {promotionState.latest_evidence_drifted ? (
+                          <Badge variant="outline">evidence drifted</Badge>
+                        ) : null}
+                      </div>
+
+                      <div className="mt-2 flex flex-wrap gap-1.5 text-muted-foreground">
+                        <Badge variant="outline">enabled {promotionGate.enabled_cases}</Badge>
+                        <Badge variant="outline">pass {promotionGate.passed_cases}</Badge>
+                        <Badge variant="outline">mismatch {promotionGate.mismatch_cases}</Badge>
+                        <Badge variant="outline">failed {promotionGate.failed_cases}</Badge>
+                        <Badge variant="outline">invalid {promotionGate.invalid_cases}</Badge>
+                      </div>
+
+                      {promotionState.promoted ? (
+                        <div className="mt-2 space-y-1 text-xs text-muted-foreground">
+                          <p>Baseline config: {formatEvidenceValue(promotionState.baseline_config_updated_at)}</p>
+                          <p>Validation report: {formatEvidenceValue(promotionState.baseline_validation_report_id)}</p>
+                          <p>Live report: {formatEvidenceValue(promotionState.baseline_live_report_id)}</p>
+                          <p>Current gate: {promotionState.current_promotion_gate || promotionGate.gate}</p>
+                          <p>
+                            {promotionState.current_config_matches_baseline
+                              ? "Current runbook config matches the approved baseline."
+                              : "Current runbook config differs from the approved baseline."}
+                          </p>
+                        </div>
+                      ) : null}
+
+                      {promotionState.inactive_reason ? (
+                        <p
+                          className="mt-2 text-xs text-muted-foreground"
+                          data-testid={`diagnostics-private-promotion-status-${family}`}
+                        >
+                          {promotionState.inactive_reason}
+                        </p>
+                      ) : promotionState.active && promotionState.latest_evidence_drifted ? (
+                        <p
+                          className="mt-2 text-xs text-muted-foreground"
+                          data-testid={`diagnostics-private-promotion-status-${family}`}
+                        >
+                          Promoted and active on approved baseline, but latest evidence has drifted.
+                        </p>
+                      ) : promotionState.active ? (
+                        <p
+                          className="mt-2 text-xs text-muted-foreground"
+                          data-testid={`diagnostics-private-promotion-status-${family}`}
+                        >
+                          Promoted and active on approved baseline. Default route serves Go for python-default requests in this family.
+                        </p>
+                      ) : promotionGate.gate === "ready" ? (
+                        <p
+                          className="mt-2 text-xs text-muted-foreground"
+                          data-testid={`diagnostics-private-promotion-status-${family}`}
+                        >
+                          Historical promotion evidence shows this family was ready at cutover.
+                        </p>
+                      ) : (
+                        <p
+                          className="mt-2 text-xs text-muted-foreground"
+                          data-testid={`diagnostics-private-promotion-status-${family}`}
+                        >
+                          Historical evidence for this family never reached promotion readiness before cutover.
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
             <div className="space-y-3 rounded-xl border border-border/60 bg-muted/20 p-3" data-testid="diagnostics-public-trial-panel">
               <div className="space-y-1">
                 <h3 className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
                   Public Trial
                 </h3>
                 <p className="text-xs text-muted-foreground">
-                  Arm request-family trials only when rollout evidence is ready. Private requests remain pinned to Python.
+                  Historical public trial state is preserved for audit. Trial controls are retired in go-only runtime.
                 </p>
               </div>
               <div className="grid gap-3 xl:grid-cols-3">
@@ -980,7 +1676,6 @@ export function DiagnosticsPanel({
                   const familyGate = getFamilyGateSummary(snapshot.public_family_gates, family);
                   const promotionGate = getFamilyGateSummary(snapshot.promotion_family_gates, family);
                   const trialState = getPublicTrialState(snapshot, family);
-                  const canArm = trialState.armed || familyGate.gate === "ready";
                   const statusBadges = [
                     <Badge key={`${family}-armed`} variant="outline">
                       {trialState.armed ? "armed" : "disarmed"}
@@ -1010,7 +1705,7 @@ export function DiagnosticsPanel({
                             onCheckedChange={(value) =>
                               void handleTogglePublicTrial(family, Boolean(value))
                             }
-                            disabled={busyAction !== null || (!trialState.armed && !canArm)}
+                            disabled
                             data-testid={`diagnostics-public-trial-toggle-${family}`}
                           />
                         </div>
@@ -1045,14 +1740,105 @@ export function DiagnosticsPanel({
                           className="mt-2 text-xs text-muted-foreground"
                           data-testid={`diagnostics-public-trial-status-${family}`}
                         >
-                          Promotion ready. You can arm this family when you want to trial the public auto path.
+                          Historical evidence shows this family was trial-ready before cutover.
                         </p>
                       ) : (
                         <p
                           className="mt-2 text-xs text-muted-foreground"
                           data-testid={`diagnostics-public-trial-status-${family}`}
                         >
-                          Promotion not ready yet. Keep using parity and live validation until this family is clear.
+                          This family never reached trial readiness before cutover.
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="space-y-3 rounded-xl border border-border/60 bg-muted/20 p-3" data-testid="diagnostics-private-trial-panel">
+              <div className="space-y-1">
+                <h3 className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                  Private Trial
+                </h3>
+                <p className="text-xs text-muted-foreground">
+                  Historical private trial state is preserved for audit. Trial controls are retired in go-only runtime.
+                </p>
+              </div>
+              <div className="grid gap-3 xl:grid-cols-2">
+                {privateRolloutFamilies.map(({ family, label }) => {
+                  const familyGate = getPrivateFamilyGateSummary(snapshot.private_family_gates, family);
+                  const promotionGate = getPrivateFamilyGateSummary(
+                    snapshot.private_promotion_family_gates,
+                    family
+                  );
+                  const trialState = getPrivateTrialState(snapshot, family);
+                  return (
+                    <div
+                      key={`private-trial-${family}`}
+                      className="rounded-lg border border-border/60 bg-background/70 p-3"
+                      data-testid={`diagnostics-private-trial-${family}`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="space-y-1">
+                          <p className="text-sm font-medium">{label}</p>
+                          <GateBadge scope={label} gate={familyGate.gate} />
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Switch
+                            checked={trialState.armed}
+                            onCheckedChange={(value) =>
+                              void handleTogglePrivateTrial(family, Boolean(value))
+                            }
+                            disabled
+                            data-testid={`diagnostics-private-trial-toggle-${family}`}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        <Badge variant="outline">{trialState.armed ? "armed" : "disarmed"}</Badge>
+                        <Badge variant="outline">
+                          {trialState.active ? "trial active" : "trial inactive"}
+                        </Badge>
+                        <Badge variant="outline">promotion {promotionGate.gate}</Badge>
+                      </div>
+
+                      <div className="mt-2 flex flex-wrap gap-1.5 text-muted-foreground">
+                        <Badge variant="outline">enabled {familyGate.enabled_cases}</Badge>
+                        <Badge variant="outline">pass {familyGate.passed_cases}</Badge>
+                        <Badge variant="outline">mismatch {familyGate.mismatch_cases}</Badge>
+                        <Badge variant="outline">failed {familyGate.failed_cases}</Badge>
+                        <Badge variant="outline">invalid {familyGate.invalid_cases}</Badge>
+                      </div>
+
+                      {trialState.inactive_reason ? (
+                        <p
+                          className="mt-2 text-xs text-muted-foreground"
+                          data-testid={`diagnostics-private-trial-status-${family}`}
+                        >
+                          {trialState.inactive_reason}
+                        </p>
+                      ) : trialState.active ? (
+                        <p
+                          className="mt-2 text-xs text-muted-foreground"
+                          data-testid={`diagnostics-private-trial-status-${family}`}
+                        >
+                          This family is currently active for python-default runtime requests.
+                        </p>
+                      ) : promotionGate.gate === "ready" ? (
+                        <p
+                          className="mt-2 text-xs text-muted-foreground"
+                          data-testid={`diagnostics-private-trial-status-${family}`}
+                        >
+                          Historical evidence shows this family was trial-ready before cutover.
+                        </p>
+                      ) : (
+                        <p
+                          className="mt-2 text-xs text-muted-foreground"
+                          data-testid={`diagnostics-private-trial-status-${family}`}
+                        >
+                          This family never reached trial readiness before cutover.
                         </p>
                       )}
                     </div>
@@ -1267,6 +2053,8 @@ function ValidationReportRow({ report }: { report: ExtractorValidationReportSumm
           <GateBadge scope="Media" gate={report.public_family_gates.media.gate} />
           <GateBadge scope="Timeline" gate={report.public_family_gates.timeline.gate} />
           <GateBadge scope="Date Range" gate={report.public_family_gates.date_range.gate} />
+          <GateBadge scope="Likes" gate={report.private_family_gates.likes.gate} />
+          <GateBadge scope="Bookmarks" gate={report.private_family_gates.bookmarks.gate} />
         </div>
       </div>
       <div className="mt-2 flex flex-wrap gap-1.5 text-muted-foreground">
@@ -1292,9 +2080,13 @@ function LiveValidationReportRow({ report }: { report: ExtractorLiveValidationRe
           <GateBadge scope="Media live" gate={report.live_family_gates.media.gate} />
           <GateBadge scope="Timeline live" gate={report.live_family_gates.timeline.gate} />
           <GateBadge scope="Date Range live" gate={report.live_family_gates.date_range.gate} />
+          <GateBadge scope="Likes live" gate={report.private_live_family_gates.likes.gate} />
+          <GateBadge scope="Bookmarks live" gate={report.private_live_family_gates.bookmarks.gate} />
           <GateBadge scope="Media promotion" gate={report.promotion_family_gates.media.gate} />
           <GateBadge scope="Timeline promotion" gate={report.promotion_family_gates.timeline.gate} />
           <GateBadge scope="Date Range promotion" gate={report.promotion_family_gates.date_range.gate} />
+          <GateBadge scope="Likes promotion" gate={report.private_promotion_family_gates.likes.gate} />
+          <GateBadge scope="Bookmarks promotion" gate={report.private_promotion_family_gates.bookmarks.gate} />
         </div>
       </div>
       <div className="mt-2 flex flex-wrap gap-1.5 text-muted-foreground">

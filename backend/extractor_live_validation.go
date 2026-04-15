@@ -66,33 +66,39 @@ type ExtractorLiveValidationCaseReport struct {
 }
 
 type ExtractorLiveValidationReportSummary struct {
-	ReportID             string                        `json:"report_id"`
-	CreatedAt            string                        `json:"created_at"`
-	ConfigUpdatedAt      string                        `json:"config_updated_at,omitempty"`
-	TotalCases           int                           `json:"total_cases"`
-	RuntimePassedCases   int                           `json:"runtime_passed_cases"`
-	RuntimeFailedCases   int                           `json:"runtime_failed_cases"`
-	RuntimeSkippedCases  int                           `json:"runtime_skipped_cases"`
-	ParityFamilyGates    ExtractorPublicFamilyGates    `json:"parity_family_gates"`
-	LiveFamilyGates      ExtractorLiveFamilyGates      `json:"live_family_gates"`
-	PromotionFamilyGates ExtractorPromotionFamilyGates `json:"promotion_family_gates"`
+	ReportID                    string                        `json:"report_id"`
+	CreatedAt                   string                        `json:"created_at"`
+	ConfigUpdatedAt             string                        `json:"config_updated_at,omitempty"`
+	TotalCases                  int                           `json:"total_cases"`
+	RuntimePassedCases          int                           `json:"runtime_passed_cases"`
+	RuntimeFailedCases          int                           `json:"runtime_failed_cases"`
+	RuntimeSkippedCases         int                           `json:"runtime_skipped_cases"`
+	ParityFamilyGates           ExtractorPublicFamilyGates    `json:"parity_family_gates"`
+	PrivateParityFamilyGates    ExtractorPrivateFamilyGates   `json:"private_parity_family_gates"`
+	LiveFamilyGates             ExtractorLiveFamilyGates      `json:"live_family_gates"`
+	PrivateLiveFamilyGates      ExtractorPrivateFamilyGates   `json:"private_live_family_gates"`
+	PromotionFamilyGates        ExtractorPromotionFamilyGates `json:"promotion_family_gates"`
+	PrivatePromotionFamilyGates ExtractorPrivateFamilyGates   `json:"private_promotion_family_gates"`
 }
 
 type ExtractorLiveValidationReport struct {
-	ReportID             string                                `json:"report_id"`
-	CreatedAt            string                                `json:"created_at"`
-	ConfigUpdatedAt      string                                `json:"config_updated_at,omitempty"`
-	AppVersion           string                                `json:"app_version"`
-	EngineMode           ExtractorEngineMode                   `json:"engine_mode"`
-	TotalCases           int                                   `json:"total_cases"`
-	RuntimePassedCases   int                                   `json:"runtime_passed_cases"`
-	RuntimeFailedCases   int                                   `json:"runtime_failed_cases"`
-	RuntimeSkippedCases  int                                   `json:"runtime_skipped_cases"`
-	ParityFamilyGates    ExtractorPublicFamilyGates            `json:"parity_family_gates"`
-	LiveFamilyGates      ExtractorLiveFamilyGates              `json:"live_family_gates"`
-	PromotionFamilyGates ExtractorPromotionFamilyGates         `json:"promotion_family_gates"`
-	Diagnostics          ExtractorValidationDiagnosticsSummary `json:"diagnostics"`
-	Cases                []ExtractorLiveValidationCaseReport   `json:"cases,omitempty"`
+	ReportID                    string                                `json:"report_id"`
+	CreatedAt                   string                                `json:"created_at"`
+	ConfigUpdatedAt             string                                `json:"config_updated_at,omitempty"`
+	AppVersion                  string                                `json:"app_version"`
+	EngineMode                  ExtractorEngineMode                   `json:"engine_mode"`
+	TotalCases                  int                                   `json:"total_cases"`
+	RuntimePassedCases          int                                   `json:"runtime_passed_cases"`
+	RuntimeFailedCases          int                                   `json:"runtime_failed_cases"`
+	RuntimeSkippedCases         int                                   `json:"runtime_skipped_cases"`
+	ParityFamilyGates           ExtractorPublicFamilyGates            `json:"parity_family_gates"`
+	PrivateParityFamilyGates    ExtractorPrivateFamilyGates           `json:"private_parity_family_gates"`
+	LiveFamilyGates             ExtractorLiveFamilyGates              `json:"live_family_gates"`
+	PrivateLiveFamilyGates      ExtractorPrivateFamilyGates           `json:"private_live_family_gates"`
+	PromotionFamilyGates        ExtractorPromotionFamilyGates         `json:"promotion_family_gates"`
+	PrivatePromotionFamilyGates ExtractorPrivateFamilyGates           `json:"private_promotion_family_gates"`
+	Diagnostics                 ExtractorValidationDiagnosticsSummary `json:"diagnostics"`
+	Cases                       []ExtractorLiveValidationCaseReport   `json:"cases,omitempty"`
 }
 
 var (
@@ -135,13 +141,12 @@ func RunExtractorLiveValidationSession(
 
 	publicToken := strings.TrimSpace(req.PublicAuthToken)
 	privateToken := strings.TrimSpace(req.PrivateAuthToken)
-	_ = privateToken
 
 	for _, preset := range config.Presets {
 		if !preset.Enabled {
 			continue
 		}
-		caseReport := runExtractorLiveValidationPreset(preset, publicToken)
+		caseReport := runExtractorLiveValidationPreset(preset, publicToken, privateToken)
 		report.Cases = append(report.Cases, caseReport)
 	}
 
@@ -155,6 +160,7 @@ func RunExtractorLiveValidationSession(
 func runExtractorLiveValidationPreset(
 	preset ExtractorRunbookPreset,
 	publicToken string,
+	privateToken string,
 ) ExtractorLiveValidationCaseReport {
 	preset = sanitizeExtractorRunbookPreset(preset, false, 0)
 	caseReport := ExtractorLiveValidationCaseReport{
@@ -178,19 +184,21 @@ func runExtractorLiveValidationPreset(
 		caseReport.Runtime.Error = reason
 		return caseReport
 	}
-	if preset.Scope != ExtractorValidationScopePublic {
-		caseReport.SkippedReason = "out_of_scope: private live validation is not included in this phase"
-		caseReport.Runtime.Error = caseReport.SkippedReason
-		return caseReport
-	}
 	family, ok := extractorValidationFamilyForPreset(preset)
 	if !ok {
-		caseReport.SkippedReason = "unsupported public request family"
+		caseReport.SkippedReason = "unsupported request family"
 		caseReport.Runtime.Error = caseReport.SkippedReason
 		return caseReport
 	}
-	if strings.TrimSpace(publicToken) == "" {
-		caseReport.SkippedReason = "missing public auth token"
+	authToken := publicToken
+	switch preset.Scope {
+	case ExtractorValidationScopePrivate:
+		authToken = privateToken
+	default:
+		authToken = publicToken
+	}
+	if strings.TrimSpace(authToken) == "" {
+		caseReport.SkippedReason = fmt.Sprintf("missing %s auth token", preset.Scope)
 		caseReport.Runtime.Error = caseReport.SkippedReason
 		return caseReport
 	}
@@ -202,7 +210,7 @@ func runExtractorLiveValidationPreset(
 	case "date_range":
 		req := DateRangeRequest{
 			Username:    preset.Username,
-			AuthToken:   publicToken,
+			AuthToken:   authToken,
 			StartDate:   preset.StartDate,
 			EndDate:     preset.EndDate,
 			MediaFilter: preset.MediaType,
@@ -220,7 +228,7 @@ func runExtractorLiveValidationPreset(
 	default:
 		req := TimelineRequest{
 			Username:     preset.Username,
-			AuthToken:    publicToken,
+			AuthToken:    authToken,
 			TimelineType: preset.TimelineType,
 			MediaType:    preset.MediaType,
 			Retweets:     preset.Retweets,
@@ -326,9 +334,6 @@ func mergeExtractorLiveParityCaseReport(
 }
 
 func classifyExtractorLiveValidationCase(caseReport ExtractorLiveValidationCaseReport) string {
-	if caseReport.Scope != ExtractorValidationScopePublic {
-		return "invalid"
-	}
 	if !caseReport.Valid {
 		return "invalid"
 	}
@@ -369,9 +374,6 @@ func evaluateExtractorLiveFamilyGate(
 ) ExtractorFamilyGateSummary {
 	summary := defaultExtractorFamilyGateSummary()
 	for _, caseReport := range cases {
-		if caseReport.Scope != ExtractorValidationScopePublic {
-			continue
-		}
 		caseFamily, ok := extractorValidationFamilyForLiveCase(caseReport)
 		if !ok || caseFamily != family {
 			continue
@@ -401,7 +403,8 @@ func evaluateExtractorLiveFamilyGate(
 
 func extractorValidationFamilyForLiveCase(caseReport ExtractorLiveValidationCaseReport) (ExtractorRequestFamily, bool) {
 	switch caseReport.RequestFamily {
-	case ExtractorRequestFamilyMedia, ExtractorRequestFamilyTimeline, ExtractorRequestFamilyDateRange:
+	case ExtractorRequestFamilyMedia, ExtractorRequestFamilyTimeline, ExtractorRequestFamilyDateRange,
+		ExtractorRequestFamilyLikes, ExtractorRequestFamilyBookmarks:
 		return caseReport.RequestFamily, true
 	default:
 		return "", false
@@ -413,6 +416,13 @@ func evaluateExtractorLiveFamilyGates(cases []ExtractorLiveValidationCaseReport)
 		Media:     evaluateExtractorLiveFamilyGate(cases, ExtractorRequestFamilyMedia),
 		Timeline:  evaluateExtractorLiveFamilyGate(cases, ExtractorRequestFamilyTimeline),
 		DateRange: evaluateExtractorLiveFamilyGate(cases, ExtractorRequestFamilyDateRange),
+	}
+}
+
+func evaluateExtractorPrivateLiveFamilyGates(cases []ExtractorLiveValidationCaseReport) ExtractorPrivateFamilyGates {
+	return ExtractorPrivateFamilyGates{
+		Likes:     evaluateExtractorLiveFamilyGate(cases, ExtractorRequestFamilyLikes),
+		Bookmarks: evaluateExtractorLiveFamilyGate(cases, ExtractorRequestFamilyBookmarks),
 	}
 }
 
@@ -451,6 +461,16 @@ func evaluateExtractorPromotionFamilyGates(
 	}
 }
 
+func evaluateExtractorPrivatePromotionFamilyGates(
+	parity ExtractorPrivateFamilyGates,
+	live ExtractorPrivateFamilyGates,
+) ExtractorPrivateFamilyGates {
+	return ExtractorPrivateFamilyGates{
+		Likes:     evaluateExtractorPromotionFamilyGate(parity.Likes, live.Likes),
+		Bookmarks: evaluateExtractorPromotionFamilyGate(parity.Bookmarks, live.Bookmarks),
+	}
+}
+
 func applyExtractorLiveValidationSummary(report *ExtractorLiveValidationReport) {
 	if report == nil {
 		return
@@ -470,8 +490,11 @@ func applyExtractorLiveValidationSummary(report *ExtractorLiveValidationReport) 
 		}
 	}
 	report.ParityFamilyGates = evaluateExtractorPublicFamilyGates(convertLiveCasesToValidationCases(report.Cases))
+	report.PrivateParityFamilyGates = evaluateExtractorPrivateFamilyGates(convertLiveCasesToValidationCases(report.Cases))
 	report.LiveFamilyGates = evaluateExtractorLiveFamilyGates(report.Cases)
+	report.PrivateLiveFamilyGates = evaluateExtractorPrivateLiveFamilyGates(report.Cases)
 	report.PromotionFamilyGates = evaluateExtractorPromotionFamilyGates(report.ParityFamilyGates, report.LiveFamilyGates)
+	report.PrivatePromotionFamilyGates = evaluateExtractorPrivatePromotionFamilyGates(report.PrivateParityFamilyGates, report.PrivateLiveFamilyGates)
 }
 
 func convertLiveCasesToValidationCases(cases []ExtractorLiveValidationCaseReport) []ExtractorValidationCaseReport {
@@ -588,22 +611,28 @@ func loadExtractorLiveValidationReport(path string) (*ExtractorLiveValidationRep
 func summarizeExtractorLiveValidationReport(report *ExtractorLiveValidationReport) ExtractorLiveValidationReportSummary {
 	if report == nil {
 		return ExtractorLiveValidationReportSummary{
-			ParityFamilyGates:    defaultExtractorPublicFamilyGates(),
-			LiveFamilyGates:      defaultExtractorLiveFamilyGates(),
-			PromotionFamilyGates: defaultExtractorPromotionFamilyGates(),
+			ParityFamilyGates:           defaultExtractorPublicFamilyGates(),
+			PrivateParityFamilyGates:    defaultExtractorPrivateFamilyGates(),
+			LiveFamilyGates:             defaultExtractorLiveFamilyGates(),
+			PrivateLiveFamilyGates:      defaultExtractorPrivateFamilyGates(),
+			PromotionFamilyGates:        defaultExtractorPromotionFamilyGates(),
+			PrivatePromotionFamilyGates: defaultExtractorPrivateFamilyGates(),
 		}
 	}
 	return ExtractorLiveValidationReportSummary{
-		ReportID:             strings.TrimSpace(report.ReportID),
-		CreatedAt:            strings.TrimSpace(report.CreatedAt),
-		ConfigUpdatedAt:      strings.TrimSpace(report.ConfigUpdatedAt),
-		TotalCases:           report.TotalCases,
-		RuntimePassedCases:   report.RuntimePassedCases,
-		RuntimeFailedCases:   report.RuntimeFailedCases,
-		RuntimeSkippedCases:  report.RuntimeSkippedCases,
-		ParityFamilyGates:    report.ParityFamilyGates,
-		LiveFamilyGates:      report.LiveFamilyGates,
-		PromotionFamilyGates: report.PromotionFamilyGates,
+		ReportID:                    strings.TrimSpace(report.ReportID),
+		CreatedAt:                   strings.TrimSpace(report.CreatedAt),
+		ConfigUpdatedAt:             strings.TrimSpace(report.ConfigUpdatedAt),
+		TotalCases:                  report.TotalCases,
+		RuntimePassedCases:          report.RuntimePassedCases,
+		RuntimeFailedCases:          report.RuntimeFailedCases,
+		RuntimeSkippedCases:         report.RuntimeSkippedCases,
+		ParityFamilyGates:           report.ParityFamilyGates,
+		PrivateParityFamilyGates:    report.PrivateParityFamilyGates,
+		LiveFamilyGates:             report.LiveFamilyGates,
+		PrivateLiveFamilyGates:      report.PrivateLiveFamilyGates,
+		PromotionFamilyGates:        report.PromotionFamilyGates,
+		PrivatePromotionFamilyGates: report.PrivatePromotionFamilyGates,
 	}
 }
 
@@ -632,21 +661,30 @@ func loadExtractorLiveValidationReportSummaries(limit int) ([]ExtractorLiveValid
 func resolveExtractorLiveValidationGates(
 	config ExtractorRunbookConfig,
 	summaries []ExtractorLiveValidationReportSummary,
-) (ExtractorLiveFamilyGates, ExtractorPromotionFamilyGates) {
+) (ExtractorLiveFamilyGates, ExtractorPromotionFamilyGates, ExtractorPrivateFamilyGates, ExtractorPrivateFamilyGates) {
 	familyEnabled := defaultExtractorPublicFamilyGates()
+	privateFamilyEnabled := defaultExtractorPrivateFamilyGates()
 	for _, preset := range config.Presets {
 		if !preset.Enabled {
 			continue
 		}
 		if family, ok := extractorValidationFamilyForPreset(preset); ok {
-			summary := extractorFamilyGateByName(familyEnabled, family)
-			summary.EnabledCases++
-			assignExtractorFamilyGateSummary(&familyEnabled, family, summary)
+			if extractorFamilyIsPrivate(family) {
+				summary := extractorPrivateFamilyGateByName(privateFamilyEnabled, family)
+				summary.EnabledCases++
+				assignExtractorPrivateFamilyGateSummary(&privateFamilyEnabled, family, summary)
+			} else {
+				summary := extractorFamilyGateByName(familyEnabled, family)
+				summary.EnabledCases++
+				assignExtractorFamilyGateSummary(&familyEnabled, family, summary)
+			}
 		}
 	}
 
 	liveFamilyGates := defaultExtractorLiveFamilyGates()
 	promotionFamilyGates := defaultExtractorPromotionFamilyGates()
+	privateLiveFamilyGates := defaultExtractorPrivateFamilyGates()
+	privatePromotionFamilyGates := defaultExtractorPrivateFamilyGates()
 	configUpdatedAt := strings.TrimSpace(config.UpdatedAt)
 	for _, summary := range summaries {
 		if configUpdatedAt == "" || strings.TrimSpace(summary.ConfigUpdatedAt) != configUpdatedAt {
@@ -654,6 +692,8 @@ func resolveExtractorLiveValidationGates(
 		}
 		liveFamilyGates = summary.LiveFamilyGates
 		promotionFamilyGates = summary.PromotionFamilyGates
+		privateLiveFamilyGates = summary.PrivateLiveFamilyGates
+		privatePromotionFamilyGates = summary.PrivatePromotionFamilyGates
 		break
 	}
 
@@ -663,8 +703,12 @@ func resolveExtractorLiveValidationGates(
 	assignMissingLiveFamilyGate(&promotionFamilyGates.Media, familyEnabled.Media.EnabledCases)
 	assignMissingLiveFamilyGate(&promotionFamilyGates.Timeline, familyEnabled.Timeline.EnabledCases)
 	assignMissingLiveFamilyGate(&promotionFamilyGates.DateRange, familyEnabled.DateRange.EnabledCases)
+	assignMissingLiveFamilyGate(&privateLiveFamilyGates.Likes, privateFamilyEnabled.Likes.EnabledCases)
+	assignMissingLiveFamilyGate(&privateLiveFamilyGates.Bookmarks, privateFamilyEnabled.Bookmarks.EnabledCases)
+	assignMissingLiveFamilyGate(&privatePromotionFamilyGates.Likes, privateFamilyEnabled.Likes.EnabledCases)
+	assignMissingLiveFamilyGate(&privatePromotionFamilyGates.Bookmarks, privateFamilyEnabled.Bookmarks.EnabledCases)
 
-	return liveFamilyGates, promotionFamilyGates
+	return liveFamilyGates, promotionFamilyGates, privateLiveFamilyGates, privatePromotionFamilyGates
 }
 
 func assignMissingLiveFamilyGate(summary *ExtractorFamilyGateSummary, enabledCases int) {
@@ -700,9 +744,9 @@ func runTimelineLiveCandidate(
 		context.Background(),
 		req,
 		currentExtractorEngineMode(),
-		newPythonGalleryDLEngine(),
 		newGoTwitterEngine(),
-		&extractorExecutionOverride{CandidatePublicFamily: family},
+		newGoTwitterEngine(),
+		&extractorExecutionOverride{CandidateFamily: family},
 	)
 }
 
@@ -714,8 +758,8 @@ func runDateRangeLiveCandidate(
 		context.Background(),
 		req,
 		currentExtractorEngineMode(),
-		newPythonGalleryDLEngine(),
 		newGoTwitterEngine(),
-		&extractorExecutionOverride{CandidatePublicFamily: family},
+		newGoTwitterEngine(),
+		&extractorExecutionOverride{CandidateFamily: family},
 	)
 }

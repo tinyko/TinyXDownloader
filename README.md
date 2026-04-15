@@ -17,6 +17,7 @@ Settings and Diagnostics open as right-side drawers so the main workspace stays 
 ## Key Capabilities
 
 - Fetch public media, private likes, and private bookmarks from a single desktop workflow.
+- Fetch public media, public timelines/date ranges, private likes, and private bookmarks through the same Go-only desktop runtime.
 - Paste one account or many accounts into the same input box, separated by newline or Enter.
 - Run multi-account fetch queues with a dedicated workspace and one-click download for the current fetched set.
 - Resume interrupted fetches and use incremental refresh instead of re-fetching the full timeline every time.
@@ -48,7 +49,6 @@ By default this writes `chrome-x-cookies.json` at the repo root and saves `befor
 
 - Go
 - Node.js with pnpm
-- Python 3
 - macOS if you want `.app`, `.zip`, or `.dmg` release artifacts
 
 ### Bootstrap a clean checkout
@@ -60,9 +60,7 @@ By default this writes `chrome-x-cookies.json` at the repo root and saves `befor
 This prepares the project from source:
 
 - installs frontend dependencies
-- creates a local Python build environment under `build/python-venv`
-- installs PyInstaller and gallery-dl into that local environment
-- builds `backend/bin/extractor`
+- prepares the go-only extractor runtime
 - generates `frontend/wailsjs`
 
 ### Run in development mode
@@ -104,7 +102,7 @@ build/release/SHA256SUMS.txt
 
 `build-macos.sh` supports two release modes:
 
-- default fallback: builds a locally usable ad-hoc signed `.app`, `.zip`, and `.dmg`
+- local distribution mode: builds an ad-hoc signed `.app`, `.zip`, and `.dmg`
 - full release mode: signs, notarizes, and staples the app when Apple credentials are available
 
 To enable the full signing pipeline, provide all three variables together:
@@ -146,7 +144,6 @@ The following files/directories are derived from that root:
 - `auth_tokens.json`
 - `logs/`
 - managed `ffmpeg`
-- managed `extractor`
 - managed `exiftool`
 
 Example:
@@ -210,7 +207,6 @@ That runner should already have:
 - Xcode Command Line Tools
 - Go
 - Node.js + pnpm
-- Python 3
 - a Developer ID Application certificate in the login keychain
 - a stored notary profile created with `xcrun notarytool store-credentials`
 
@@ -221,6 +217,8 @@ MACOS_SIGN_IDENTITY
 MACOS_TEAM_ID
 MACOS_NOTARY_PROFILE
 ```
+
+CI and release packaging are now go-only. Python, gallery-dl, and the legacy helper are no longer part of the build or runtime path.
 
 ## GitHub Actions
 
@@ -234,3 +232,17 @@ The release workflow publishes:
 - `TinyXDownloader-v{version}-macos-arm64.zip`
 - `TinyXDownloader-v{version}-macos-arm64.dmg`
 - `SHA256SUMS.txt`
+
+## Extractor Runtime
+
+The extractor runtime is now Go-only for the five supported user-visible families:
+
+- public `media`
+- public `timeline`, `tweets`, and `with_replies`
+- public `date_range`
+- private `likes`
+- private `bookmarks`
+
+`XDOWNLOADER_EXTRACTOR_ENGINE=go`, `auto`, `python`, or unset all resolve to the same Go-only runtime. The `python` value is kept only as a deprecated compatibility alias so older environments do not crash on startup.
+
+Historical rollout, parity, validation, live-validation, and soak evidence are still preserved in app data and support bundles for audit and cutover review, but they no longer control routing in the current app version.

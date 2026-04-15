@@ -3,7 +3,7 @@ import type { DateRangeRequest, TimelineRequest } from "@/types/api";
 export type ExtractorEngineMode = "python" | "go" | "auto";
 export type ExtractorValidationScope = "public" | "private";
 export type ExtractorValidationGate = "ready" | "blocked" | "incomplete";
-export type ExtractorRequestFamily = "media" | "timeline" | "date_range";
+export type ExtractorRequestFamily = "media" | "timeline" | "date_range" | "likes" | "bookmarks";
 export type ExtractorRuntimeValidationStatus = "success" | "failed" | "skipped";
 
 export interface ExtractorMetricsSnapshot {
@@ -75,6 +75,11 @@ export interface ExtractorPublicFamilyGates {
   date_range: ExtractorFamilyGateSummary;
 }
 
+export interface ExtractorPrivateFamilyGates {
+  likes: ExtractorFamilyGateSummary;
+  bookmarks: ExtractorFamilyGateSummary;
+}
+
 export type ExtractorLiveFamilyGates = ExtractorPublicFamilyGates;
 export type ExtractorPromotionFamilyGates = ExtractorPublicFamilyGates;
 
@@ -84,8 +89,28 @@ export interface ExtractorPublicTrialPolicyState {
   updated_at?: string;
 }
 
+export interface ExtractorPublicPromotionPolicyState {
+  promoted: boolean;
+  promoted_at?: string;
+  updated_at?: string;
+  baseline_captured_at?: string;
+  baseline_config_updated_at?: string;
+  baseline_validation_report_id?: string;
+  baseline_live_report_id?: string;
+  baseline_promotion_gate?: ExtractorValidationGate;
+}
+
 export interface ExtractorPublicTrialState extends ExtractorPublicTrialPolicyState {
   gate: ExtractorValidationGate;
+  active: boolean;
+  inactive_reason?: string;
+}
+
+export interface ExtractorPublicPromotionState extends ExtractorPublicPromotionPolicyState {
+  gate: ExtractorValidationGate;
+  current_promotion_gate?: ExtractorValidationGate;
+  current_config_matches_baseline: boolean;
+  latest_evidence_drifted: boolean;
   active: boolean;
   inactive_reason?: string;
 }
@@ -97,12 +122,80 @@ export interface ExtractorRolloutPolicy {
     timeline: ExtractorPublicTrialPolicyState;
     date_range: ExtractorPublicTrialPolicyState;
   };
+  public_promotions: {
+    media: ExtractorPublicPromotionPolicyState;
+    timeline: ExtractorPublicPromotionPolicyState;
+    date_range: ExtractorPublicPromotionPolicyState;
+  };
+  private_trials: {
+    likes: ExtractorPublicTrialPolicyState;
+    bookmarks: ExtractorPublicTrialPolicyState;
+  };
+  private_promotions: {
+    likes: ExtractorPublicPromotionPolicyState;
+    bookmarks: ExtractorPublicPromotionPolicyState;
+  };
 }
 
 export interface ExtractorPublicTrialStates {
   media: ExtractorPublicTrialState;
   timeline: ExtractorPublicTrialState;
   date_range: ExtractorPublicTrialState;
+}
+
+export interface ExtractorPublicPromotionStates {
+  media: ExtractorPublicPromotionState;
+  timeline: ExtractorPublicPromotionState;
+  date_range: ExtractorPublicPromotionState;
+}
+
+export interface ExtractorPrivateTrialStates {
+  likes: ExtractorPublicTrialState;
+  bookmarks: ExtractorPublicTrialState;
+}
+
+export interface ExtractorPrivatePromotionStates {
+  likes: ExtractorPublicPromotionState;
+  bookmarks: ExtractorPublicPromotionState;
+}
+
+export interface ExtractorSoakFamilyState {
+  total_requests: number;
+  go_selected_successes: number;
+  python_fallbacks: number;
+  fallback_required_count: number;
+  runtime_failures: number;
+  cursor_semantic_failures: number;
+  last_success_at?: string;
+  last_failure_at?: string;
+  last_failure_reason?: string;
+  blocker_open: boolean;
+}
+
+export interface ExtractorSoakFamilyStates {
+  media: ExtractorSoakFamilyState;
+  timeline: ExtractorSoakFamilyState;
+  date_range: ExtractorSoakFamilyState;
+  likes: ExtractorSoakFamilyState;
+  bookmarks: ExtractorSoakFamilyState;
+}
+
+export interface ExtractorDefaultRouteState {
+  promoted: boolean;
+  baseline_active: boolean;
+  default_served_by_go: boolean;
+  fallback_served_by_python: boolean;
+  inactive_reason?: string;
+  last_failure_reason?: string;
+  depythonization_ready: boolean;
+}
+
+export interface ExtractorDefaultRouteStates {
+  media: ExtractorDefaultRouteState;
+  timeline: ExtractorDefaultRouteState;
+  date_range: ExtractorDefaultRouteState;
+  likes: ExtractorDefaultRouteState;
+  bookmarks: ExtractorDefaultRouteState;
 }
 
 export interface ExtractorRecentEvent {
@@ -158,8 +251,16 @@ export interface ExtractorParityHistoryEntry {
 
 export interface ExtractorDiagnosticsSnapshot {
   current_mode: ExtractorEngineMode;
+  go_only_runtime: boolean;
+  historical_evidence_only: boolean;
+  phase7_cutover_version?: string;
   private_auto_pinned: boolean;
   private_auto_pinned_reason?: string;
+  python_fallback_available: boolean;
+  python_fallback_build_flavor?: string;
+  ad_hoc_parity_available: boolean;
+  ad_hoc_parity_unavailable_reason?: string;
+  python_deprecated_notice?: string;
   support_matrix: ExtractorSupportMatrixSummary;
   metrics: ExtractorMetricsSnapshot;
   runbook_config: ExtractorRunbookConfig;
@@ -169,9 +270,19 @@ export interface ExtractorDiagnosticsSnapshot {
   public_gate: ExtractorValidationGate;
   private_gate: ExtractorValidationGate;
   public_family_gates: ExtractorPublicFamilyGates;
+  private_family_gates: ExtractorPrivateFamilyGates;
   live_family_gates: ExtractorLiveFamilyGates;
+  private_live_family_gates: ExtractorPrivateFamilyGates;
   promotion_family_gates: ExtractorPromotionFamilyGates;
+  private_promotion_family_gates: ExtractorPrivateFamilyGates;
   public_trial_states: ExtractorPublicTrialStates;
+  private_trial_states: ExtractorPrivateTrialStates;
+  public_promotion_states: ExtractorPublicPromotionStates;
+  private_promotion_states: ExtractorPrivatePromotionStates;
+  default_route_states: ExtractorDefaultRouteStates;
+  soak_family_states: ExtractorSoakFamilyStates;
+  soak_release_version?: string;
+  phase7_ready: boolean;
   recent_events: ExtractorRecentEvent[];
   recent_parity: ExtractorParityHistoryEntry[];
 }
@@ -230,6 +341,7 @@ export interface ExtractorValidationReportSummary {
   public_gate: ExtractorValidationGate;
   private_gate: ExtractorValidationGate;
   public_family_gates: ExtractorPublicFamilyGates;
+  private_family_gates: ExtractorPrivateFamilyGates;
 }
 
 export interface ExtractorValidationDiagnosticsSummary {
@@ -302,8 +414,11 @@ export interface ExtractorLiveValidationReportSummary {
   runtime_failed_cases: number;
   runtime_skipped_cases: number;
   parity_family_gates: ExtractorPublicFamilyGates;
+  private_parity_family_gates: ExtractorPrivateFamilyGates;
   live_family_gates: ExtractorLiveFamilyGates;
+  private_live_family_gates: ExtractorPrivateFamilyGates;
   promotion_family_gates: ExtractorPromotionFamilyGates;
+  private_promotion_family_gates: ExtractorPrivateFamilyGates;
 }
 
 export interface ExtractorLiveValidationReport extends ExtractorLiveValidationReportSummary {

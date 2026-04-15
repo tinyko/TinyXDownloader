@@ -1,8 +1,6 @@
 package backend
 
-import (
-	"context"
-)
+import "context"
 
 type PythonGalleryDLEngine struct{}
 
@@ -14,60 +12,12 @@ func (e *PythonGalleryDLEngine) ExtractTimeline(ctx context.Context, req Timelin
 	if err := contextError(ctx); err != nil {
 		return nil, err
 	}
-
-	exePath, err := ensureExtractor()
-	if err != nil {
-		return nil, err
-	}
-	if err := contextError(ctx); err != nil {
-		return nil, err
-	}
-
-	spec := buildTimelineExtractorSpec(req)
-	cliResponse, err := executeExtractorSpec(exePath, req.RequestID, spec)
-	if err != nil {
-		return nil, err
-	}
-	if err := contextError(ctx); err != nil {
-		return nil, err
-	}
-
-	return buildTimelineResponseFromCLIResponse(req, spec, cliResponse), nil
+	return nil, retiredExtractorControlError("python extractor timeline")
 }
 
 func (e *PythonGalleryDLEngine) ExtractDateRange(ctx context.Context, req DateRangeRequest) (*TwitterResponse, error) {
 	if err := contextError(ctx); err != nil {
 		return nil, err
 	}
-
-	exePath, err := ensureExtractor()
-	if err != nil {
-		return nil, err
-	}
-	if err := contextError(ctx); err != nil {
-		return nil, err
-	}
-
-	spec := buildDateRangeExtractorSpec(req)
-	cliResponse, err := executeExtractorSpec(exePath, req.RequestID, spec)
-	if err != nil {
-		return nil, err
-	}
-	if err := contextError(ctx); err != nil {
-		return nil, err
-	}
-
-	return buildDateRangeResponseFromCLIResponse(req, spec, cliResponse), nil
-}
-
-func contextError(ctx context.Context) error {
-	if ctx == nil {
-		return nil
-	}
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	default:
-		return nil
-	}
+	return nil, retiredExtractorControlError("python extractor date-range")
 }

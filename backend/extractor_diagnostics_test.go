@@ -10,17 +10,27 @@ func TestGetExtractorDiagnosticsSnapshotIncludesRecentEventsAndParity(t *testing
 	withTempAppData(t, func(root string) {
 		_ = root
 		resetExtractorDiagnosticsForTests()
+		SetExtractorAppVersion("1.2.3")
 
 		appendExtractorLog(extractorRequestLogEntry{
 			Event:          "extractor_request",
 			RequestKind:    "timeline",
-			Mode:           ExtractorEngineModeAuto,
-			SelectedEngine: "python-gallery-dl",
+			ConfiguredMode: ExtractorEngineModeGo,
+			EffectiveMode:  ExtractorEngineModeGo,
+			ModeSource:     "env",
+			RequestFamily:  ExtractorRequestFamilyMedia,
+			Mode:           ExtractorEngineModeGo,
+			SelectedEngine: "go-twitter",
 			Username:       "example_user",
 			TimelineType:   "media",
 			MediaType:      "all",
 			Success:        true,
 			ElapsedMS:      12,
+			ResponseSummary: &ExtractorResponseSummary{
+				TimelineItems: 3,
+				Cursor:        "cursor-1",
+				Completed:     false,
+			},
 		})
 
 		appendXPrivateBookmarksDiagnosticLog(xPrivateBookmarksDiagnosticLogEntry{
@@ -57,14 +67,14 @@ func TestGetExtractorDiagnosticsSnapshotIncludesRecentEventsAndParity(t *testing
 		})
 
 		snapshot := GetExtractorDiagnosticsSnapshot()
-		if snapshot.CurrentMode != ExtractorEngineModePython {
-			t.Fatalf("expected python mode by default, got %q", snapshot.CurrentMode)
+		if snapshot.CurrentMode != ExtractorEngineModeGo {
+			t.Fatalf("expected go mode by default, got %q", snapshot.CurrentMode)
 		}
-		if !snapshot.PrivateAutoPinned {
-			t.Fatal("expected private auto to remain pinned")
+		if !snapshot.GoOnlyRuntime {
+			t.Fatal("expected go-only runtime to be active")
 		}
-		if len(snapshot.SupportMatrix.PrivateAutoPinnedTimeline) == 0 {
-			t.Fatal("expected private auto pinned support summary")
+		if !snapshot.HistoricalEvidenceOnly {
+			t.Fatal("expected historical evidence only mode")
 		}
 		if len(snapshot.RecentEvents) != 2 {
 			t.Fatalf("expected 2 recent events, got %d", len(snapshot.RecentEvents))
@@ -89,6 +99,60 @@ func TestGetExtractorDiagnosticsSnapshotIncludesRecentEventsAndParity(t *testing
 		}
 		if snapshot.RecentParity[0].FirstDifference == "" {
 			t.Fatal("expected first parity difference to be populated")
+		}
+		if snapshot.PythonDeprecatedNotice != "" {
+			t.Fatalf("expected no python deprecated notice in go mode, got %q", snapshot.PythonDeprecatedNotice)
+		}
+		if snapshot.PythonFallbackAvailable {
+			t.Fatal("expected python fallback to be unavailable in go-only runtime")
+		}
+		if snapshot.PythonFallbackBuildFlavor != PythonFallbackBuildFlavorGoOnly {
+			t.Fatalf("expected go-only build flavor, got %q", snapshot.PythonFallbackBuildFlavor)
+		}
+		if snapshot.AdHocParityAvailable {
+			t.Fatal("expected ad hoc parity to be unavailable in go-only runtime")
+		}
+		if snapshot.AdHocParityUnavailableReason == "" {
+			t.Fatal("expected ad hoc parity unavailable reason")
+		}
+		if snapshot.SoakReleaseVersion != "1.2.3" {
+			t.Fatalf("expected soak release version 1.2.3, got %q", snapshot.SoakReleaseVersion)
+		}
+		if snapshot.SoakFamilyStates.Media.TotalRequests != 1 {
+			t.Fatalf("expected one soak media request, got %d", snapshot.SoakFamilyStates.Media.TotalRequests)
+		}
+		if snapshot.DefaultRouteStates.Media.DepythonizationReady {
+			t.Fatal("expected depythonization-ready to remain false without promotion baseline")
+		}
+		if snapshot.Phase7Ready {
+			t.Fatal("expected phase 7 gate to remain false with incomplete families")
+		}
+	})
+}
+
+func TestGetExtractorDiagnosticsSnapshotReportsGoOnlyFallbackStatus(t *testing.T) {
+	withTempAppData(t, func(root string) {
+		_ = root
+		resetExtractorDiagnosticsForTests()
+		setPythonFallbackStatusForTests(PythonFallbackStatus{
+			Available:            false,
+			BuildFlavor:          PythonFallbackBuildFlavorGoOnly,
+			AdHocParityAvailable: false,
+			UnavailableReason:    "python fallback unavailable in this go-only build",
+		})
+
+		snapshot := GetExtractorDiagnosticsSnapshot()
+		if snapshot.PythonFallbackAvailable {
+			t.Fatal("expected python fallback to be unavailable")
+		}
+		if snapshot.PythonFallbackBuildFlavor != PythonFallbackBuildFlavorGoOnly {
+			t.Fatalf("expected go-only build flavor, got %q", snapshot.PythonFallbackBuildFlavor)
+		}
+		if snapshot.AdHocParityAvailable {
+			t.Fatal("expected ad hoc parity to be unavailable in go-only builds")
+		}
+		if snapshot.AdHocParityUnavailableReason == "" {
+			t.Fatal("expected ad hoc parity unavailable reason to be populated")
 		}
 	})
 }

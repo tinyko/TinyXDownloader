@@ -65,20 +65,17 @@ if [[ ! -f "$REPORT_PATH" ]]; then
   fail "Desktop smoke did not produce a report within ${SMOKE_TIMEOUT_SECONDS}s"
 fi
 
-if ! python3 - <<'PY' "$REPORT_PATH"
-import json
-import sys
-from pathlib import Path
-
-report = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
-if report.get("ok"):
-    print("Desktop smoke passed:", ", ".join(report.get("steps", [])))
-    raise SystemExit(0)
-
-print("Desktop smoke failed:", report.get("error", "unknown error"), file=sys.stderr)
-print(json.dumps(report, indent=2), file=sys.stderr)
-raise SystemExit(1)
-PY
+if ! node -e '
+const fs = require("node:fs");
+const report = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+if (report.ok) {
+  console.log("Desktop smoke passed:", (report.steps || []).join(", "));
+  process.exit(0);
+}
+console.error("Desktop smoke failed:", report.error || "unknown error");
+console.error(JSON.stringify(report, null, 2));
+process.exit(1);
+' "$REPORT_PATH"
 then
   if command -v screencapture >/dev/null 2>&1; then
     screencapture -x "$SCREENSHOT_PATH" || true

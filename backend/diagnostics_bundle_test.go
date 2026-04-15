@@ -104,6 +104,7 @@ func TestAppDataOverridePaths(t *testing.T) {
 func TestExportSupportBundleRedactsSensitiveSettingsAndExcludesSecrets(t *testing.T) {
 	withTempAppData(t, func(root string) {
 		resetExtractorDiagnosticsForTests()
+		SetExtractorAppVersion("1.2.2")
 		if err := InitDB(); err != nil {
 			t.Fatalf("init db: %v", err)
 		}
@@ -173,6 +174,12 @@ func TestExportSupportBundleRedactsSensitiveSettingsAndExcludesSecrets(t *testin
 		if _, ok := entries["extractor_rollout_policy.json"]; !ok {
 			t.Fatal("expected extractor_rollout_policy.json entry")
 		}
+		if _, ok := entries["extractor_soak_state.json"]; !ok {
+			t.Fatal("expected extractor_soak_state.json entry")
+		}
+		if _, ok := entries["extractor_soak_events.json"]; !ok {
+			t.Fatal("expected extractor_soak_events.json entry")
+		}
 		if _, ok := entries["db/accounts.db"]; !ok {
 			t.Fatal("expected db/accounts.db entry")
 		}
@@ -188,6 +195,15 @@ func TestExportSupportBundleRedactsSensitiveSettingsAndExcludesSecrets(t *testin
 		}
 		if manifest.AppVersion != "1.2.2" {
 			t.Fatalf("expected app version 1.2.2, got %q", manifest.AppVersion)
+		}
+		if manifest.PythonFallbackAvailable {
+			t.Fatal("expected support bundle manifest to record go-only fallback unavailability")
+		}
+		if manifest.PythonFallbackBuildFlavor != PythonFallbackBuildFlavorGoOnly {
+			t.Fatalf("expected go-only build flavor, got %q", manifest.PythonFallbackBuildFlavor)
+		}
+		if manifest.AdHocParityAvailable {
+			t.Fatal("expected support bundle manifest to mark ad hoc parity unavailable")
 		}
 		if manifest.DatabaseSchemaVersion != GetDatabaseSchemaVersion() {
 			t.Fatalf(
@@ -207,8 +223,26 @@ func TestExportSupportBundleRedactsSensitiveSettingsAndExcludesSecrets(t *testin
 		if err := json.Unmarshal([]byte(extractorDiagnosticsJSON), &extractorDiagnostics); err != nil {
 			t.Fatalf("decode extractor diagnostics: %v", err)
 		}
-		if !reflect.DeepEqual(extractorDiagnostics, expectedExtractorDiagnostics) {
-			t.Fatalf("unexpected extractor diagnostics snapshot: %+v", extractorDiagnostics)
+		if extractorDiagnostics.CurrentMode != expectedExtractorDiagnostics.CurrentMode {
+			t.Fatalf("expected extractor diagnostics current mode %q, got %q", expectedExtractorDiagnostics.CurrentMode, extractorDiagnostics.CurrentMode)
+		}
+		if !extractorDiagnostics.GoOnlyRuntime || !extractorDiagnostics.HistoricalEvidenceOnly {
+			t.Fatalf("expected go-only historical diagnostics snapshot, got %+v", extractorDiagnostics)
+		}
+		if extractorDiagnostics.PythonFallbackAvailable != expectedExtractorDiagnostics.PythonFallbackAvailable {
+			t.Fatalf("expected python fallback availability %t, got %t", expectedExtractorDiagnostics.PythonFallbackAvailable, extractorDiagnostics.PythonFallbackAvailable)
+		}
+		if extractorDiagnostics.PythonFallbackBuildFlavor != expectedExtractorDiagnostics.PythonFallbackBuildFlavor {
+			t.Fatalf("expected build flavor %q, got %q", expectedExtractorDiagnostics.PythonFallbackBuildFlavor, extractorDiagnostics.PythonFallbackBuildFlavor)
+		}
+		if !reflect.DeepEqual(extractorDiagnostics.SupportMatrix.PublicMediaTypes, expectedExtractorDiagnostics.SupportMatrix.PublicMediaTypes) {
+			t.Fatalf("unexpected public media support matrix: %+v", extractorDiagnostics.SupportMatrix.PublicMediaTypes)
+		}
+		if !reflect.DeepEqual(extractorDiagnostics.SupportMatrix.PrivateExplicitGoTimeline, expectedExtractorDiagnostics.SupportMatrix.PrivateExplicitGoTimeline) {
+			t.Fatalf("unexpected private go timeline support matrix: %+v", extractorDiagnostics.SupportMatrix.PrivateExplicitGoTimeline)
+		}
+		if extractorDiagnostics.SupportMatrix.RawSearchTimelineSupported != expectedExtractorDiagnostics.SupportMatrix.RawSearchTimelineSupported {
+			t.Fatalf("unexpected raw search support flag: %t", extractorDiagnostics.SupportMatrix.RawSearchTimelineSupported)
 		}
 	})
 }

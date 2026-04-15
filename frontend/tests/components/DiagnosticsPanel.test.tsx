@@ -18,9 +18,17 @@ function clone<T>(value: T): T {
 
 function createBaseSnapshot(): ExtractorDiagnosticsSnapshot {
   return {
-    current_mode: "auto",
-    private_auto_pinned: true,
-    private_auto_pinned_reason: "go private timeline extraction remains pinned to python in auto mode",
+    current_mode: "go",
+    go_only_runtime: true,
+    historical_evidence_only: true,
+    phase7_cutover_version: "1.2.3",
+    private_auto_pinned: false,
+    private_auto_pinned_reason: undefined,
+    python_fallback_available: false,
+    python_fallback_build_flavor: "go-only",
+    ad_hoc_parity_available: false,
+    ad_hoc_parity_unavailable_reason: "python fallback unavailable in this go-only build",
+    python_deprecated_notice: "python extractor is retired; the python mode alias now runs the go-only runtime",
     support_matrix: {
       public_media_types: ["all", "image", "video", "gif"],
       public_timeline_types: ["timeline", "tweets", "with_replies"],
@@ -28,24 +36,24 @@ function createBaseSnapshot(): ExtractorDiagnosticsSnapshot {
       public_date_range_media_filters: ["all", "image", "video", "gif", "text"],
       private_explicit_go_timeline_types: ["likes", "bookmarks"],
       private_explicit_go_media_types: ["all", "image", "video", "gif", "text"],
-      private_auto_pinned_timeline_types: ["likes", "bookmarks"],
+      private_auto_pinned_timeline_types: [],
       raw_search_timeline_supported: false,
     },
     metrics: {
       total_requests: 12,
-      python_mode_requests: 5,
-      go_mode_requests: 4,
-      auto_mode_requests: 3,
-      python_engine_selected: 7,
-      go_engine_selected: 5,
+      python_mode_requests: 0,
+      go_mode_requests: 12,
+      auto_mode_requests: 0,
+      python_engine_selected: 0,
+      go_engine_selected: 12,
       fallback_count: 2,
       unsupported_count: 1,
       fallback_required_count: 1,
-      parity_comparisons: 3,
-      parity_mismatches: 1,
-      rollout_trial_requests: 2,
-      rollout_trial_python_bypass: 1,
-      rollout_trial_go_selected: 1,
+      parity_comparisons: 0,
+      parity_mismatches: 0,
+      rollout_trial_requests: 0,
+      rollout_trial_python_bypass: 0,
+      rollout_trial_go_selected: 0,
     },
     runbook_config: {
       updated_at: "2026-04-15T06:09:00Z",
@@ -70,6 +78,28 @@ function createBaseSnapshot(): ExtractorDiagnosticsSnapshot {
         timeline: { armed: true, armed_at: "2026-04-15T06:11:00Z", updated_at: "2026-04-15T06:11:00Z" },
         date_range: { armed: false },
       },
+      public_promotions: {
+        media: { promoted: false },
+        timeline: {
+          promoted: true,
+          promoted_at: "2026-04-15T06:13:00Z",
+          updated_at: "2026-04-15T06:13:00Z",
+          baseline_captured_at: "2026-04-15T06:13:00Z",
+          baseline_config_updated_at: "2026-04-15T06:05:00Z",
+          baseline_validation_report_id: "report-baseline-timeline",
+          baseline_live_report_id: "live-baseline-timeline",
+          baseline_promotion_gate: "ready",
+        },
+        date_range: { promoted: false },
+      },
+      private_trials: {
+        likes: { armed: false },
+        bookmarks: { armed: false },
+      },
+      private_promotions: {
+        likes: { promoted: false },
+        bookmarks: { promoted: false },
+      },
     },
     recent_validation_reports: [
       {
@@ -88,6 +118,10 @@ function createBaseSnapshot(): ExtractorDiagnosticsSnapshot {
           timeline: { gate: "blocked", enabled_cases: 1, passed_cases: 0, mismatch_cases: 1, failed_cases: 0, invalid_cases: 0 },
           date_range: { gate: "incomplete", enabled_cases: 0, passed_cases: 0, mismatch_cases: 0, failed_cases: 0, invalid_cases: 0 },
         },
+        private_family_gates: {
+          likes: { gate: "incomplete", enabled_cases: 0, passed_cases: 0, mismatch_cases: 0, failed_cases: 0, invalid_cases: 0 },
+          bookmarks: { gate: "ready", enabled_cases: 1, passed_cases: 1, mismatch_cases: 0, failed_cases: 0, invalid_cases: 0 },
+        },
       },
     ],
     recent_live_reports: [
@@ -104,15 +138,27 @@ function createBaseSnapshot(): ExtractorDiagnosticsSnapshot {
           timeline: { gate: "blocked", enabled_cases: 1, passed_cases: 0, mismatch_cases: 1, failed_cases: 0, invalid_cases: 0 },
           date_range: { gate: "incomplete", enabled_cases: 0, passed_cases: 0, mismatch_cases: 0, failed_cases: 0, invalid_cases: 0 },
         },
+        private_parity_family_gates: {
+          likes: { gate: "incomplete", enabled_cases: 0, passed_cases: 0, mismatch_cases: 0, failed_cases: 0, invalid_cases: 0 },
+          bookmarks: { gate: "ready", enabled_cases: 1, passed_cases: 1, mismatch_cases: 0, failed_cases: 0, invalid_cases: 0 },
+        },
         live_family_gates: {
           media: { gate: "ready", enabled_cases: 1, passed_cases: 1, mismatch_cases: 0, failed_cases: 0, invalid_cases: 0 },
           timeline: { gate: "blocked", enabled_cases: 1, passed_cases: 0, mismatch_cases: 0, failed_cases: 1, invalid_cases: 0 },
           date_range: { gate: "incomplete", enabled_cases: 0, passed_cases: 0, mismatch_cases: 0, failed_cases: 0, invalid_cases: 0 },
         },
+        private_live_family_gates: {
+          likes: { gate: "incomplete", enabled_cases: 0, passed_cases: 0, mismatch_cases: 0, failed_cases: 0, invalid_cases: 0 },
+          bookmarks: { gate: "ready", enabled_cases: 1, passed_cases: 1, mismatch_cases: 0, failed_cases: 0, invalid_cases: 0 },
+        },
         promotion_family_gates: {
           media: { gate: "ready", enabled_cases: 1, passed_cases: 1, mismatch_cases: 0, failed_cases: 0, invalid_cases: 0 },
           timeline: { gate: "blocked", enabled_cases: 1, passed_cases: 0, mismatch_cases: 1, failed_cases: 1, invalid_cases: 0 },
           date_range: { gate: "incomplete", enabled_cases: 0, passed_cases: 0, mismatch_cases: 0, failed_cases: 0, invalid_cases: 0 },
+        },
+        private_promotion_family_gates: {
+          likes: { gate: "incomplete", enabled_cases: 0, passed_cases: 0, mismatch_cases: 0, failed_cases: 0, invalid_cases: 0 },
+          bookmarks: { gate: "ready", enabled_cases: 1, passed_cases: 1, mismatch_cases: 0, failed_cases: 0, invalid_cases: 0 },
         },
       },
     ],
@@ -123,15 +169,27 @@ function createBaseSnapshot(): ExtractorDiagnosticsSnapshot {
       timeline: { gate: "blocked", enabled_cases: 1, passed_cases: 0, mismatch_cases: 1, failed_cases: 0, invalid_cases: 0 },
       date_range: { gate: "incomplete", enabled_cases: 0, passed_cases: 0, mismatch_cases: 0, failed_cases: 0, invalid_cases: 0 },
     },
+    private_family_gates: {
+      likes: { gate: "incomplete", enabled_cases: 0, passed_cases: 0, mismatch_cases: 0, failed_cases: 0, invalid_cases: 0 },
+      bookmarks: { gate: "ready", enabled_cases: 1, passed_cases: 1, mismatch_cases: 0, failed_cases: 0, invalid_cases: 0 },
+    },
     live_family_gates: {
       media: { gate: "ready", enabled_cases: 1, passed_cases: 1, mismatch_cases: 0, failed_cases: 0, invalid_cases: 0 },
       timeline: { gate: "blocked", enabled_cases: 1, passed_cases: 0, mismatch_cases: 0, failed_cases: 1, invalid_cases: 0 },
       date_range: { gate: "incomplete", enabled_cases: 0, passed_cases: 0, mismatch_cases: 0, failed_cases: 0, invalid_cases: 0 },
     },
+    private_live_family_gates: {
+      likes: { gate: "incomplete", enabled_cases: 0, passed_cases: 0, mismatch_cases: 0, failed_cases: 0, invalid_cases: 0 },
+      bookmarks: { gate: "ready", enabled_cases: 1, passed_cases: 1, mismatch_cases: 0, failed_cases: 0, invalid_cases: 0 },
+    },
     promotion_family_gates: {
       media: { gate: "ready", enabled_cases: 1, passed_cases: 1, mismatch_cases: 0, failed_cases: 0, invalid_cases: 0 },
       timeline: { gate: "blocked", enabled_cases: 1, passed_cases: 0, mismatch_cases: 1, failed_cases: 1, invalid_cases: 0 },
       date_range: { gate: "incomplete", enabled_cases: 0, passed_cases: 0, mismatch_cases: 0, failed_cases: 0, invalid_cases: 0 },
+    },
+    private_promotion_family_gates: {
+      likes: { gate: "incomplete", enabled_cases: 0, passed_cases: 0, mismatch_cases: 0, failed_cases: 0, invalid_cases: 0 },
+      bookmarks: { gate: "ready", enabled_cases: 1, passed_cases: 1, mismatch_cases: 0, failed_cases: 0, invalid_cases: 0 },
     },
     public_trial_states: {
       media: { armed: false, gate: "ready", active: false },
@@ -145,6 +203,154 @@ function createBaseSnapshot(): ExtractorDiagnosticsSnapshot {
       },
       date_range: { armed: false, gate: "incomplete", active: false },
     },
+    private_trial_states: {
+      likes: { armed: false, gate: "incomplete", active: false },
+      bookmarks: { armed: false, gate: "ready", active: false },
+    },
+    public_promotion_states: {
+      media: {
+        promoted: false,
+        gate: "ready",
+        active: false,
+        current_config_matches_baseline: false,
+        latest_evidence_drifted: false,
+      },
+      timeline: {
+        promoted: true,
+        promoted_at: "2026-04-15T06:13:00Z",
+        updated_at: "2026-04-15T06:13:00Z",
+        baseline_captured_at: "2026-04-15T06:13:00Z",
+        baseline_config_updated_at: "2026-04-15T06:05:00Z",
+        baseline_validation_report_id: "report-baseline-timeline",
+        baseline_live_report_id: "live-baseline-timeline",
+        baseline_promotion_gate: "ready",
+        gate: "blocked",
+        current_promotion_gate: "blocked",
+        current_config_matches_baseline: false,
+        latest_evidence_drifted: true,
+        active: true,
+      },
+      date_range: {
+        promoted: false,
+        gate: "incomplete",
+        active: false,
+        current_config_matches_baseline: false,
+        latest_evidence_drifted: false,
+      },
+    },
+    private_promotion_states: {
+      likes: {
+        promoted: false,
+        gate: "incomplete",
+        active: false,
+        current_config_matches_baseline: false,
+        latest_evidence_drifted: false,
+      },
+      bookmarks: {
+        promoted: false,
+        gate: "ready",
+        active: false,
+        current_config_matches_baseline: false,
+        latest_evidence_drifted: false,
+      },
+    },
+    default_route_states: {
+      media: {
+        promoted: true,
+        baseline_active: true,
+        default_served_by_go: true,
+        fallback_served_by_python: false,
+        depythonization_ready: true,
+      },
+      timeline: {
+        promoted: true,
+        baseline_active: true,
+        default_served_by_go: true,
+        fallback_served_by_python: true,
+        inactive_reason: "go runtime fell back to python after a blocker",
+        last_failure_reason: "go runtime fell back to python after a blocker",
+        depythonization_ready: false,
+      },
+      date_range: {
+        promoted: false,
+        baseline_active: false,
+        default_served_by_go: false,
+        fallback_served_by_python: false,
+        depythonization_ready: false,
+      },
+      likes: {
+        promoted: true,
+        baseline_active: true,
+        default_served_by_go: true,
+        fallback_served_by_python: false,
+        depythonization_ready: true,
+      },
+      bookmarks: {
+        promoted: false,
+        baseline_active: false,
+        default_served_by_go: false,
+        fallback_served_by_python: true,
+        inactive_reason: "default route recently fell back to python",
+        last_failure_reason: "default route recently fell back to python",
+        depythonization_ready: false,
+      },
+    },
+    soak_family_states: {
+      media: {
+        total_requests: 8,
+        go_selected_successes: 8,
+        python_fallbacks: 0,
+        fallback_required_count: 0,
+        runtime_failures: 0,
+        cursor_semantic_failures: 0,
+        last_success_at: "2026-04-15T06:20:00Z",
+        blocker_open: false,
+      },
+      timeline: {
+        total_requests: 3,
+        go_selected_successes: 1,
+        python_fallbacks: 2,
+        fallback_required_count: 1,
+        runtime_failures: 0,
+        cursor_semantic_failures: 0,
+        last_success_at: "2026-04-15T06:22:00Z",
+        last_failure_at: "2026-04-15T06:23:00Z",
+        last_failure_reason: "go runtime fell back to python after a blocker",
+        blocker_open: true,
+      },
+      date_range: {
+        total_requests: 0,
+        go_selected_successes: 0,
+        python_fallbacks: 0,
+        fallback_required_count: 0,
+        runtime_failures: 0,
+        cursor_semantic_failures: 0,
+        blocker_open: false,
+      },
+      likes: {
+        total_requests: 4,
+        go_selected_successes: 4,
+        python_fallbacks: 0,
+        fallback_required_count: 0,
+        runtime_failures: 0,
+        cursor_semantic_failures: 0,
+        last_success_at: "2026-04-15T06:24:00Z",
+        blocker_open: false,
+      },
+      bookmarks: {
+        total_requests: 1,
+        go_selected_successes: 0,
+        python_fallbacks: 1,
+        fallback_required_count: 1,
+        runtime_failures: 0,
+        cursor_semantic_failures: 0,
+        last_failure_at: "2026-04-15T06:25:00Z",
+        last_failure_reason: "default route recently fell back to python",
+        blocker_open: true,
+      },
+    },
+    soak_release_version: "1.2.3",
+    phase7_ready: false,
     recent_events: [
       {
         timestamp: "2026-04-15T06:07:08Z",
@@ -217,11 +423,184 @@ const diagnosticsClientMocks = vi.hoisted(() => {
     }),
     saveExtractorRolloutPolicy: vi.fn(async (policy: ExtractorRolloutPolicy) => {
       const nextPolicy = clone(policy);
+      const resolvePromotionState = (family: "media" | "timeline" | "date_range") => {
+        const nextPromotionPolicy = nextPolicy.public_promotions[family];
+        const currentPromotionPolicy = currentSnapshot.rollout_policy.public_promotions[family];
+        const baseline =
+          nextPromotionPolicy.promoted && !currentPromotionPolicy.promoted
+            ? {
+                baseline_captured_at: "2026-04-15T06:20:30Z",
+                baseline_config_updated_at: currentSnapshot.runbook_config.updated_at,
+                baseline_validation_report_id: currentSnapshot.recent_validation_reports[0]?.report_id,
+                baseline_live_report_id: currentSnapshot.recent_live_reports[0]?.report_id,
+                baseline_promotion_gate: currentSnapshot.promotion_family_gates[family].gate,
+              }
+            : nextPromotionPolicy.promoted
+              ? {
+                  baseline_captured_at: nextPromotionPolicy.baseline_captured_at || currentPromotionPolicy.baseline_captured_at,
+                  baseline_config_updated_at:
+                    nextPromotionPolicy.baseline_config_updated_at ||
+                    currentPromotionPolicy.baseline_config_updated_at,
+                  baseline_validation_report_id:
+                    nextPromotionPolicy.baseline_validation_report_id ||
+                    currentPromotionPolicy.baseline_validation_report_id,
+                  baseline_live_report_id:
+                    nextPromotionPolicy.baseline_live_report_id ||
+                    currentPromotionPolicy.baseline_live_report_id,
+                  baseline_promotion_gate:
+                    nextPromotionPolicy.baseline_promotion_gate ||
+                    currentPromotionPolicy.baseline_promotion_gate,
+                }
+              : {
+                  baseline_captured_at: undefined,
+                  baseline_config_updated_at: undefined,
+                  baseline_validation_report_id: undefined,
+                  baseline_live_report_id: undefined,
+                  baseline_promotion_gate: undefined,
+                };
+        const baselineValid = Boolean(
+          nextPromotionPolicy.promoted &&
+            baseline.baseline_captured_at &&
+            baseline.baseline_config_updated_at &&
+            baseline.baseline_validation_report_id &&
+            baseline.baseline_live_report_id &&
+            baseline.baseline_promotion_gate === "ready"
+        );
+        const currentConfigMatchesBaseline =
+          Boolean(baseline.baseline_config_updated_at) &&
+          baseline.baseline_config_updated_at === currentSnapshot.runbook_config.updated_at;
+        return {
+          ...currentSnapshot.public_promotion_states[family],
+          ...nextPromotionPolicy,
+          ...baseline,
+          gate: currentSnapshot.promotion_family_gates[family].gate,
+          current_promotion_gate: currentSnapshot.promotion_family_gates[family].gate,
+          current_config_matches_baseline: currentConfigMatchesBaseline,
+          latest_evidence_drifted:
+            baselineValid &&
+            (!currentConfigMatchesBaseline ||
+              currentSnapshot.promotion_family_gates[family].gate !== "ready"),
+          active: baselineValid,
+          inactive_reason:
+            nextPromotionPolicy.promoted && !baselineValid
+              ? "promoted but inactive because baseline is missing or invalid"
+              : undefined,
+        };
+      };
+      const resolvePrivatePromotionState = (family: "likes" | "bookmarks") => {
+        const nextPromotionPolicy = nextPolicy.private_promotions[family];
+        const currentPromotionPolicy = currentSnapshot.rollout_policy.private_promotions[family];
+        const baseline =
+          nextPromotionPolicy.promoted && !currentPromotionPolicy.promoted
+            ? {
+                baseline_captured_at: "2026-04-15T06:20:30Z",
+                baseline_config_updated_at: currentSnapshot.runbook_config.updated_at,
+                baseline_validation_report_id: currentSnapshot.recent_validation_reports[0]?.report_id,
+                baseline_live_report_id: currentSnapshot.recent_live_reports[0]?.report_id,
+                baseline_promotion_gate: currentSnapshot.private_promotion_family_gates[family].gate,
+              }
+            : nextPromotionPolicy.promoted
+              ? {
+                  baseline_captured_at:
+                    nextPromotionPolicy.baseline_captured_at || currentPromotionPolicy.baseline_captured_at,
+                  baseline_config_updated_at:
+                    nextPromotionPolicy.baseline_config_updated_at ||
+                    currentPromotionPolicy.baseline_config_updated_at,
+                  baseline_validation_report_id:
+                    nextPromotionPolicy.baseline_validation_report_id ||
+                    currentPromotionPolicy.baseline_validation_report_id,
+                  baseline_live_report_id:
+                    nextPromotionPolicy.baseline_live_report_id ||
+                    currentPromotionPolicy.baseline_live_report_id,
+                  baseline_promotion_gate:
+                    nextPromotionPolicy.baseline_promotion_gate ||
+                    currentPromotionPolicy.baseline_promotion_gate,
+                }
+              : {
+                  baseline_captured_at: undefined,
+                  baseline_config_updated_at: undefined,
+                  baseline_validation_report_id: undefined,
+                  baseline_live_report_id: undefined,
+                  baseline_promotion_gate: undefined,
+                };
+        const baselineValid = Boolean(
+          nextPromotionPolicy.promoted &&
+            baseline.baseline_captured_at &&
+            baseline.baseline_config_updated_at &&
+            baseline.baseline_validation_report_id &&
+            baseline.baseline_live_report_id &&
+            baseline.baseline_promotion_gate === "ready"
+        );
+        const currentConfigMatchesBaseline =
+          Boolean(baseline.baseline_config_updated_at) &&
+          baseline.baseline_config_updated_at === currentSnapshot.runbook_config.updated_at;
+        return {
+          ...currentSnapshot.private_promotion_states[family],
+          ...nextPromotionPolicy,
+          ...baseline,
+          gate: currentSnapshot.private_promotion_family_gates[family].gate,
+          current_promotion_gate: currentSnapshot.private_promotion_family_gates[family].gate,
+          current_config_matches_baseline: currentConfigMatchesBaseline,
+          latest_evidence_drifted:
+            baselineValid &&
+            (!currentConfigMatchesBaseline ||
+              currentSnapshot.private_promotion_family_gates[family].gate !== "ready"),
+          active: baselineValid,
+          inactive_reason:
+            nextPromotionPolicy.promoted && !baselineValid
+              ? "promoted but inactive because baseline is missing or invalid"
+              : undefined,
+        };
+      };
       currentSnapshot = {
         ...currentSnapshot,
         rollout_policy: {
           ...nextPolicy,
           updated_at: "2026-04-15T06:20:30Z",
+          public_promotions: {
+            media: {
+              ...nextPolicy.public_promotions.media,
+              baseline_captured_at: resolvePromotionState("media").baseline_captured_at,
+              baseline_config_updated_at: resolvePromotionState("media").baseline_config_updated_at,
+              baseline_validation_report_id: resolvePromotionState("media").baseline_validation_report_id,
+              baseline_live_report_id: resolvePromotionState("media").baseline_live_report_id,
+              baseline_promotion_gate: resolvePromotionState("media").baseline_promotion_gate,
+            },
+            timeline: {
+              ...nextPolicy.public_promotions.timeline,
+              baseline_captured_at: resolvePromotionState("timeline").baseline_captured_at,
+              baseline_config_updated_at: resolvePromotionState("timeline").baseline_config_updated_at,
+              baseline_validation_report_id: resolvePromotionState("timeline").baseline_validation_report_id,
+              baseline_live_report_id: resolvePromotionState("timeline").baseline_live_report_id,
+              baseline_promotion_gate: resolvePromotionState("timeline").baseline_promotion_gate,
+            },
+            date_range: {
+              ...nextPolicy.public_promotions.date_range,
+              baseline_captured_at: resolvePromotionState("date_range").baseline_captured_at,
+              baseline_config_updated_at: resolvePromotionState("date_range").baseline_config_updated_at,
+              baseline_validation_report_id: resolvePromotionState("date_range").baseline_validation_report_id,
+              baseline_live_report_id: resolvePromotionState("date_range").baseline_live_report_id,
+              baseline_promotion_gate: resolvePromotionState("date_range").baseline_promotion_gate,
+            },
+          },
+          private_promotions: {
+            likes: {
+              ...nextPolicy.private_promotions.likes,
+              baseline_captured_at: resolvePrivatePromotionState("likes").baseline_captured_at,
+              baseline_config_updated_at: resolvePrivatePromotionState("likes").baseline_config_updated_at,
+              baseline_validation_report_id: resolvePrivatePromotionState("likes").baseline_validation_report_id,
+              baseline_live_report_id: resolvePrivatePromotionState("likes").baseline_live_report_id,
+              baseline_promotion_gate: resolvePrivatePromotionState("likes").baseline_promotion_gate,
+            },
+            bookmarks: {
+              ...nextPolicy.private_promotions.bookmarks,
+              baseline_captured_at: resolvePrivatePromotionState("bookmarks").baseline_captured_at,
+              baseline_config_updated_at: resolvePrivatePromotionState("bookmarks").baseline_config_updated_at,
+              baseline_validation_report_id: resolvePrivatePromotionState("bookmarks").baseline_validation_report_id,
+              baseline_live_report_id: resolvePrivatePromotionState("bookmarks").baseline_live_report_id,
+              baseline_promotion_gate: resolvePrivatePromotionState("bookmarks").baseline_promotion_gate,
+            },
+          },
         },
         public_trial_states: {
           media: {
@@ -255,10 +634,50 @@ const diagnosticsClientMocks = vi.hoisted(() => {
                 : undefined,
           },
         },
+        private_trial_states: {
+          likes: {
+            ...currentSnapshot.private_trial_states.likes,
+            ...nextPolicy.private_trials.likes,
+            gate: currentSnapshot.private_family_gates.likes.gate,
+            active: Boolean(nextPolicy.private_trials.likes.armed) && currentSnapshot.private_family_gates.likes.gate === "ready",
+            inactive_reason:
+              nextPolicy.private_trials.likes.armed && currentSnapshot.private_family_gates.likes.gate !== "ready"
+                ? "armed but inactive because the family gate is not ready"
+                : undefined,
+          },
+          bookmarks: {
+            ...currentSnapshot.private_trial_states.bookmarks,
+            ...nextPolicy.private_trials.bookmarks,
+            gate: currentSnapshot.private_family_gates.bookmarks.gate,
+            active:
+              Boolean(nextPolicy.private_trials.bookmarks.armed) &&
+              currentSnapshot.private_family_gates.bookmarks.gate === "ready",
+            inactive_reason:
+              nextPolicy.private_trials.bookmarks.armed &&
+              currentSnapshot.private_family_gates.bookmarks.gate !== "ready"
+                ? "armed but inactive because the family gate is not ready"
+                : undefined,
+          },
+        },
+        public_promotion_states: {
+          media: resolvePromotionState("media"),
+          timeline: resolvePromotionState("timeline"),
+          date_range: resolvePromotionState("date_range"),
+        },
+        private_promotion_states: {
+          likes: resolvePrivatePromotionState("likes"),
+          bookmarks: resolvePrivatePromotionState("bookmarks"),
+        },
       };
       return clone(currentSnapshot.rollout_policy);
     }),
     runExtractorValidationRunbook: vi.fn(async () => {
+      const privateLikesEnabled = currentSnapshot.runbook_config.presets.filter(
+        (preset) => preset.scope === "private" && preset.request_kind === "timeline" && preset.timeline_type === "likes"
+      ).length;
+      const privateBookmarksEnabled = currentSnapshot.runbook_config.presets.filter(
+        (preset) => preset.scope === "private" && preset.request_kind === "timeline" && preset.timeline_type === "bookmarks"
+      ).length;
       const report: ExtractorValidationReport = {
         report_id: "report-002",
         created_at: "2026-04-15T06:21:00Z",
@@ -333,6 +752,24 @@ const diagnosticsClientMocks = vi.hoisted(() => {
             invalid_cases: 0,
           },
         },
+        private_family_gates: {
+          likes: {
+            gate: privateLikesEnabled > 0 ? "ready" : "incomplete",
+            enabled_cases: privateLikesEnabled,
+            passed_cases: privateLikesEnabled,
+            mismatch_cases: 0,
+            failed_cases: 0,
+            invalid_cases: 0,
+          },
+          bookmarks: {
+            gate: privateBookmarksEnabled > 0 ? "ready" : "incomplete",
+            enabled_cases: privateBookmarksEnabled,
+            passed_cases: privateBookmarksEnabled,
+            mismatch_cases: 0,
+            failed_cases: 0,
+            invalid_cases: 0,
+          },
+        },
         app_version: "1.2.3",
         engine_mode: "auto",
         diagnostics: {
@@ -362,6 +799,7 @@ const diagnosticsClientMocks = vi.hoisted(() => {
             public_gate: report.public_gate,
             private_gate: report.private_gate,
             public_family_gates: report.public_family_gates,
+            private_family_gates: report.private_family_gates,
           },
           ...currentSnapshot.recent_validation_reports,
         ].slice(0, 10),
@@ -386,18 +824,36 @@ const diagnosticsClientMocks = vi.hoisted(() => {
       const publicDateRangeEnabled = currentSnapshot.runbook_config.presets.filter(
         (preset) => preset.enabled && preset.scope === "public" && preset.request_kind === "date_range"
       ).length;
+      const privateLikesEnabled = currentSnapshot.runbook_config.presets.filter(
+        (preset) =>
+          preset.enabled &&
+          preset.scope === "private" &&
+          preset.request_kind === "timeline" &&
+          preset.timeline_type === "likes"
+      ).length;
+      const privateBookmarksEnabled = currentSnapshot.runbook_config.presets.filter(
+        (preset) =>
+          preset.enabled &&
+          preset.scope === "private" &&
+          preset.request_kind === "timeline" &&
+          preset.timeline_type === "bookmarks"
+      ).length;
 
       const report: ExtractorLiveValidationReport = {
         report_id: "live-002",
         created_at: "2026-04-15T06:22:00Z",
         config_updated_at: currentSnapshot.runbook_config.updated_at,
         total_cases: currentSnapshot.runbook_config.presets.filter((preset) => preset.enabled).length,
-        runtime_passed_cases: publicMediaEnabled + publicTimelineEnabled + publicDateRangeEnabled,
+        runtime_passed_cases:
+          publicMediaEnabled +
+          publicTimelineEnabled +
+          publicDateRangeEnabled +
+          privateLikesEnabled +
+          privateBookmarksEnabled,
         runtime_failed_cases: 0,
-        runtime_skipped_cases: currentSnapshot.runbook_config.presets.filter(
-          (preset) => preset.enabled && preset.scope !== "public"
-        ).length,
+        runtime_skipped_cases: 0,
         parity_family_gates: currentSnapshot.public_family_gates,
+        private_parity_family_gates: currentSnapshot.private_family_gates,
         live_family_gates: {
           media: {
             gate: publicMediaEnabled > 0 ? "ready" : "incomplete",
@@ -419,6 +875,24 @@ const diagnosticsClientMocks = vi.hoisted(() => {
             gate: publicDateRangeEnabled > 0 ? "ready" : "incomplete",
             enabled_cases: publicDateRangeEnabled,
             passed_cases: publicDateRangeEnabled,
+            mismatch_cases: 0,
+            failed_cases: 0,
+            invalid_cases: 0,
+          },
+        },
+        private_live_family_gates: {
+          likes: {
+            gate: privateLikesEnabled > 0 ? "ready" : "incomplete",
+            enabled_cases: privateLikesEnabled,
+            passed_cases: privateLikesEnabled,
+            mismatch_cases: 0,
+            failed_cases: 0,
+            invalid_cases: 0,
+          },
+          bookmarks: {
+            gate: privateBookmarksEnabled > 0 ? "ready" : "incomplete",
+            enabled_cases: privateBookmarksEnabled,
+            passed_cases: privateBookmarksEnabled,
             mismatch_cases: 0,
             failed_cases: 0,
             invalid_cases: 0,
@@ -472,6 +946,46 @@ const diagnosticsClientMocks = vi.hoisted(() => {
             invalid_cases: 0,
           },
         },
+        private_promotion_family_gates: {
+          likes: {
+            gate:
+              privateLikesEnabled > 0 && currentSnapshot.private_family_gates.likes.gate === "ready"
+                ? "ready"
+                : privateLikesEnabled > 0
+                  ? "blocked"
+                  : "incomplete",
+            enabled_cases: privateLikesEnabled,
+            passed_cases:
+              privateLikesEnabled > 0 && currentSnapshot.private_family_gates.likes.gate === "ready"
+                ? privateLikesEnabled
+                : 0,
+            mismatch_cases:
+              privateLikesEnabled > 0 && currentSnapshot.private_family_gates.likes.gate !== "ready"
+                ? 1
+                : 0,
+            failed_cases: 0,
+            invalid_cases: 0,
+          },
+          bookmarks: {
+            gate:
+              privateBookmarksEnabled > 0 && currentSnapshot.private_family_gates.bookmarks.gate === "ready"
+                ? "ready"
+                : privateBookmarksEnabled > 0
+                  ? "blocked"
+                  : "incomplete",
+            enabled_cases: privateBookmarksEnabled,
+            passed_cases:
+              privateBookmarksEnabled > 0 && currentSnapshot.private_family_gates.bookmarks.gate === "ready"
+                ? privateBookmarksEnabled
+                : 0,
+            mismatch_cases:
+              privateBookmarksEnabled > 0 && currentSnapshot.private_family_gates.bookmarks.gate !== "ready"
+                ? 1
+                : 0,
+            failed_cases: 0,
+            invalid_cases: 0,
+          },
+        },
         app_version: "1.2.3",
         engine_mode: "auto",
         diagnostics: {
@@ -487,7 +1001,9 @@ const diagnosticsClientMocks = vi.hoisted(() => {
       currentSnapshot = {
         ...currentSnapshot,
         live_family_gates: report.live_family_gates,
+        private_live_family_gates: report.private_live_family_gates,
         promotion_family_gates: report.promotion_family_gates,
+        private_promotion_family_gates: report.private_promotion_family_gates,
         recent_live_reports: [
           {
             report_id: report.report_id,
@@ -498,8 +1014,11 @@ const diagnosticsClientMocks = vi.hoisted(() => {
             runtime_failed_cases: report.runtime_failed_cases,
             runtime_skipped_cases: report.runtime_skipped_cases,
             parity_family_gates: report.parity_family_gates,
+            private_parity_family_gates: report.private_parity_family_gates,
             live_family_gates: report.live_family_gates,
+            private_live_family_gates: report.private_live_family_gates,
             promotion_family_gates: report.promotion_family_gates,
+            private_promotion_family_gates: report.private_promotion_family_gates,
           },
           ...currentSnapshot.recent_live_reports,
         ].slice(0, 10),
@@ -583,9 +1102,10 @@ describe("DiagnosticsPanel", () => {
     render(<DiagnosticsPanel embedded fillHeight parityContext={createTimelineParityContext()} />);
 
     await waitFor(() => {
-      expect(screen.getByTestId("diagnostics-extractor-mode").textContent).toContain("Mode: auto");
+      expect(screen.getByTestId("diagnostics-extractor-mode").textContent).toContain("Mode: go");
     });
 
+    expect(screen.getByTestId("diagnostics-go-only-runtime").textContent).toContain("Go-only runtime is active");
     expect(
       screen
         .getAllByTestId("diagnostics-private-gate")
@@ -608,13 +1128,74 @@ describe("DiagnosticsPanel", () => {
     expect(screen.getByTestId("diagnostics-public-trial-status-timeline").textContent).toContain(
       "armed but inactive"
     );
-    expect(screen.getByTestId("diagnostics-public-trial-toggle-media")).not.toHaveProperty(
-      "disabled",
-      true
+    expect(screen.getByTestId("diagnostics-public-promotion-status-timeline").textContent).toContain(
+      "latest evidence has drifted"
+    );
+    expect(screen.getByTestId("diagnostics-public-trial-toggle-media")).toHaveProperty("disabled", true);
+    expect(screen.getByTestId("diagnostics-public-promotion-toggle-media")).toHaveProperty("disabled", true);
+    expect(screen.getByTestId("diagnostics-run-parity")).toHaveProperty("disabled", true);
+    expect(screen.getByTestId("diagnostics-default-soak-media").textContent).toContain(
+      "default served by Go"
+    );
+    expect(screen.getByTestId("diagnostics-default-soak-status-timeline").textContent).toContain(
+      "go runtime fell back to python after a blocker"
+    );
+    expect(screen.getByTestId("diagnostics-phase7-ready").textContent).toContain("not ready");
+  });
+
+  it("shows the python deprecated notice and soak fallback state", async () => {
+    diagnosticsClientMocks.setSnapshot({
+      ...createBaseSnapshot(),
+      current_mode: "python",
+      python_deprecated_notice: "python extractor is retired; the python mode alias now runs the go-only runtime",
+    });
+
+    render(<DiagnosticsPanel embedded fillHeight parityContext={createTimelineParityContext()} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("diagnostics-python-deprecated").textContent).toContain(
+        "Python deprecated"
+      );
+    });
+
+    expect(screen.getByText("python extractor is retired; the python mode alias now runs the go-only runtime")).toBeTruthy();
+    expect(screen.getByTestId("diagnostics-default-soak-bookmarks").textContent).toContain(
+      "fallback served by Python"
     );
   });
 
-  it("arms a ready public trial family and persists rollout policy", async () => {
+  it("shows go-only fallback status and disables fresh parity actions", async () => {
+    diagnosticsClientMocks.setSnapshot({
+      ...createBaseSnapshot(),
+      current_mode: "python",
+      python_fallback_available: false,
+      python_fallback_build_flavor: "go-only",
+      ad_hoc_parity_available: false,
+      ad_hoc_parity_unavailable_reason: "python fallback unavailable in this go-only build",
+      python_deprecated_notice: "python extractor is retired; the python mode alias now runs the go-only runtime",
+    });
+
+    render(<DiagnosticsPanel embedded fillHeight parityContext={createTimelineParityContext()} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("diagnostics-python-fallback-status").textContent).toContain(
+        "go-only build"
+      );
+    });
+
+    expect(screen.getByTestId("diagnostics-build-flavor").textContent).toContain("go-only");
+    expect(screen.getByTestId("diagnostics-python-fallback-availability").textContent).toContain(
+      "Python fallback unavailable"
+    );
+    expect(screen.getByTestId("diagnostics-ad-hoc-parity-unavailable").textContent).toContain(
+      "Ad hoc parity unavailable"
+    );
+    expect(screen.getByTestId("diagnostics-run-parity")).toHaveProperty("disabled", true);
+    expect(screen.getByTestId("diagnostics-run-validation")).toHaveProperty("disabled", true);
+    expect(screen.getByTestId("diagnostics-run-live-validation")).toHaveProperty("disabled", true);
+  });
+
+  it("keeps public trial controls retired in go-only runtime", async () => {
     render(<DiagnosticsPanel embedded fillHeight parityContext={createTimelineParityContext()} />);
 
     await waitFor(() => {
@@ -622,19 +1203,52 @@ describe("DiagnosticsPanel", () => {
     });
 
     fireEvent.click(screen.getByTestId("diagnostics-public-trial-toggle-media"));
-
-    await waitFor(() =>
-      expect(diagnosticsClientMocks.saveExtractorRolloutPolicy).toHaveBeenCalledWith(
-        expect.objectContaining({
-          public_trials: expect.objectContaining({
-            media: expect.objectContaining({
-              armed: true,
-            }),
-          }),
-        })
-      )
+    expect(diagnosticsClientMocks.saveExtractorRolloutPolicy).not.toHaveBeenCalled();
+    expect(screen.getByTestId("diagnostics-public-trial-status-media").textContent).toContain(
+      "trial-ready before cutover"
     );
-    expect(toastMocks.success).toHaveBeenCalledWith("media public trial armed");
+  });
+
+  it("keeps public promotion controls retired in go-only runtime", async () => {
+    render(<DiagnosticsPanel embedded fillHeight parityContext={createTimelineParityContext()} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("diagnostics-public-promotion-toggle-media")).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByTestId("diagnostics-public-promotion-toggle-media"));
+    expect(diagnosticsClientMocks.saveExtractorRolloutPolicy).not.toHaveBeenCalled();
+    expect(screen.getByTestId("diagnostics-public-promotion-status-media").textContent).toContain(
+      "Historical promotion evidence shows this family was ready at cutover"
+    );
+  });
+
+  it("keeps private trial controls retired in go-only runtime", async () => {
+    render(<DiagnosticsPanel embedded fillHeight parityContext={createTimelineParityContext()} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("diagnostics-private-trial-toggle-bookmarks")).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByTestId("diagnostics-private-trial-toggle-bookmarks"));
+    expect(diagnosticsClientMocks.saveExtractorRolloutPolicy).not.toHaveBeenCalled();
+    expect(screen.getByTestId("diagnostics-private-trial-status-bookmarks").textContent).toContain(
+      "trial-ready before cutover"
+    );
+  });
+
+  it("keeps private promotion controls retired in go-only runtime", async () => {
+    render(<DiagnosticsPanel embedded fillHeight parityContext={createTimelineParityContext()} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("diagnostics-private-promotion-toggle-bookmarks")).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByTestId("diagnostics-private-promotion-toggle-bookmarks"));
+    expect(diagnosticsClientMocks.saveExtractorRolloutPolicy).not.toHaveBeenCalled();
+    expect(screen.getByTestId("diagnostics-private-promotion-status-bookmarks").textContent).toContain(
+      "Historical promotion evidence shows this family was ready at cutover"
+    );
   });
 
   it("keeps blocked public family toggles disabled until ready", async () => {
@@ -658,9 +1272,23 @@ describe("DiagnosticsPanel", () => {
       "disabled",
       true
     );
+    expect(screen.getByTestId("diagnostics-public-promotion-toggle-timeline")).toHaveProperty("disabled", true);
   });
 
-  it("adds the current private bookmarks context to the runbook with empty username", async () => {
+  it("keeps non-ready public promotion toggles disabled until promotion gate is ready", async () => {
+    render(<DiagnosticsPanel embedded fillHeight parityContext={createTimelineParityContext()} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("diagnostics-public-promotion-toggle-date_range")).toBeTruthy();
+    });
+
+    expect(screen.getByTestId("diagnostics-public-promotion-toggle-date_range")).toHaveProperty(
+      "disabled",
+      true
+    );
+  });
+
+  it("disables add current context once controls are retired", async () => {
     const snapshot = createBaseSnapshot();
     snapshot.runbook_config = { updated_at: "2026-04-15T06:09:00Z", presets: [] };
     snapshot.recent_validation_reports = [];
@@ -669,30 +1297,14 @@ describe("DiagnosticsPanel", () => {
     render(<DiagnosticsPanel embedded fillHeight parityContext={createTimelineParityContext()} />);
 
     await waitFor(() => {
-      expect(screen.getByTestId("diagnostics-add-current-context")).not.toHaveProperty("disabled", true);
+      expect(screen.getByTestId("diagnostics-add-current-context")).toHaveProperty("disabled", true);
     });
 
     fireEvent.click(screen.getByTestId("diagnostics-add-current-context"));
-
-    await waitFor(() =>
-      expect(diagnosticsClientMocks.saveExtractorRunbookConfig).toHaveBeenCalledWith(
-        expect.objectContaining({
-          presets: [
-            expect.objectContaining({
-              request_kind: "timeline",
-              scope: "private",
-              username: "",
-              timeline_type: "bookmarks",
-              media_type: "text",
-            }),
-          ],
-        })
-      )
-    );
-    expect(toastMocks.success).toHaveBeenCalledWith("Added current context to the validation runbook");
+    expect(diagnosticsClientMocks.saveExtractorRunbookConfig).not.toHaveBeenCalled();
   });
 
-  it("renames, toggles, and deletes presets via saved runbook config", async () => {
+  it("renders runbook presets as read-only historical evidence", async () => {
     render(<DiagnosticsPanel embedded fillHeight parityContext={createTimelineParityContext()} />);
 
     await waitFor(() => {
@@ -703,45 +1315,19 @@ describe("DiagnosticsPanel", () => {
       target: { value: "Bookmarks release gate" },
     });
     fireEvent.click(screen.getByTestId("diagnostics-runbook-save-preset-bookmarks"));
-
-    await waitFor(() =>
-      expect(diagnosticsClientMocks.saveExtractorRunbookConfig).toHaveBeenCalledWith(
-        expect.objectContaining({
-          presets: [
-            expect.objectContaining({
-              id: "preset-bookmarks",
-              label: "Bookmarks release gate",
-            }),
-          ],
-        })
-      )
-    );
+    expect(diagnosticsClientMocks.saveExtractorRunbookConfig).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByTestId("diagnostics-runbook-toggle-preset-bookmarks"));
-    await waitFor(() =>
-      expect(diagnosticsClientMocks.saveExtractorRunbookConfig).toHaveBeenCalledWith(
-        expect.objectContaining({
-          presets: [
-            expect.objectContaining({
-              id: "preset-bookmarks",
-              enabled: false,
-            }),
-          ],
-        })
-      )
-    );
+    expect(diagnosticsClientMocks.saveExtractorRunbookConfig).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByTestId("diagnostics-runbook-delete-preset-bookmarks"));
-    await waitFor(() =>
-      expect(diagnosticsClientMocks.saveExtractorRunbookConfig).toHaveBeenCalledWith(
-        expect.objectContaining({
-          presets: [],
-        })
-      )
-    );
+    expect(diagnosticsClientMocks.saveExtractorRunbookConfig).not.toHaveBeenCalled();
+    expect(screen.getByTestId("diagnostics-runbook-save-preset-bookmarks")).toHaveProperty("disabled", true);
+    expect(screen.getByTestId("diagnostics-runbook-toggle-preset-bookmarks")).toHaveProperty("disabled", true);
+    expect(screen.getByTestId("diagnostics-runbook-delete-preset-bookmarks")).toHaveProperty("disabled", true);
   });
 
-  it("runs validation with runtime tokens and refreshes recent reports", async () => {
+  it("renders validation reports as historical evidence without allowing fresh runs", async () => {
     const snapshot = createBaseSnapshot();
     snapshot.runbook_config.presets = [
       ...snapshot.runbook_config.presets,
@@ -770,33 +1356,15 @@ describe("DiagnosticsPanel", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByTestId("diagnostics-run-validation")).not.toHaveProperty("disabled", true);
+      expect(screen.getByTestId("diagnostics-run-validation")).toHaveProperty("disabled", true);
     });
 
     fireEvent.click(screen.getByTestId("diagnostics-run-validation"));
-
-    await waitFor(() =>
-      expect(diagnosticsClientMocks.runExtractorValidationRunbook).toHaveBeenCalledWith({
-        public_auth_token: "public-token",
-        private_auth_token: "private-token",
-      })
-    );
-    await waitFor(() =>
-      expect(screen.getByTestId("diagnostics-validation-reports").textContent).toContain("report-002")
-    );
-    expect(
-      screen
-        .getAllByTestId("diagnostics-public-gate")
-        .some((element) => element.textContent?.includes("Public gate: ready"))
-    ).toBe(true);
-    expect(
-      screen
-        .getAllByTestId("diagnostics-private-gate")
-        .some((element) => element.textContent?.includes("Private gate: ready"))
-    ).toBe(true);
+    expect(diagnosticsClientMocks.runExtractorValidationRunbook).not.toHaveBeenCalled();
+    expect(screen.getByTestId("diagnostics-validation-reports").textContent).toContain("report-001");
   });
 
-  it("runs live validation and refreshes promotion readiness", async () => {
+  it("renders live validation reports as historical evidence without allowing fresh runs", async () => {
     const snapshot = createBaseSnapshot();
     snapshot.runbook_config.presets = [
       {
@@ -831,26 +1399,18 @@ describe("DiagnosticsPanel", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByTestId("diagnostics-run-live-validation")).not.toHaveProperty("disabled", true);
+      expect(screen.getByTestId("diagnostics-run-live-validation")).toHaveProperty("disabled", true);
     });
 
     fireEvent.click(screen.getByTestId("diagnostics-run-live-validation"));
-
-    await waitFor(() =>
-      expect(diagnosticsClientMocks.runExtractorLiveValidationSession).toHaveBeenCalledWith({
-        public_auth_token: "public-token",
-        private_auth_token: "private-token",
-      })
-    );
-    await waitFor(() =>
-      expect(screen.getByTestId("diagnostics-live-reports").textContent).toContain("live-002")
-    );
+    expect(diagnosticsClientMocks.runExtractorLiveValidationSession).not.toHaveBeenCalled();
+    expect(screen.getByTestId("diagnostics-live-reports").textContent).toContain("live-001");
     expect(screen.getByTestId("diagnostics-public-trial-status-media").textContent).toContain(
-      "Promotion ready"
+      "trial-ready before cutover"
     );
   });
 
-  it("keeps single-context parity and routes date-range requests correctly", async () => {
+  it("retires single-context parity in go-only runtime", async () => {
     const parityContext: DiagnosticsParityContext = {
       enabled: true,
       request_kind: "date_range",
@@ -869,19 +1429,10 @@ describe("DiagnosticsPanel", () => {
     render(<DiagnosticsPanel embedded fillHeight parityContext={parityContext} />);
 
     await waitFor(() => {
-      expect(screen.getByTestId("diagnostics-run-parity")).not.toHaveProperty("disabled", true);
+      expect(screen.getByTestId("diagnostics-run-parity")).toHaveProperty("disabled", true);
     });
 
     fireEvent.click(screen.getByTestId("diagnostics-run-parity"));
-
-    await waitFor(() =>
-      expect(diagnosticsClientMocks.compareDateRangeExtractorParity).toHaveBeenCalledWith(
-        expect.objectContaining({
-          username: "nasa",
-          media_filter: "image",
-        })
-      )
-    );
-    expect(toastMocks.success).toHaveBeenCalledWith("Extractor parity matched for the current context");
+    expect(diagnosticsClientMocks.compareDateRangeExtractorParity).not.toHaveBeenCalled();
   });
 });

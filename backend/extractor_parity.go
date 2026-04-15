@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
-	"time"
 )
 
 const maxExtractorParityDiffs = 20
@@ -87,114 +86,37 @@ func summarizeTwitterResponse(response *TwitterResponse) *ExtractorResponseSumma
 }
 
 func CompareTimelineExtractorParity(req TimelineRequest) (*ExtractorParityReport, error) {
-	ctx := context.Background()
-	pythonEngine := newPythonGalleryDLEngine()
 	goEngine := newGoTwitterEngine()
 	goSupported, supportReason := timelineSupport(goEngine, req)
-
-	startedAt := time.Now()
 	report := &ExtractorParityReport{
 		RequestKind:   "timeline",
-		PythonEngine:  pythonEngine.Name(),
+		PythonEngine:  "retired",
 		GoEngine:      goEngine.Name(),
 		GoSupported:   goSupported,
 		SupportReason: strings.TrimSpace(supportReason),
 	}
-
-	pythonResponse, pythonErr := pythonEngine.ExtractTimeline(ctx, req)
-	report.PythonSuccess = pythonErr == nil
-	report.PythonSummary = summarizeTwitterResponse(pythonResponse)
-	report.PythonError = errorString(pythonErr)
-
-	goResponse, goErr := runTimelineParityCandidate(ctx, goEngine, req, goSupported, supportReason)
-	report.GoSuccess = goErr == nil
-	report.GoSummary = summarizeTwitterResponse(goResponse)
-	report.GoError = errorString(goErr)
-
-	report.Differences = compareTwitterResponses(pythonResponse, goResponse, pythonErr, goErr)
-	report.Equal = report.PythonSuccess && report.GoSuccess && len(report.Differences) == 0
-	incrementParityComparisonCount(report.Equal)
-
-	appendExtractorParityLog(extractorParityLogEntry{
-		Event:         "extractor_parity",
-		RequestKind:   report.RequestKind,
-		PythonEngine:  report.PythonEngine,
-		GoEngine:      report.GoEngine,
-		GoSupported:   report.GoSupported,
-		SupportReason: report.SupportReason,
-		Username:      strings.TrimSpace(req.Username),
-		TimelineType:  strings.TrimSpace(buildTimelineExtractorSpec(req).timelineType),
-		MediaType:     strings.TrimSpace(req.MediaType),
-		Retweets:      req.Retweets,
-		ElapsedMS:     time.Since(startedAt).Milliseconds(),
-		Equal:         report.Equal,
-		Differences:   report.Differences,
-		PythonSummary: report.PythonSummary,
-		GoSummary:     report.GoSummary,
-		PythonError:   report.PythonError,
-		GoError:       report.GoError,
-	})
-
-	if pythonErr != nil {
-		return report, fmt.Errorf("python parity baseline failed: %w", pythonErr)
-	}
-	return report, nil
+	reason := retiredExtractorControlReason("timeline parity")
+	report.PythonError = reason
+	report.GoError = reason
+	report.Differences = []string{reason}
+	return report, retiredExtractorControlError("timeline parity")
 }
 
 func CompareDateRangeExtractorParity(req DateRangeRequest) (*ExtractorParityReport, error) {
-	ctx := context.Background()
-	pythonEngine := newPythonGalleryDLEngine()
 	goEngine := newGoTwitterEngine()
 	goSupported, supportReason := dateRangeSupport(goEngine, req)
-
-	startedAt := time.Now()
 	report := &ExtractorParityReport{
 		RequestKind:   "date_range",
-		PythonEngine:  pythonEngine.Name(),
+		PythonEngine:  "retired",
 		GoEngine:      goEngine.Name(),
 		GoSupported:   goSupported,
 		SupportReason: strings.TrimSpace(supportReason),
 	}
-
-	pythonResponse, pythonErr := pythonEngine.ExtractDateRange(ctx, req)
-	report.PythonSuccess = pythonErr == nil
-	report.PythonSummary = summarizeTwitterResponse(pythonResponse)
-	report.PythonError = errorString(pythonErr)
-
-	goResponse, goErr := runDateRangeParityCandidate(ctx, goEngine, req, goSupported, supportReason)
-	report.GoSuccess = goErr == nil
-	report.GoSummary = summarizeTwitterResponse(goResponse)
-	report.GoError = errorString(goErr)
-
-	report.Differences = compareTwitterResponses(pythonResponse, goResponse, pythonErr, goErr)
-	report.Equal = report.PythonSuccess && report.GoSuccess && len(report.Differences) == 0
-	incrementParityComparisonCount(report.Equal)
-
-	appendExtractorParityLog(extractorParityLogEntry{
-		Event:         "extractor_parity",
-		RequestKind:   report.RequestKind,
-		PythonEngine:  report.PythonEngine,
-		GoEngine:      report.GoEngine,
-		GoSupported:   report.GoSupported,
-		SupportReason: report.SupportReason,
-		Username:      strings.TrimSpace(req.Username),
-		StartDate:     strings.TrimSpace(req.StartDate),
-		EndDate:       strings.TrimSpace(req.EndDate),
-		MediaType:     strings.TrimSpace(req.MediaFilter),
-		Retweets:      req.Retweets,
-		ElapsedMS:     time.Since(startedAt).Milliseconds(),
-		Equal:         report.Equal,
-		Differences:   report.Differences,
-		PythonSummary: report.PythonSummary,
-		GoSummary:     report.GoSummary,
-		PythonError:   report.PythonError,
-		GoError:       report.GoError,
-	})
-
-	if pythonErr != nil {
-		return report, fmt.Errorf("python parity baseline failed: %w", pythonErr)
-	}
-	return report, nil
+	reason := retiredExtractorControlReason("date-range parity")
+	report.PythonError = reason
+	report.GoError = reason
+	report.Differences = []string{reason}
+	return report, retiredExtractorControlError("date-range parity")
 }
 
 func runTimelineParityCandidate(

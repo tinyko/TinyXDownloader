@@ -87,35 +87,37 @@ type ExtractorValidationCaseReport struct {
 }
 
 type ExtractorValidationReportSummary struct {
-	ReportID          string                     `json:"report_id"`
-	CreatedAt         string                     `json:"created_at"`
-	ConfigUpdatedAt   string                     `json:"config_updated_at,omitempty"`
-	TotalCases        int                        `json:"total_cases"`
-	PassedCases       int                        `json:"passed_cases"`
-	MismatchCases     int                        `json:"mismatch_cases"`
-	FailedCases       int                        `json:"failed_cases"`
-	InvalidCases      int                        `json:"invalid_cases"`
-	PublicGate        ExtractorValidationGate    `json:"public_gate"`
-	PrivateGate       ExtractorValidationGate    `json:"private_gate"`
-	PublicFamilyGates ExtractorPublicFamilyGates `json:"public_family_gates"`
+	ReportID           string                      `json:"report_id"`
+	CreatedAt          string                      `json:"created_at"`
+	ConfigUpdatedAt    string                      `json:"config_updated_at,omitempty"`
+	TotalCases         int                         `json:"total_cases"`
+	PassedCases        int                         `json:"passed_cases"`
+	MismatchCases      int                         `json:"mismatch_cases"`
+	FailedCases        int                         `json:"failed_cases"`
+	InvalidCases       int                         `json:"invalid_cases"`
+	PublicGate         ExtractorValidationGate     `json:"public_gate"`
+	PrivateGate        ExtractorValidationGate     `json:"private_gate"`
+	PublicFamilyGates  ExtractorPublicFamilyGates  `json:"public_family_gates"`
+	PrivateFamilyGates ExtractorPrivateFamilyGates `json:"private_family_gates"`
 }
 
 type ExtractorValidationReport struct {
-	ReportID          string                                `json:"report_id"`
-	CreatedAt         string                                `json:"created_at"`
-	ConfigUpdatedAt   string                                `json:"config_updated_at,omitempty"`
-	AppVersion        string                                `json:"app_version"`
-	EngineMode        ExtractorEngineMode                   `json:"engine_mode"`
-	TotalCases        int                                   `json:"total_cases"`
-	PassedCases       int                                   `json:"passed_cases"`
-	MismatchCases     int                                   `json:"mismatch_cases"`
-	FailedCases       int                                   `json:"failed_cases"`
-	InvalidCases      int                                   `json:"invalid_cases"`
-	PublicGate        ExtractorValidationGate               `json:"public_gate"`
-	PrivateGate       ExtractorValidationGate               `json:"private_gate"`
-	PublicFamilyGates ExtractorPublicFamilyGates            `json:"public_family_gates"`
-	Diagnostics       ExtractorValidationDiagnosticsSummary `json:"diagnostics"`
-	Cases             []ExtractorValidationCaseReport       `json:"cases,omitempty"`
+	ReportID           string                                `json:"report_id"`
+	CreatedAt          string                                `json:"created_at"`
+	ConfigUpdatedAt    string                                `json:"config_updated_at,omitempty"`
+	AppVersion         string                                `json:"app_version"`
+	EngineMode         ExtractorEngineMode                   `json:"engine_mode"`
+	TotalCases         int                                   `json:"total_cases"`
+	PassedCases        int                                   `json:"passed_cases"`
+	MismatchCases      int                                   `json:"mismatch_cases"`
+	FailedCases        int                                   `json:"failed_cases"`
+	InvalidCases       int                                   `json:"invalid_cases"`
+	PublicGate         ExtractorValidationGate               `json:"public_gate"`
+	PrivateGate        ExtractorValidationGate               `json:"private_gate"`
+	PublicFamilyGates  ExtractorPublicFamilyGates            `json:"public_family_gates"`
+	PrivateFamilyGates ExtractorPrivateFamilyGates           `json:"private_family_gates"`
+	Diagnostics        ExtractorValidationDiagnosticsSummary `json:"diagnostics"`
+	Cases              []ExtractorValidationCaseReport       `json:"cases,omitempty"`
 }
 
 var (
@@ -435,6 +437,7 @@ func applyExtractorValidationSummary(report *ExtractorValidationReport) {
 	report.PublicGate = evaluateExtractorValidationGate(report.Cases, ExtractorValidationScopePublic)
 	report.PrivateGate = evaluateExtractorValidationGate(report.Cases, ExtractorValidationScopePrivate)
 	report.PublicFamilyGates = evaluateExtractorPublicFamilyGates(report.Cases)
+	report.PrivateFamilyGates = evaluateExtractorPrivateFamilyGates(report.Cases)
 }
 
 func classifyExtractorValidationCase(caseReport ExtractorValidationCaseReport) string {
@@ -516,6 +519,13 @@ func evaluateExtractorPublicFamilyGates(cases []ExtractorValidationCaseReport) E
 		Media:     evaluateExtractorFamilyGate(cases, ExtractorRequestFamilyMedia),
 		Timeline:  evaluateExtractorFamilyGate(cases, ExtractorRequestFamilyTimeline),
 		DateRange: evaluateExtractorFamilyGate(cases, ExtractorRequestFamilyDateRange),
+	}
+}
+
+func evaluateExtractorPrivateFamilyGates(cases []ExtractorValidationCaseReport) ExtractorPrivateFamilyGates {
+	return ExtractorPrivateFamilyGates{
+		Likes:     evaluateExtractorFamilyGate(cases, ExtractorRequestFamilyLikes),
+		Bookmarks: evaluateExtractorFamilyGate(cases, ExtractorRequestFamilyBookmarks),
 	}
 }
 
@@ -640,33 +650,36 @@ func loadExtractorValidationReport(path string) (*ExtractorValidationReport, err
 func summarizeExtractorValidationReport(report *ExtractorValidationReport) ExtractorValidationReportSummary {
 	if report == nil {
 		return ExtractorValidationReportSummary{
-			PublicGate:        ExtractorValidationGateIncomplete,
-			PrivateGate:       ExtractorValidationGateIncomplete,
-			PublicFamilyGates: defaultExtractorPublicFamilyGates(),
+			PublicGate:         ExtractorValidationGateIncomplete,
+			PrivateGate:        ExtractorValidationGateIncomplete,
+			PublicFamilyGates:  defaultExtractorPublicFamilyGates(),
+			PrivateFamilyGates: defaultExtractorPrivateFamilyGates(),
 		}
 	}
 	return ExtractorValidationReportSummary{
-		ReportID:          strings.TrimSpace(report.ReportID),
-		CreatedAt:         strings.TrimSpace(report.CreatedAt),
-		ConfigUpdatedAt:   strings.TrimSpace(report.ConfigUpdatedAt),
-		TotalCases:        report.TotalCases,
-		PassedCases:       report.PassedCases,
-		MismatchCases:     report.MismatchCases,
-		FailedCases:       report.FailedCases,
-		InvalidCases:      report.InvalidCases,
-		PublicGate:        report.PublicGate,
-		PrivateGate:       report.PrivateGate,
-		PublicFamilyGates: report.PublicFamilyGates,
+		ReportID:           strings.TrimSpace(report.ReportID),
+		CreatedAt:          strings.TrimSpace(report.CreatedAt),
+		ConfigUpdatedAt:    strings.TrimSpace(report.ConfigUpdatedAt),
+		TotalCases:         report.TotalCases,
+		PassedCases:        report.PassedCases,
+		MismatchCases:      report.MismatchCases,
+		FailedCases:        report.FailedCases,
+		InvalidCases:       report.InvalidCases,
+		PublicGate:         report.PublicGate,
+		PrivateGate:        report.PrivateGate,
+		PublicFamilyGates:  report.PublicFamilyGates,
+		PrivateFamilyGates: report.PrivateFamilyGates,
 	}
 }
 
 func resolveExtractorValidationGates(
 	config ExtractorRunbookConfig,
 	summaries []ExtractorValidationReportSummary,
-) (ExtractorValidationGate, ExtractorValidationGate, ExtractorPublicFamilyGates) {
+) (ExtractorValidationGate, ExtractorValidationGate, ExtractorPublicFamilyGates, ExtractorPrivateFamilyGates) {
 	publicEnabled := false
 	privateEnabled := false
 	familyEnabled := defaultExtractorPublicFamilyGates()
+	privateFamilyEnabled := defaultExtractorPrivateFamilyGates()
 	for _, preset := range config.Presets {
 		if !preset.Enabled {
 			continue
@@ -681,12 +694,18 @@ func resolveExtractorValidationGates(
 			}
 		case ExtractorValidationScopePrivate:
 			privateEnabled = true
+			if family, ok := extractorValidationFamilyForPreset(preset); ok {
+				summary := extractorPrivateFamilyGateByName(privateFamilyEnabled, family)
+				summary.EnabledCases++
+				assignExtractorPrivateFamilyGateSummary(&privateFamilyEnabled, family, summary)
+			}
 		}
 	}
 
 	publicGate := ExtractorValidationGateIncomplete
 	privateGate := ExtractorValidationGateIncomplete
 	publicFamilyGates := familyEnabled
+	privateFamilyGates := privateFamilyEnabled
 	configUpdatedAt := strings.TrimSpace(config.UpdatedAt)
 	for _, summary := range summaries {
 		if configUpdatedAt == "" || strings.TrimSpace(summary.ConfigUpdatedAt) != configUpdatedAt {
@@ -695,6 +714,7 @@ func resolveExtractorValidationGates(
 		publicGate = summary.PublicGate
 		privateGate = summary.PrivateGate
 		publicFamilyGates = summary.PublicFamilyGates
+		privateFamilyGates = summary.PrivateFamilyGates
 		break
 	}
 	if !publicEnabled {
@@ -721,7 +741,19 @@ func resolveExtractorValidationGates(
 		publicFamilyGates.DateRange.EnabledCases = familyEnabled.DateRange.EnabledCases
 		publicFamilyGates.DateRange.Gate = ExtractorValidationGateIncomplete
 	}
-	return publicGate, privateGate, publicFamilyGates
+	if privateFamilyEnabled.Likes.EnabledCases == 0 {
+		privateFamilyGates.Likes = defaultExtractorFamilyGateSummary()
+	} else if privateFamilyGates.Likes.EnabledCases == 0 {
+		privateFamilyGates.Likes.EnabledCases = privateFamilyEnabled.Likes.EnabledCases
+		privateFamilyGates.Likes.Gate = ExtractorValidationGateIncomplete
+	}
+	if privateFamilyEnabled.Bookmarks.EnabledCases == 0 {
+		privateFamilyGates.Bookmarks = defaultExtractorFamilyGateSummary()
+	} else if privateFamilyGates.Bookmarks.EnabledCases == 0 {
+		privateFamilyGates.Bookmarks.EnabledCases = privateFamilyEnabled.Bookmarks.EnabledCases
+		privateFamilyGates.Bookmarks.Gate = ExtractorValidationGateIncomplete
+	}
+	return publicGate, privateGate, publicFamilyGates, privateFamilyGates
 }
 
 func assignExtractorFamilyGateSummary(
@@ -739,5 +771,21 @@ func assignExtractorFamilyGateSummary(
 		gates.Timeline = summary
 	case ExtractorRequestFamilyDateRange:
 		gates.DateRange = summary
+	}
+}
+
+func assignExtractorPrivateFamilyGateSummary(
+	gates *ExtractorPrivateFamilyGates,
+	family ExtractorRequestFamily,
+	summary ExtractorFamilyGateSummary,
+) {
+	if gates == nil {
+		return
+	}
+	switch family {
+	case ExtractorRequestFamilyLikes:
+		gates.Likes = summary
+	case ExtractorRequestFamilyBookmarks:
+		gates.Bookmarks = summary
 	}
 }

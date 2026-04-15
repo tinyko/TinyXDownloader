@@ -42,7 +42,6 @@ jobs:
           normalize_macos_toolchain
           require_command node
           require_command pnpm
-          require_command python3
           node --version
           pnpm --version
 
@@ -65,10 +64,7 @@ jobs:
         shell: bash
         run: |
           source ./scripts/common.sh
-          require_command python3
           ensure_embed_inputs
-          ensure_python_venv
-          build_extractor
           generate_wails_bindings
 
       - name: Run backend tests

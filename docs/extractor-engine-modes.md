@@ -1,111 +1,81 @@
-# Extractor Engine Modes
+# Extractor Runtime
 
-`XDOWNLOADER_EXTRACTOR_ENGINE` controls which timeline extractor backend runs:
+The extractor system is now a **Go-only runtime**.
 
-- `python`: always use the existing `gallery-dl` helper. This remains the production default.
-- `go`: use the native Go extractor only. Unsupported requests return an extractor error instead of silently falling back.
-- `auto`: try Go first only when the request matches the current Go support matrix, otherwise bypass directly to Python. If Go returns `ErrEngineFallbackRequired` or `ErrEngineUnsupported`, the request falls back to Python.
+All five supported user-visible families are handled by the native Go extractor:
 
-## Current Go support matrix
+- public `media`
+- public `timeline`, `tweets`, and `with_replies`
+- public `date_range`
+- private `likes`
+- private `bookmarks`
 
-Phase 3B expands Go support to explicit-mode private likes and bookmarks while keeping production defaults conservative:
+Raw `search?q=` is still not a direct user-facing Go API and is not part of the runtime support contract.
 
-- Supported:
-  - public `media` requests with `media_type=all|image|video|gif`
-  - public `timeline`, `tweets`, and `with_replies`
-  - `media_type=text` for public timeline requests
-  - retweets include/skip for public timeline requests
-  - `DateRangeRequest` with `media_filter=all|image|video|gif|text`
-  - private `likes` requests with `media_type=all|image|video|gif|text` when `XDOWNLOADER_EXTRACTOR_ENGINE=go`
-  - private `bookmarks` requests with `media_type=all|image|video|gif|text` when `XDOWNLOADER_EXTRACTOR_ENGINE=go`
-- Not supported yet:
-  - raw `search?q=` requests as a direct Go API
-- `auto` mode still pins private `likes` and `bookmarks` to Python until private parity and live validation are complete
+## Engine env compatibility
 
-## Parity validation
+`XDOWNLOADER_EXTRACTOR_ENGINE` is still accepted for compatibility, but runtime behavior has been cut over:
 
-The app exposes two parity methods for local verification:
+- `go`: Go-only runtime
+- `auto`: Go-only runtime
+- `python`: deprecated alias that logs a warning and still runs the Go-only runtime
+- unset: Go-only runtime
 
-- `CompareTimelineExtractorParity`
-- `CompareDateRangeExtractorParity`
-
-Use them to compare normalized `TwitterResponse` output between Python and Go. Public media golden fixtures live under [backend/testdata/x_public_media](/Users/tiny/DevecostudioProjects/Xdownloader/backend/testdata/x_public_media), public search golden fixtures live under [backend/testdata/x_public_search](/Users/tiny/DevecostudioProjects/Xdownloader/backend/testdata/x_public_search), private likes fixtures live under [backend/testdata/x_private_likes](/Users/tiny/DevecostudioProjects/Xdownloader/backend/testdata/x_private_likes), private bookmarks fixtures live under [backend/testdata/x_private_bookmarks](/Users/tiny/DevecostudioProjects/Xdownloader/backend/testdata/x_private_bookmarks), and timeline parser/strategy coverage lives in [backend/x_public_timeline_test.go](/Users/tiny/DevecostudioProjects/Xdownloader/backend/x_public_timeline_test.go).
+There is no Python fallback, no helper discovery, and no gallery-dl execution path in the current app version.
 
 ## Diagnostics
 
-Go public media requests emit `x_public_media_request`, Go timeline requests emit `x_public_timeline_request`, Go date-range search requests emit `x_public_search_request`, private likes requests emit `x_private_likes_request`, and private bookmarks requests emit `x_private_bookmarks_request`. The most important fields are:
+Diagnostics is now an **audit surface**, not a rollout control plane.
 
-- `fallback_code`: stable failure classification such as `missing_core_user`, `missing_cursor`, or `http_forbidden`
-- `auth_mode`: `auth` or `guest`
-- `cursor_present`: whether the page exposed a continuation cursor
-- `page_item_count`: raw media entities seen on the page before dedupe/filtering
-- `media_item_count`: final normalized media entries emitted to the app contract
-- `text_item_count`: final normalized text entries emitted to the app contract when the request is text-only
-- `viewer_ok`: whether the private likes path successfully resolved the authenticated account handle it is fetching against
-- `partial_parse`: true when parsing failed after some items had already been consumed
+The extractor panel shows:
 
-These events are written to `backend.log` and are also included in support bundle exports. Extractor counters are available through the app method `GetExtractorMetricsSnapshot()`.
+- current runtime mode
+- `go_only_runtime`
+- current soak status
+- default-route status for each family
+- historical validation, live-validation, rollout, and baseline evidence
+- `phase7_ready` / cutover audit state
 
-The Diagnostics drawer now includes an extractor section that shows:
+The old control-plane actions are retired:
 
-- current engine mode
-- private auto pinned status
-- current Go support matrix summary
-- extractor metrics
-- validation runbook presets
-- recent saved validation reports
-- latest public/private readiness gates
-- recent extractor events
-- recent parity reports
+- ad hoc parity
+- saved runbook edits
+- validation runs
+- live validation runs
+- public/private trial toggles
+- public/private promotion toggles
 
-Diagnostics parity uses the current single-account fetch context only. It can run:
+Historical evidence is still visible so support bundles can answer:
 
-- timeline parity for current public/private single-account fetch inputs
-- date-range parity for current public single-account date-range inputs
+- when the cutover happened
+- which frozen baselines were approved
+- what validation/live evidence existed before cutover
+- whether the current release remains healthy
 
-Diagnostics also includes a rollout runbook workflow:
+## Support bundles
 
-- `Add Current Context` captures the current parity-eligible single-account fetch setup into a saved validation preset
-- presets are stored in app data as `extractor_runbook.json`
-- `Run Validation` executes all enabled presets sequentially using the current public/private tokens, saves a structured report under `extractor_reports/`, and updates the public/private gate badges
-- reports are token-free and intended for rollout review rather than runtime routing decisions
+Support bundles continue to include the historical extractor audit chain:
 
-Diagnostics now also includes a public live validation workflow:
-
-- `Run Live Validation` reuses the enabled runbook presets, but only public presets participate in promotion evidence
-- each public case runs a real runtime fetch through the normal extractor entrypoint with a session-local candidate override, then immediately runs parity
-- private presets remain in the runbook, but live sessions mark them `out_of_scope` and they do not contribute to promotion readiness
-- live reports are stored in app data under `extractor_live_reports/`
-- each live report computes three family-level views:
-  - `parity`: the existing normalized-output gate
-  - `live`: runtime fetch behavior, fallback, and cursor/completed semantics
-  - `promotion`: `ready` only when both parity and live are ready for that public family
-- live sessions are evidence only; they do not arm trials or change routing automatically
-
-Diagnostics now also includes a public auto trial control plane:
-
-- public rollout policy is stored in app data as `extractor_rollout_policy.json`
-- public trials are armed manually per request family: `media`, `timeline`, and `date_range`
-- only families whose gate is `ready` can be armed
-- armed trials persist across app restarts until manually disarmed
-- an armed family is only active while its current matching family gate remains `ready`
-- if a family becomes non-ready after being armed, runtime falls back to Python and Diagnostics shows it as `armed but inactive`
-- the Public Trial panel now also shows whether each family is `promotion ready` based on the latest matching live validation session
-
-Support bundles now include:
-
-- `backend.log`
 - `extractor_diagnostics.json`
-- `extractor_runbook.json`
 - `extractor_rollout_policy.json`
-- the latest saved validation reports under `extractor_reports/`
-- the latest saved live validation reports under `extractor_live_reports/`
+- saved validation reports
+- saved live validation reports
+- `extractor_soak_state.json`
+- `extractor_soak_events.json`
 
-## Trial gate
+These artifacts remain token-free and are kept for audit, incident review, and cutover traceability.
 
-Do not switch the default engine away from `python` until all of the following are true:
+## Development and build
 
-- public media and public search fixture tests are green
-- golden parity responses are green
-- live parity checks show no structural diffs for representative public media and date-range accounts
-- `auto` mode fallback preserves existing cursor and snapshot semantics
+The project no longer requires Python for normal development, CI, packaging, or runtime.
+
+Current expectations:
+
+- `./bootstrap.sh`, `./dev.sh`, and `./build.sh` are go-only
+- CI is go-only
+- release packaging is go-only
+- there is no `INCLUDE_PYTHON_FALLBACK` split anymore
+
+## Historical notes
+
+Earlier phases introduced parity, validation runbooks, live validation sessions, public/private trials, promotion baselines, and soak gating. Those artifacts remain in app data and support bundles, but they no longer drive runtime routing in the current version.
