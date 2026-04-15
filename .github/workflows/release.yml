@@ -70,6 +70,7 @@ jobs:
           ensure_embed_inputs
           ensure_python_venv
           build_extractor
+          generate_wails_bindings
 
       - name: Run backend tests
         run: go test ./...
