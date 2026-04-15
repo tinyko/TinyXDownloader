@@ -4,7 +4,7 @@ import { SettingsIcon } from "@/components/workspace/SettingsIcon";
 import { APP_NAME } from "@/lib/app-info";
 import { Activity } from "lucide-react";
 
-type WorkspaceTab = "fetch" | "saved";
+type WorkspaceTab = "fetch" | "saved" | "history";
 
 interface HeaderProps {
   version: string;
@@ -58,6 +58,14 @@ export function Header({
                 data-testid="workspace-tab-saved"
               >
                 <span className="truncate">Saved Accounts</span>
+              </Button>
+              <Button
+                variant={workspaceTab === "history" ? "secondary" : "ghost"}
+                className="h-10 min-w-0 rounded-lg px-4 text-xs leading-none sm:px-5 sm:text-[13px]"
+                onClick={() => onWorkspaceTabChange("history")}
+                data-testid="workspace-tab-history"
+              >
+                <span className="truncate">History</span>
               </Button>
             </div>
           </div>

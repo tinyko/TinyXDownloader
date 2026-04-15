@@ -12,6 +12,23 @@ import {
 import { GetDownloadStatus, StopDownload } from "../../../wailsjs/go/main/App";
 import { EventsOn } from "../../../wailsjs/runtime/runtime";
 
+const DOWNLOAD_HISTORY_KEY = "twitter_media_download_history";
+const MAX_DOWNLOAD_HISTORY = 60;
+
+function loadDownloadHistory(): GlobalDownloadHistoryItem[] {
+  try {
+    const saved = localStorage.getItem(DOWNLOAD_HISTORY_KEY);
+    if (!saved) {
+      return [];
+    }
+    const parsed = JSON.parse(saved);
+    return Array.isArray(parsed) ? (parsed as GlobalDownloadHistoryItem[]) : [];
+  } catch (error) {
+    console.error("Failed to load download history:", error);
+    return [];
+  }
+}
+
 export function useGlobalDownloadMonitor() {
   const [globalDownloadState, setGlobalDownloadState] = useState<GlobalDownloadState | null>(null);
   const [globalDownloadTaskState, setGlobalDownloadTaskState] = useState<GlobalDownloadTaskState>({
@@ -19,7 +36,9 @@ export function useGlobalDownloadMonitor() {
     progress: null,
   });
   const [globalDownloadMeta, setGlobalDownloadMeta] = useState<GlobalDownloadSessionMeta | null>(null);
-  const [globalDownloadHistory, setGlobalDownloadHistory] = useState<GlobalDownloadHistoryItem[]>([]);
+  const [globalDownloadHistory, setGlobalDownloadHistory] = useState<GlobalDownloadHistoryItem[]>(() =>
+    loadDownloadHistory()
+  );
   const activeDownloadSessionRef = useRef<{
     id: string;
     meta: GlobalDownloadSessionMeta;
@@ -28,6 +47,14 @@ export function useGlobalDownloadMonitor() {
   const previousDownloadStateRef = useRef<GlobalDownloadState | null>(null);
   const requestedCancelRef = useRef(false);
   const terminalStatusOverrideRef = useRef<DownloadSessionResultStatus | null>(null);
+
+  const persistDownloadHistory = useCallback((history: GlobalDownloadHistoryItem[]) => {
+    try {
+      localStorage.setItem(DOWNLOAD_HISTORY_KEY, JSON.stringify(history));
+    } catch (error) {
+      console.error("Failed to save download history:", error);
+    }
+  }, []);
 
   const handleDownloadSessionStart = useCallback((meta: GlobalDownloadSessionMeta) => {
     const sessionId = crypto.randomUUID();
@@ -51,7 +78,8 @@ export function useGlobalDownloadMonitor() {
       }
 
       setGlobalDownloadHistory((previousHistory) =>
-        previousHistory.map((item) => {
+        {
+          const next = previousHistory.map((item) => {
           if (item.id !== sessionId) {
             return item;
           }
@@ -62,7 +90,10 @@ export function useGlobalDownloadMonitor() {
             ...item,
             status,
           };
-        })
+        });
+          persistDownloadHistory(next);
+          return next;
+        }
       );
       setGlobalDownloadTaskState((previous) =>
         previous.status === "cancelled" && status !== "cancelled"
@@ -73,7 +104,7 @@ export function useGlobalDownloadMonitor() {
             }
       );
     },
-    []
+    [persistDownloadHistory]
   );
 
   const handleDownloadSessionFinish = useCallback(
@@ -156,18 +187,22 @@ export function useGlobalDownloadMonitor() {
 
         lastFinishedDownloadIdRef.current = historyId;
 
-        setGlobalDownloadHistory((previousHistory) => [
-          {
-            id: historyId,
-            title: meta.title,
-            subtitle: meta.subtitle,
-            status: terminalStatus,
-            current: previousState.current,
-            total: previousState.total,
-            finishedAt: Date.now(),
-          },
-          ...previousHistory,
-        ].slice(0, 6));
+        setGlobalDownloadHistory((previousHistory) => {
+          const next = [
+            {
+              id: historyId,
+              title: meta.title,
+              subtitle: meta.subtitle,
+              status: terminalStatus,
+              current: previousState.current,
+              total: previousState.total,
+              finishedAt: Date.now(),
+            },
+            ...previousHistory,
+          ].slice(0, MAX_DOWNLOAD_HISTORY);
+          persistDownloadHistory(next);
+          return next;
+        });
         setGlobalDownloadTaskState({
           status: terminalStatus,
           progress: previousState,
@@ -195,13 +230,31 @@ export function useGlobalDownloadMonitor() {
     return () => {
       unsubscribe();
     };
-  }, []);
+  }, [persistDownloadHistory]);
+
+  const removeDownloadHistory = useCallback(
+    (id: string) => {
+      setGlobalDownloadHistory((previousHistory) => {
+        const next = previousHistory.filter((item) => item.id !== id);
+        persistDownloadHistory(next);
+        return next;
+      });
+    },
+    [persistDownloadHistory]
+  );
+
+  const clearDownloadHistory = useCallback(() => {
+    setGlobalDownloadHistory([]);
+    persistDownloadHistory([]);
+  }, [persistDownloadHistory]);
 
   return {
     globalDownloadState,
     globalDownloadTaskState,
     globalDownloadMeta,
     globalDownloadHistory,
+    removeDownloadHistory,
+    clearDownloadHistory,
     handleDownloadSessionStart,
     handleDownloadSessionFinish,
     handleDownloadSessionFail,

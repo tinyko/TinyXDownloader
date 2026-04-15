@@ -8,6 +8,9 @@ import type {
   MultipleAccount,
 } from "@/types/fetch";
 
+const MULTI_FETCH_HISTORY_KEY = "twitter_media_multi_fetch_sessions";
+const MAX_MULTI_FETCH_HISTORY = 24;
+
 function countSessionStatuses(accounts: MultipleAccount[]) {
   return accounts.reduce(
     (counts, account) => {
@@ -34,11 +37,26 @@ function summarizeMultiFetchSession(
     source: session.source,
     title: session.title,
     createdAt: session.createdAt,
+    finishedAt: Date.now(),
     status: statusOverride ?? session.status,
     accountCount: session.accounts.length,
     totalMedia: session.accounts.reduce((sum, account) => sum + account.mediaCount, 0),
     counts,
   };
+}
+
+function loadRecentSessions(): MultiFetchSessionSummary[] {
+  try {
+    const saved = localStorage.getItem(MULTI_FETCH_HISTORY_KEY);
+    if (!saved) {
+      return [];
+    }
+    const parsed = JSON.parse(saved);
+    return Array.isArray(parsed) ? (parsed as MultiFetchSessionSummary[]) : [];
+  } catch (error) {
+    console.error("Failed to load multi-fetch history:", error);
+    return [];
+  }
 }
 
 function createMultiFetchSession(
@@ -61,8 +79,18 @@ function createMultiFetchSession(
 
 export function useMultiFetchSessionState() {
   const [activeSession, setActiveSession] = useState<MultiFetchSession | null>(null);
-  const [recentSessions, setRecentSessions] = useState<MultiFetchSessionSummary[]>([]);
+  const [recentSessions, setRecentSessions] = useState<MultiFetchSessionSummary[]>(() =>
+    loadRecentSessions()
+  );
   const activeSessionRef = useRef<MultiFetchSession | null>(null);
+
+  const persistRecentSessions = useCallback((next: MultiFetchSessionSummary[]) => {
+    try {
+      localStorage.setItem(MULTI_FETCH_HISTORY_KEY, JSON.stringify(next));
+    } catch (error) {
+      console.error("Failed to save multi-fetch history:", error);
+    }
+  }, []);
 
   const setActiveSessionState = useCallback(
     (
@@ -123,13 +151,17 @@ export function useMultiFetchSessionState() {
       }
 
       const summary = summarizeMultiFetchSession(current, statusOverride);
-      setRecentSessions((previous) => [
-        summary,
-        ...previous.filter((item) => item.id !== summary.id),
-      ]);
+      setRecentSessions((previous) => {
+        const next = [
+          summary,
+          ...previous.filter((item) => item.id !== summary.id),
+        ].slice(0, MAX_MULTI_FETCH_HISTORY);
+        persistRecentSessions(next);
+        return next;
+      });
       setActiveSessionState(null);
     },
-    [setActiveSessionState]
+    [persistRecentSessions, setActiveSessionState]
   );
 
   const replaceActiveSessionState = useCallback(
@@ -143,17 +175,21 @@ export function useMultiFetchSessionState() {
     ) => {
       const current = activeSessionRef.current;
       if (current) {
-        setRecentSessions((previous) => [
-          summarizeMultiFetchSession(current),
-          ...previous.filter((item) => item.id !== current.id),
-        ]);
+        setRecentSessions((previous) => {
+          const next = [
+            summarizeMultiFetchSession(current),
+            ...previous.filter((item) => item.id !== current.id),
+          ].slice(0, MAX_MULTI_FETCH_HISTORY);
+          persistRecentSessions(next);
+          return next;
+        });
       }
 
       const session = createMultiFetchSession(accounts, meta, status);
       setActiveSessionState(session);
       return session;
     },
-    [setActiveSessionState]
+    [persistRecentSessions, setActiveSessionState]
   );
 
   const removeCurrentSessionState = useCallback(() => {
@@ -161,14 +197,17 @@ export function useMultiFetchSessionState() {
   }, [setActiveSessionState]);
 
   const removeRecentSession = useCallback((sessionId: string) => {
-    setRecentSessions((previous) =>
-      previous.filter((session) => session.id !== sessionId)
-    );
-  }, []);
+    setRecentSessions((previous) => {
+      const next = previous.filter((session) => session.id !== sessionId);
+      persistRecentSessions(next);
+      return next;
+    });
+  }, [persistRecentSessions]);
 
   const clearRecentSessions = useCallback(() => {
     setRecentSessions([]);
-  }, []);
+    persistRecentSessions([]);
+  }, [persistRecentSessions]);
 
   const setActiveSessionStatus = useCallback(
     (status: MultiFetchSessionStatus) => {
@@ -180,14 +219,36 @@ export function useMultiFetchSessionState() {
             }
           : previous
       );
+      if (status === "completed" || status === "failed" || status === "cancelled") {
+        const current = activeSessionRef.current;
+        if (!current) {
+          return;
+        }
+        const summary = summarizeMultiFetchSession(
+          {
+            ...current,
+            status,
+          },
+          status
+        );
+        setRecentSessions((previous) => {
+          const next = [
+            summary,
+            ...previous.filter((item) => item.id !== summary.id),
+          ].slice(0, MAX_MULTI_FETCH_HISTORY);
+          persistRecentSessions(next);
+          return next;
+        });
+      }
     },
-    [setActiveSessionState]
+    [persistRecentSessions, setActiveSessionState]
   );
 
   const resetSessionState = useCallback(() => {
     setActiveSessionState(null);
     setRecentSessions([]);
-  }, [setActiveSessionState]);
+    persistRecentSessions([]);
+  }, [persistRecentSessions, setActiveSessionState]);
 
   useEffect(() => {
     activeSessionRef.current = activeSession;

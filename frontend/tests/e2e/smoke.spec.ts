@@ -3,6 +3,7 @@ import { expect, test } from "@playwright/test";
 import {
   chooseSelectItem,
   openApp,
+  openHistoryWorkspace,
   openSavedWorkspace,
   waitForTaskStatus,
   waitForTaskStatusOneOf,
@@ -99,6 +100,14 @@ test("activity panel smoke covers fetch, download, and integrity lifecycle flows
   await expect(
     page.locator('[data-testid^="activity-download-history-status-"]').first()
   ).toHaveText("Cancelled");
+
+  await openHistoryWorkspace(page);
+  await expect(page.getByTestId("task-history-fetch-section")).toContainText("@smokeuser");
+  await expect(page.getByTestId("task-history-queue-section")).toContainText("Fetching 3 Accounts");
+  await expect(page.getByTestId("task-history-download-section")).toContainText(
+    "Downloading @alpha120"
+  );
+  await page.getByTestId("workspace-tab-fetch").click();
 
   await page.getByTestId("open-settings").click();
   await expect(page.getByTestId("integrity-trigger")).toBeVisible();

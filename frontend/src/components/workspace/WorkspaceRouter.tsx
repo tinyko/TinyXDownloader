@@ -1,12 +1,13 @@
 import type { ReactNode } from "react";
 
-type WorkspaceTab = "fetch" | "saved";
+type WorkspaceTab = "fetch" | "saved" | "history";
 
 interface WorkspaceRouterProps {
   workspaceTab: WorkspaceTab;
   savedTabVisited: boolean;
   fetchView: ReactNode;
   savedView: ReactNode;
+  historyView: ReactNode;
 }
 
 export function WorkspaceRouter({
@@ -14,11 +15,13 @@ export function WorkspaceRouter({
   savedTabVisited,
   fetchView,
   savedView,
+  historyView,
 }: WorkspaceRouterProps) {
   return (
     <>
       {workspaceTab === "fetch" ? fetchView : null}
       {savedTabVisited && workspaceTab === "saved" ? savedView : null}
+      {workspaceTab === "history" ? historyView : null}
     </>
   );
 }

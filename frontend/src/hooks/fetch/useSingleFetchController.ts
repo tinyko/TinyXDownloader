@@ -17,17 +17,20 @@ import { runSingleFetchSession } from "@/lib/fetch/runSingleFetchSession";
 import { useSingleFetchRuntime } from "@/hooks/fetch/useSingleFetchRuntime";
 import type { FetchMode, PrivateType, SingleFetchTaskStatus } from "@/types/fetch";
 import type { TwitterResponse } from "@/types/api";
+import type { FetchTaskHistoryInput } from "@/types/history";
 
 interface SingleFetchControllerOptions {
   username: string;
   setUsername: (username: string) => void;
   onAddToHistory?: (data: TwitterResponse, inputUsername: string) => void;
+  onRecordTask?: (entry: FetchTaskHistoryInput) => void;
 }
 
 export function useSingleFetchController({
   username,
   setUsername,
   onAddToHistory,
+  onRecordTask,
 }: SingleFetchControllerOptions) {
   const [loading, setLoading] = useState(false);
   const [taskStatus, setTaskStatus] = useState<SingleFetchTaskStatus>(null);
@@ -149,6 +152,8 @@ export function useSingleFetchController({
         retweets: effectiveRetweets,
         queryKey,
       });
+      const taskStartedAt = Date.now();
+      let taskRecorded = false;
 
       setLoading(true);
       setTaskStatus("running");
@@ -188,6 +193,27 @@ export function useSingleFetchController({
           setResumeInfo,
           setNewMediaCount,
           onAddToHistory,
+          onRecordTask: (payload) => {
+            taskRecorded = true;
+            onRecordTask?.({
+              username: cleanUsername,
+              displayName: payload.accountInfo?.nick || undefined,
+              image: payload.accountInfo?.profile_image || undefined,
+              mode,
+              privateType,
+              timelineType,
+              mediaType: effectiveMediaType,
+              retweets: effectiveRetweets,
+              useDateRange,
+              startDate,
+              endDate,
+              status: payload.status,
+              totalItems: payload.totalItems,
+              startedAt: taskStartedAt,
+              finishedAt: Date.now(),
+              durationMs: Math.max(0, Date.now() - taskStartedAt),
+            });
+          },
         });
         setTaskStatus(terminalStatus);
       } catch (error) {
@@ -195,9 +221,45 @@ export function useSingleFetchController({
         logger.error(`Single fetch failed: ${errorMsg}`);
         if (stopFetchRef.current) {
           setTaskStatus("cancelled");
+          if (!taskRecorded) {
+            onRecordTask?.({
+              username: cleanUsername,
+              mode,
+              privateType,
+              timelineType,
+              mediaType: effectiveMediaType,
+              retweets: effectiveRetweets,
+              useDateRange,
+              startDate,
+              endDate,
+              status: "cancelled",
+              totalItems: 0,
+              startedAt: taskStartedAt,
+              finishedAt: Date.now(),
+              durationMs: Math.max(0, Date.now() - taskStartedAt),
+            });
+          }
         } else {
           setTaskStatus("failed");
           toast.error("Failed to fetch media");
+          if (!taskRecorded) {
+            onRecordTask?.({
+              username: cleanUsername,
+              mode,
+              privateType,
+              timelineType,
+              mediaType: effectiveMediaType,
+              retweets: effectiveRetweets,
+              useDateRange,
+              startDate,
+              endDate,
+              status: "failed",
+              totalItems: 0,
+              startedAt: taskStartedAt,
+              finishedAt: Date.now(),
+              durationMs: Math.max(0, Date.now() - taskStartedAt),
+            });
+          }
         }
       } finally {
         resetFetchTiming();
@@ -211,6 +273,7 @@ export function useSingleFetchController({
       flushResultUpdate,
       loading,
       onAddToHistory,
+      onRecordTask,
       resetFetchTiming,
       result,
       scheduleResultUpdate,

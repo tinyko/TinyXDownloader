@@ -16,6 +16,7 @@ import { WorkspaceLoadingState } from "@/components/workspace/WorkspaceLoadingSt
 import { WorkspaceRouter } from "@/components/workspace/WorkspaceRouter";
 import { FetchWorkspaceSidebar } from "@/components/workspace/fetch/FetchWorkspaceSidebar";
 import { MultiAccountWorkspace } from "@/components/workspace/fetch/MultiAccountWorkspace";
+import { TaskHistoryWorkspace } from "@/components/workspace/history/TaskHistoryWorkspace";
 import type { FetchType } from "@/types/fetch";
 import { useActivityPanelState } from "@/hooks/workspace/useActivityPanelState";
 import {
@@ -26,6 +27,7 @@ import {
 import { useSingleFetchController } from "@/hooks/fetch/useSingleFetchController";
 import { useMultiFetchController } from "@/hooks/fetch/useMultiFetchController";
 import { useFetchHistory } from "@/hooks/fetch/useFetchHistory";
+import { useFetchTaskHistory } from "@/hooks/history/useFetchTaskHistory";
 import { useFetchWorkspaceCoordinator } from "@/hooks/workspace/useFetchWorkspaceCoordinator";
 import { useGlobalDownloadMonitor } from "@/hooks/download/useGlobalDownloadMonitor";
 import { useGlobalIntegrityMonitor } from "@/hooks/integrity/useGlobalIntegrityMonitor";
@@ -261,6 +263,12 @@ function App() {
     removeFromHistory,
     clearFetchHistory,
   } = useFetchHistory();
+  const {
+    fetchTaskHistory,
+    addFetchTaskHistory,
+    removeFetchTaskHistory,
+    clearFetchTaskHistory,
+  } = useFetchTaskHistory();
 
   const {
     loading,
@@ -280,6 +288,7 @@ function App() {
     username,
     setUsername,
     onAddToHistory: addToHistory,
+    onRecordTask: addFetchTaskHistory,
   });
 
   const {
@@ -300,6 +309,8 @@ function App() {
     globalDownloadTaskState,
     globalDownloadMeta,
     globalDownloadHistory,
+    removeDownloadHistory,
+    clearDownloadHistory,
     handleDownloadSessionStart,
     handleDownloadSessionFinish,
     handleDownloadSessionFail,
@@ -587,6 +598,27 @@ function App() {
     settings: workspaceSettings,
   });
 
+  const historyView = (
+    <section className="min-h-0 flex-1 overflow-hidden rounded-[28px] border border-border/70 bg-card/40 p-5 shadow-sm">
+      <TaskHistoryWorkspace
+        fetchHistory={fetchTaskHistory}
+        queueHistory={recentSessions}
+        downloadHistory={globalDownloadHistory}
+        onRemoveFetchHistory={removeFetchTaskHistory}
+        onClearFetchHistory={clearFetchTaskHistory}
+        onRemoveQueueHistory={removeRecentSession}
+        onClearQueueHistory={clearRecentSessions}
+        onRemoveDownloadHistory={removeDownloadHistory}
+        onClearDownloadHistory={clearDownloadHistory}
+        onClearAllHistory={() => {
+          clearFetchTaskHistory();
+          clearRecentSessions();
+          clearDownloadHistory();
+        }}
+      />
+    </section>
+  );
+
   return (
     <WorkspaceChrome
       version={APP_VERSION}
@@ -652,6 +684,7 @@ function App() {
         savedTabVisited={savedTabVisited}
         fetchView={fetchView}
         savedView={savedView}
+        historyView={historyView}
       />
     </WorkspaceChrome>
   );

@@ -1,6 +1,6 @@
 import { useCallback, useState } from "react";
 
-type WorkspaceTab = "fetch" | "saved";
+type WorkspaceTab = "fetch" | "saved" | "history";
 
 export function useWorkspaceChromeState() {
   const [workspaceTab, setWorkspaceTab] = useState<WorkspaceTab>("fetch");

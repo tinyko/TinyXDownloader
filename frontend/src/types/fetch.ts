@@ -60,6 +60,7 @@ export interface MultiFetchSessionSummary {
   source: MultiFetchSessionSource;
   title: string;
   createdAt: number;
+  finishedAt: number;
   status: MultiFetchSessionStatus;
   accountCount: number;
   totalMedia: number;

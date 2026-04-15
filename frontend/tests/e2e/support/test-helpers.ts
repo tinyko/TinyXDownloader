@@ -15,6 +15,11 @@ export async function openSavedWorkspace(page: Page) {
   await expect(page.getByTestId("saved-account-view-public")).toBeVisible();
 }
 
+export async function openHistoryWorkspace(page: Page) {
+  await page.getByTestId("workspace-tab-history").click();
+  await expect(page.getByTestId("task-history-workspace")).toBeVisible();
+}
+
 export async function chooseSelectItem(
   page: Page,
   triggerTestId: string,

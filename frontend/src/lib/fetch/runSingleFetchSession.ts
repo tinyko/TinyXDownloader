@@ -65,6 +65,11 @@ interface RunSingleFetchSessionOptions {
   setResumeInfo: (info: ResumableFetchInfo | null) => void;
   setNewMediaCount: (count: number | null) => void;
   onAddToHistory?: (data: TwitterResponse, inputUsername: string) => void;
+  onRecordTask?: (payload: {
+    status: TaskTerminalStatus;
+    totalItems: number;
+    accountInfo?: TwitterResponse["account_info"] | null;
+  }) => void;
 }
 
 export async function runSingleFetchSession({
@@ -92,6 +97,7 @@ export async function runSingleFetchSession({
   setResumeInfo,
   setNewMediaCount,
   onAddToHistory,
+  onRecordTask,
 }: RunSingleFetchSessionOptions): Promise<TaskTerminalStatus> {
   const isBookmarks = mode === "private" && privateType === "bookmarks";
   const isLikes = mode === "private" && privateType === "likes";
@@ -105,6 +111,23 @@ export async function runSingleFetchSession({
   let initialEntries = [] as TwitterResponse["timeline"];
   let totalNewItemsFound = 0;
   let isIncrementalRefresh = false;
+  let taskRecorded = false;
+
+  const recordTask = (
+    status: TaskTerminalStatus,
+    totalItems: number,
+    nextAccountInfo?: TwitterResponse["account_info"] | null
+  ) => {
+    if (taskRecorded) {
+      return;
+    }
+    taskRecorded = true;
+    onRecordTask?.({
+      status,
+      totalItems,
+      accountInfo: nextAccountInfo ?? accountInfo ?? null,
+    });
+  };
 
   if (isResume) {
     const existingState = getFetchState(fetchScope);
@@ -125,6 +148,7 @@ export async function runSingleFetchSession({
       );
     } else {
       toast.error("No resumable fetch found");
+      recordTask("failed", 0, accountInfo);
       return "failed";
     }
   } else {
@@ -174,6 +198,7 @@ export async function runSingleFetchSession({
           logger.warning(`Timeout reached (${timeoutSeconds}s). Stopping fetch...`);
           stopFetchRef.current = true;
           toast.warning("Fetch timeout reached. Stopping...");
+          recordTask("failed", 0, accountInfo);
           return "failed";
         }
       }
@@ -347,6 +372,11 @@ export async function runSingleFetchSession({
         toast.info(`Stopped at ${formatNumberWithComma(loopResult.currentTotalFetched)} items`);
         const resumable = getResumableInfo(cleanUsername, fetchScope);
         setResumeInfo(resumable.canResume ? resumable : null);
+        recordTask(
+          loopResult.reason === "stopped" ? "cancelled" : "failed",
+          loopResult.currentTotalFetched,
+          accountInfo
+        );
         return loopResult.reason === "stopped" ? "cancelled" : "failed";
       } else if (loopResult.reason === "completed") {
         setResumeInfo(null);
@@ -392,6 +422,11 @@ export async function runSingleFetchSession({
           );
         }
 
+        recordTask(
+          "failed",
+          partialResponse?.timeline.length ?? loopResult.currentTotalFetched,
+          accountInfo
+        );
         return "failed";
       }
 
@@ -465,6 +500,11 @@ export async function runSingleFetchSession({
       }
     }
 
+    recordTask(
+      stopFetchRef.current ? "cancelled" : "completed",
+      finalData?.total_urls ?? 0,
+      finalData?.account_info
+    );
     return stopFetchRef.current ? "cancelled" : "completed";
   } finally {
     singleFetchRequestIdRef.current = null;

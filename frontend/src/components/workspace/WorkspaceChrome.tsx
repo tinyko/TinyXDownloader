@@ -4,7 +4,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { TitleBar } from "@/components/workspace/TitleBar";
 import { Header } from "@/components/workspace/Header";
 
-type WorkspaceTab = "fetch" | "saved";
+type WorkspaceTab = "fetch" | "saved" | "history";
 
 interface WorkspaceChromeProps {
   version: string;

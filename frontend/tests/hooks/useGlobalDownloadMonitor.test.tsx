@@ -44,10 +44,31 @@ function createDownloadState(
   };
 }
 
+function installStorageMock() {
+  const store = new Map<string, string>();
+  Object.defineProperty(window, "localStorage", {
+    configurable: true,
+    value: {
+      getItem: (key: string) => store.get(key) ?? null,
+      setItem: (key: string, value: string) => {
+        store.set(key, value);
+      },
+      removeItem: (key: string) => {
+        store.delete(key);
+      },
+      clear: () => {
+        store.clear();
+      },
+    },
+  });
+}
+
 describe("useGlobalDownloadMonitor", () => {
   let emitDownloadState: ((state: GlobalDownloadState) => void) | null = null;
 
   beforeEach(() => {
+    installStorageMock();
+    window.localStorage.clear();
     emitDownloadState = null;
     window.go = {
       main: {
@@ -188,5 +209,34 @@ describe("useGlobalDownloadMonitor", () => {
     await waitFor(() =>
       expect(result.current.globalDownloadHistory[0]?.status).toBe("failed")
     );
+  });
+
+  it("clears persisted download history on demand", async () => {
+    window.localStorage.setItem(
+      "twitter_media_download_history",
+      JSON.stringify([
+        {
+          id: "download-1",
+          title: "Existing task",
+          status: "completed",
+          current: 1,
+          total: 1,
+          finishedAt: Date.now(),
+        },
+      ])
+    );
+
+    const { result } = renderHook(() => useGlobalDownloadMonitor());
+
+    await waitFor(() =>
+      expect(result.current.globalDownloadHistory).toHaveLength(1)
+    );
+
+    act(() => {
+      result.current.clearDownloadHistory();
+    });
+
+    expect(result.current.globalDownloadHistory).toHaveLength(0);
+    expect(window.localStorage.getItem("twitter_media_download_history")).toBe("[]");
   });
 });

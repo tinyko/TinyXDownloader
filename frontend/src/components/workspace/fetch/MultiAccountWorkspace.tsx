@@ -347,7 +347,7 @@ export function MultiAccountWorkspace({
                   <p className="mt-1 text-xs text-muted-foreground">
                     {recent.accountCount.toLocaleString()} account(s) •{" "}
                     {recent.totalMedia.toLocaleString()} item(s) •{" "}
-                    {new Date(recent.createdAt).toLocaleTimeString()}
+                    {new Date(recent.finishedAt || recent.createdAt).toLocaleTimeString()}
                   </p>
                 </div>
 
