@@ -1,6 +1,6 @@
 # TinyXDownloader
 
-TinyXDownloader is a desktop-first X/Twitter media fetch and download workspace built with Wails, React, and Go. This local fork focuses on a clean operator workflow for batch fetching, saved account review, background downloads, and macOS packaging.
+TinyXDownloader is a desktop-first X/Twitter fetch and download workspace built with Wails, React, and a native Go extractor runtime. The current app no longer depends on Python, gallery-dl, or helper binaries for build or runtime behavior.
 
 ## Latest Workspace
 
@@ -12,11 +12,10 @@ The current UI is organized into three persistent work areas:
 - a central workspace for live fetch results, multi-account queue progress, and saved media browsing
 - a right activity rail for fetch status and background download monitoring
 
-Settings and Diagnostics open as right-side drawers so the main workspace stays focused on fetch and library tasks.
+Settings and Support & Health open as right-side drawers so the main workspace stays focused on fetch and library tasks.
 
 ## Key Capabilities
 
-- Fetch public media, private likes, and private bookmarks from a single desktop workflow.
 - Fetch public media, public timelines/date ranges, private likes, and private bookmarks through the same Go-only desktop runtime.
 - Paste one account or many accounts into the same input box, separated by newline or Enter.
 - Run multi-account fetch queues with a dedicated workspace and one-click download for the current fetched set.
@@ -154,14 +153,16 @@ XDOWNLOADER_APPDATA_DIR="$(mktemp -d)" ./build/bin/TinyXDownloader.app/Contents/
 
 ## Diagnostics and Backups
 
-Diagnostics now use a dual path:
+The Support & Health drawer is now a lightweight audit and recovery surface for the Go-only runtime. It focuses on:
 
-- the in-app diagnostics panel still shows the current session log stream
-- frontend and backend diagnostic logs are also written to persistent files under `logs/`
+- current runtime/build status
+- default-route soak evidence
+- historical validation/live evidence summaries
+- support bundle export and local backup utilities
 
-Persistent diagnostic logs rotate automatically so the app-data directory does not grow without bound. Support bundles intentionally include only the most recent tail of each log file instead of the full unbounded history.
+Frontend and backend diagnostic logs are still written to persistent files under `logs/`. Persistent diagnostic logs rotate automatically so the app-data directory does not grow without bound. Support bundles intentionally include only the most recent tail of each log file instead of the full unbounded history.
 
-The Diagnostics drawer now includes native actions for:
+The drawer includes native actions for:
 
 - exporting a support bundle
 - creating a database backup
