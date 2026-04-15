@@ -1,10 +1,14 @@
 package backend
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
+	"net/http"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestGoTwitterEngineTimelineSupportPhase3B(t *testing.T) {
@@ -311,7 +315,7 @@ func TestXSessionClassifyHTTPErrorTreatsStatusAsFallback(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := session.classifyHTTPError(tt.stage, tt.statusCode, tt.endpoint, tt.body)
+			err := session.classifyHTTPError(tt.stage, tt.statusCode, tt.endpoint, tt.body, nil)
 			if err == nil {
 				t.Fatal("expected an error")
 			}
@@ -326,6 +330,111 @@ func TestXSessionClassifyHTTPErrorTreatsStatusAsFallback(t *testing.T) {
 				t.Fatalf("unexpected fallback metadata: %+v", metadata)
 			}
 		})
+	}
+}
+
+func TestXSessionClassifyHTTPErrorRateLimitedIncludesRetryAfter(t *testing.T) {
+	session := &xAPISession{
+		owner: &xAPIClient{
+			now: time.Now,
+		},
+	}
+
+	headers := http.Header{}
+	headers.Set("Retry-After", "7")
+
+	err := session.classifyHTTPError("fetch", http.StatusTooManyRequests, xUserMediaPath, nil, headers)
+	if err == nil {
+		t.Fatal("expected rate limit error")
+	}
+	if !strings.Contains(err.Error(), "retry after 8s") {
+		t.Fatalf("expected retry-after hint, got %q", err.Error())
+	}
+	metadata, ok := xFallbackDetails(err)
+	if !ok {
+		t.Fatal("expected fallback metadata")
+	}
+	if metadata.Code != "http_rate_limited" {
+		t.Fatalf("unexpected fallback code: %+v", metadata)
+	}
+}
+
+func TestXAPISessionDoJSONRetriesRateLimitUntilSuccess(t *testing.T) {
+	fakeNow := time.Unix(1_700_000_000, 0)
+	var sleeps []time.Duration
+	attempts := 0
+	session := newXAPITestSession(t, func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		if attempts == 1 {
+			w.Header().Set("x-rate-limit-reset", strconv.FormatInt(fakeNow.Add(3*time.Second).Unix(), 10))
+			http.Error(w, "too many requests", http.StatusTooManyRequests)
+			return
+		}
+		writeJSONResponse(t, w, map[string]any{"ok": true})
+	})
+	session.owner = &xAPIClient{
+		now: func() time.Time { return fakeNow },
+		sleep: func(_ context.Context, delay time.Duration) error {
+			sleeps = append(sleeps, delay)
+			fakeNow = fakeNow.Add(delay)
+			return nil
+		},
+		rateLimitDelay: xRateLimitCooldown,
+		retryCount:     4,
+		rateLimitRoll:  func() int { return 5 },
+	}
+
+	var payload map[string]any
+	if err := session.doJSON(context.Background(), "fetch", http.MethodGet, xAPIRootURL, xUserMediaPath, nil, true, &payload); err != nil {
+		t.Fatalf("doJSON returned error: %v", err)
+	}
+	if attempts != 2 {
+		t.Fatalf("expected 2 attempts, got %d", attempts)
+	}
+	if len(sleeps) != 1 || sleeps[0] != 4*time.Second {
+		t.Fatalf("expected one 4s rate-limit wait, got %v", sleeps)
+	}
+	if got := payload["ok"]; got != true {
+		t.Fatalf("expected successful payload, got %#v", payload)
+	}
+}
+
+func TestXAPISessionDoJSONPreemptsLowRemainingRequests(t *testing.T) {
+	fakeNow := time.Unix(1_700_000_100, 0)
+	var sleeps []time.Duration
+	attempts := 0
+
+	session := newXAPITestSession(t, func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		w.Header().Set("x-rate-limit-reset", strconv.FormatInt(fakeNow.Add(2*time.Second).Unix(), 10))
+		if attempts == 1 {
+			w.Header().Set("x-rate-limit-remaining", "1")
+		} else {
+			w.Header().Set("x-rate-limit-remaining", "10")
+		}
+		writeJSONResponse(t, w, map[string]any{"ok": true})
+	})
+	session.owner = &xAPIClient{
+		now: func() time.Time { return fakeNow },
+		sleep: func(_ context.Context, delay time.Duration) error {
+			sleeps = append(sleeps, delay)
+			fakeNow = fakeNow.Add(delay)
+			return nil
+		},
+		rateLimitDelay: xRateLimitCooldown,
+		retryCount:     4,
+		rateLimitRoll:  func() int { return 5 },
+	}
+
+	var payload map[string]any
+	if err := session.doJSON(context.Background(), "fetch", http.MethodGet, xAPIRootURL, xUserMediaPath, nil, true, &payload); err != nil {
+		t.Fatalf("doJSON returned error: %v", err)
+	}
+	if attempts != 2 {
+		t.Fatalf("expected low-remaining retry to issue 2 attempts, got %d", attempts)
+	}
+	if len(sleeps) != 1 || sleeps[0] != 3*time.Second {
+		t.Fatalf("expected one 3s preemptive wait, got %v", sleeps)
 	}
 }
 

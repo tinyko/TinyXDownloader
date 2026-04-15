@@ -2,13 +2,14 @@ package backend
 
 import (
 	"context"
-	"crypto/rand"
+	cryptorand "crypto/rand"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"html"
 	"io"
+	mathrand "math/rand"
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
@@ -26,6 +27,9 @@ const (
 	xAuthBearerToken        = "Bearer AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA"
 	xDefaultTimelineCount   = 50
 	xClientRequestTimeout   = 30 * time.Second
+	xRateLimitCooldown      = 60 * time.Second
+	xRateLimitSafetyMargin  = time.Second
+	xRateLimitRetryCount    = 4
 	xFirefoxLinuxUserAgent  = "Mozilla/5.0 (X11; Linux x86_64; rv:140.0) Gecko/20100101 Firefox/140.0"
 	xUserByScreenNamePath   = "/graphql/ck5KkZ8t5cOmoLssopN99Q/UserByScreenName"
 	xUserMediaPath          = "/graphql/jCRhbOzdgOHp6u9H4g2tEg/UserMedia"
@@ -46,6 +50,14 @@ var (
 type xAPIClient struct {
 	transport *http.Transport
 	timeout   time.Duration
+
+	pacingMu       sync.Mutex
+	cooldownUntil  time.Time
+	rateLimitDelay time.Duration
+	retryCount     int
+	now            func() time.Time
+	sleep          func(context.Context, time.Duration) error
+	rateLimitRoll  func() int
 
 	guestMu    sync.Mutex
 	guestToken string
@@ -337,8 +349,15 @@ func newXAPIClient() (*xAPIClient, error) {
 	}
 
 	return &xAPIClient{
-		transport: transport,
-		timeout:   xClientRequestTimeout,
+		transport:      transport,
+		timeout:        xClientRequestTimeout,
+		rateLimitDelay: xRateLimitCooldown,
+		retryCount:     xRateLimitRetryCount,
+		now:            time.Now,
+		sleep:          xContextSleep,
+		rateLimitRoll: func() int {
+			return mathrand.Intn(5) + 1
+		},
 	}, nil
 }
 
@@ -577,34 +596,52 @@ func (s *xAPISession) doJSON(
 		requestURL += "?" + encoded
 	}
 
-	req, err := http.NewRequestWithContext(ctx, method, requestURL, nil)
-	if err != nil {
-		return xWrapFallback(stage, "request_build_failed", "failed to build x api request", err)
-	}
-	s.applyHeaders(req, authRequired)
+	maxRetries := s.owner.maxRetryCount()
+	for attempt := 0; ; attempt++ {
+		if err := s.owner.waitForSharedCooldown(ctx); err != nil {
+			return xWrapFallback(stage, "request_rate_limit_wait_failed", "x api request was canceled while waiting for rate-limit cooldown", err)
+		}
 
-	resp, err := s.httpClient.Do(req)
-	if err != nil {
-		return xWrapFallback(stage, "request_failed", "x api request failed", err)
-	}
-	defer resp.Body.Close()
+		req, err := http.NewRequestWithContext(ctx, method, requestURL, nil)
+		if err != nil {
+			return xWrapFallback(stage, "request_build_failed", "failed to build x api request", err)
+		}
+		s.applyHeaders(req, authRequired)
 
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return xWrapFallback(stage, "response_read_failed", "failed to read x api response", err)
-	}
+		resp, err := s.httpClient.Do(req)
+		if err != nil {
+			return xWrapFallback(stage, "request_failed", "x api request failed", err)
+		}
 
-	if resp.StatusCode >= http.StatusBadRequest {
-		return s.classifyHTTPError(stage, resp.StatusCode, endpoint, body)
-	}
-	if len(strings.TrimSpace(string(body))) == 0 {
-		return xWrapFallback(stage, "response_empty", "x api returned an empty response body", nil)
-	}
-	if err := json.Unmarshal(body, out); err != nil {
-		return xWrapFallback(stage, "response_malformed_json", "x api returned malformed json", err)
-	}
+		body, readErr := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if readErr != nil {
+			return xWrapFallback(stage, "response_read_failed", "failed to read x api response", readErr)
+		}
 
-	return nil
+		if s.owner.shouldPreemptRateLimit(resp.Header) {
+			s.owner.noteRateLimitedUntil(s.owner.resolveRateLimitUntil(resp.Header))
+			if attempt < maxRetries {
+				continue
+			}
+		}
+
+		if resp.StatusCode == http.StatusTooManyRequests && attempt < maxRetries {
+			s.owner.noteRateLimitedUntil(s.owner.resolveRateLimitUntil(resp.Header))
+			continue
+		}
+		if resp.StatusCode >= http.StatusBadRequest {
+			return s.classifyHTTPError(stage, resp.StatusCode, endpoint, body, resp.Header)
+		}
+		if len(strings.TrimSpace(string(body))) == 0 {
+			return xWrapFallback(stage, "response_empty", "x api returned an empty response body", nil)
+		}
+		if err := json.Unmarshal(body, out); err != nil {
+			return xWrapFallback(stage, "response_malformed_json", "x api returned malformed json", err)
+		}
+
+		return nil
+	}
 }
 
 func (s *xAPISession) applyHeaders(req *http.Request, authRequired bool) {
@@ -641,43 +678,54 @@ func (s *xAPISession) ensureGuestToken(ctx context.Context, stage string) (strin
 		return token, nil
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, xGuestAPIRootURL+xGuestActivatePath, nil)
-	if err != nil {
-		return "", xWrapFallback(stage, "guest_request_build_failed", "failed to build guest token request", err)
-	}
-	req.Header.Set("User-Agent", xFirefoxLinuxUserAgent)
-	req.Header.Set("Accept", "*/*")
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", xAuthBearerToken)
+	maxRetries := s.owner.maxRetryCount()
+	for attempt := 0; ; attempt++ {
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, xGuestAPIRootURL+xGuestActivatePath, nil)
+		if err != nil {
+			return "", xWrapFallback(stage, "guest_request_build_failed", "failed to build guest token request", err)
+		}
+		req.Header.Set("User-Agent", xFirefoxLinuxUserAgent)
+		req.Header.Set("Accept", "*/*")
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", xAuthBearerToken)
 
-	resp, err := s.httpClient.Do(req)
-	if err != nil {
-		return "", xWrapFallback(stage, "guest_request_failed", "guest token request failed", err)
-	}
-	defer resp.Body.Close()
+		if err := s.owner.waitForSharedCooldown(ctx); err != nil {
+			return "", xWrapFallback(stage, "guest_rate_limit_wait_failed", "guest token request was canceled while waiting for rate-limit cooldown", err)
+		}
 
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", xWrapFallback(stage, "guest_response_read_failed", "failed to read guest token response", err)
-	}
-	if resp.StatusCode >= http.StatusBadRequest {
-		return "", s.classifyHTTPError(stage, resp.StatusCode, xGuestActivatePath, body)
-	}
+		resp, err := s.httpClient.Do(req)
+		if err != nil {
+			return "", xWrapFallback(stage, "guest_request_failed", "guest token request failed", err)
+		}
 
-	var payload struct {
-		GuestToken string `json:"guest_token"`
-	}
-	if err := json.Unmarshal(body, &payload); err != nil {
-		return "", xWrapFallback(stage, "guest_response_malformed_json", "guest token response was not valid json", err)
-	}
-	if strings.TrimSpace(payload.GuestToken) == "" {
-		return "", xWrapFallback(stage, "guest_token_missing", "guest token response did not include a token", nil)
-	}
+		body, readErr := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if readErr != nil {
+			return "", xWrapFallback(stage, "guest_response_read_failed", "failed to read guest token response", readErr)
+		}
+		if resp.StatusCode == http.StatusTooManyRequests && attempt < maxRetries {
+			s.owner.noteRateLimitedUntil(s.owner.resolveRateLimitUntil(resp.Header))
+			continue
+		}
+		if resp.StatusCode >= http.StatusBadRequest {
+			return "", s.classifyHTTPError(stage, resp.StatusCode, xGuestActivatePath, body, resp.Header)
+		}
 
-	s.owner.guestMu.Lock()
-	s.owner.guestToken = payload.GuestToken
-	s.owner.guestMu.Unlock()
-	return payload.GuestToken, nil
+		var payload struct {
+			GuestToken string `json:"guest_token"`
+		}
+		if err := json.Unmarshal(body, &payload); err != nil {
+			return "", xWrapFallback(stage, "guest_response_malformed_json", "guest token response was not valid json", err)
+		}
+		if strings.TrimSpace(payload.GuestToken) == "" {
+			return "", xWrapFallback(stage, "guest_token_missing", "guest token response did not include a token", nil)
+		}
+
+		s.owner.guestMu.Lock()
+		s.owner.guestToken = payload.GuestToken
+		s.owner.guestMu.Unlock()
+		return payload.GuestToken, nil
+	}
 }
 
 func (s *xAPISession) cachedGuestToken() string {
@@ -696,7 +744,7 @@ func (s *xAPISession) currentCSRFToken() string {
 	return ""
 }
 
-func (s *xAPISession) classifyHTTPError(stage string, statusCode int, endpoint string, body []byte) error {
+func (s *xAPISession) classifyHTTPError(stage string, statusCode int, endpoint string, body []byte, headers http.Header) error {
 	message := xFirstAPIErrorMessage(body)
 	switch statusCode {
 	case http.StatusUnauthorized:
@@ -712,9 +760,115 @@ func (s *xAPISession) classifyHTTPError(stage string, statusCode int, endpoint s
 		}
 		return xWrapFallback(stage, "http_not_found", "x api endpoint returned not found", xStatusError(statusCode, message))
 	case http.StatusTooManyRequests:
-		return xWrapFallback(stage, "http_rate_limited", "x api rate limited the request", xStatusError(statusCode, message))
+		return xWrapFallback(stage, "http_rate_limited", xRateLimitedReason(s.owner.resolveRateLimitWait(headers)), xStatusError(statusCode, message))
 	default:
 		return xWrapFallback(stage, "http_status", fmt.Sprintf("x api request failed with status %d", statusCode), xStatusError(statusCode, message))
+	}
+}
+
+func (c *xAPIClient) waitForSharedCooldown(ctx context.Context) error {
+	if err := contextError(ctx); err != nil {
+		return err
+	}
+	if c == nil {
+		return nil
+	}
+
+	nowFn := c.now
+	if nowFn == nil {
+		nowFn = time.Now
+	}
+	sleepFn := c.sleep
+	if sleepFn == nil {
+		sleepFn = xContextSleep
+	}
+
+	c.pacingMu.Lock()
+	cooldownUntil := c.cooldownUntil
+	c.pacingMu.Unlock()
+
+	waitFor := cooldownUntil.Sub(nowFn())
+	if waitFor <= 0 {
+		return nil
+	}
+	return sleepFn(ctx, waitFor)
+}
+
+func (c *xAPIClient) maxRetryCount() int {
+	if c == nil || c.retryCount < 0 {
+		return xRateLimitRetryCount
+	}
+	return c.retryCount
+}
+
+func (c *xAPIClient) shouldPreemptRateLimit(headers http.Header) bool {
+	if c == nil || headers == nil {
+		return false
+	}
+	if _, ok := xParseRateLimitReset(headers, c.now); !ok {
+		return false
+	}
+	rawRemaining := strings.TrimSpace(headers.Get("x-rate-limit-remaining"))
+	if rawRemaining == "" {
+		return false
+	}
+	remaining, err := strconv.Atoi(rawRemaining)
+	if err != nil || remaining >= 6 {
+		return false
+	}
+
+	roll := 1
+	if c.rateLimitRoll != nil {
+		roll = c.rateLimitRoll()
+	}
+	if roll < 1 {
+		roll = 1
+	}
+	if roll > 5 {
+		roll = 5
+	}
+	return remaining <= roll
+}
+
+func (c *xAPIClient) resolveRateLimitUntil(headers http.Header) time.Time {
+	if until, ok := xParseRateLimitReset(headers, c.now); ok {
+		return until
+	}
+	delay := xRateLimitCooldown
+	if c != nil && c.rateLimitDelay > 0 {
+		delay = c.rateLimitDelay
+	}
+	if retryAfter := xParseRetryAfter(headers); retryAfter > 0 {
+		delay = retryAfter + xRateLimitSafetyMargin
+	}
+	nowFn := time.Now
+	if c != nil && c.now != nil {
+		nowFn = c.now
+	}
+	return nowFn().Add(delay)
+}
+
+func (c *xAPIClient) resolveRateLimitWait(headers http.Header) time.Duration {
+	nowFn := time.Now
+	if c != nil && c.now != nil {
+		nowFn = c.now
+	}
+	waitFor := c.resolveRateLimitUntil(headers).Sub(nowFn())
+	if waitFor <= 0 {
+		return xRateLimitSafetyMargin
+	}
+	return waitFor
+}
+
+func (c *xAPIClient) noteRateLimitedUntil(until time.Time) {
+	if c == nil || until.IsZero() {
+		return
+	}
+
+	c.pacingMu.Lock()
+	defer c.pacingMu.Unlock()
+	if until.After(c.cooldownUntil) {
+		c.cooldownUntil = until
 	}
 }
 
@@ -1021,7 +1175,7 @@ func xResolveTimelineCount(batchSize int) int {
 
 func xGenerateCSRFToken() (string, error) {
 	bytes := make([]byte, 16)
-	if _, err := rand.Read(bytes); err != nil {
+	if _, err := cryptorand.Read(bytes); err != nil {
 		return "", err
 	}
 	return hex.EncodeToString(bytes), nil
@@ -1133,6 +1287,83 @@ func xFirstAPIErrorMessage(body []byte) string {
 		}
 	}
 	return ""
+}
+
+func xParseRetryAfter(headers http.Header) time.Duration {
+	if headers == nil {
+		return 0
+	}
+
+	raw := strings.TrimSpace(headers.Get("Retry-After"))
+	if raw == "" {
+		return 0
+	}
+	if seconds, err := strconv.Atoi(raw); err == nil {
+		if seconds <= 0 {
+			return 0
+		}
+		return time.Duration(seconds) * time.Second
+	}
+
+	if retryAt, err := http.ParseTime(raw); err == nil {
+		delay := time.Until(retryAt)
+		if delay > 0 {
+			return delay
+		}
+	}
+	return 0
+}
+
+func xParseRateLimitReset(headers http.Header, nowFn func() time.Time) (time.Time, bool) {
+	if headers == nil {
+		return time.Time{}, false
+	}
+
+	raw := strings.TrimSpace(headers.Get("x-rate-limit-reset"))
+	if raw == "" {
+		return time.Time{}, false
+	}
+
+	resetUnix, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || resetUnix <= 0 {
+		return time.Time{}, false
+	}
+
+	if nowFn == nil {
+		nowFn = time.Now
+	}
+
+	until := time.Unix(resetUnix, 0).Add(xRateLimitSafetyMargin)
+	if !until.After(nowFn()) {
+		return time.Time{}, false
+	}
+	return until, true
+}
+
+func xRateLimitedReason(delay time.Duration) string {
+	if delay <= 0 {
+		return "x api rate limited the request"
+	}
+	seconds := int(delay.Round(time.Second) / time.Second)
+	if seconds <= 0 {
+		seconds = 1
+	}
+	return fmt.Sprintf("x api rate limited the request; retry after %ds", seconds)
+}
+
+func xContextSleep(ctx context.Context, delay time.Duration) error {
+	if delay <= 0 {
+		return nil
+	}
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
 }
 
 func xParseTweetDate(raw string) (string, error) {

@@ -1,5 +1,11 @@
 # Changelog
 
+## V1.3.3 - 2026-04-16
+
+- reworked native X rate-limit handling to follow gallery-dl-style cooldowns driven by `x-rate-limit-reset`, low-budget preemption, and bounded backend retries instead of guessed frontend throttling
+- fixed final unified download progress reporting so concurrent batch downloads always emit the expected terminal progress update
+- rebuilt the release artifacts on top of the stabilized go-only runtime and bounded task history workspace
+
 ## V1.3.2 - 2026-04-15
 
 - fixed default-route soak and `phase7_ready` semantics so only real default Go traffic contributes to depythonization evidence

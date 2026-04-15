@@ -231,5 +231,10 @@ func executeDownloadTasks(
 	close(taskChan)
 
 	wg.Wait()
+	if progress != nil && reportedTotal > 0 {
+		callbackMu.Lock()
+		progress(int(completedCount), reportedTotal)
+		callbackMu.Unlock()
+	}
 	return int(downloadedCount), int(skippedCount), int(failedCount), nil
 }
