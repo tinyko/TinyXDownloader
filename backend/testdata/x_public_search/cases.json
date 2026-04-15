@@ -1,0 +1,1804 @@
+{
+  "cases": [
+    {
+      "name": "media-all",
+      "request": {
+        "username": "example_user",
+        "start_date": "2026-04-01",
+        "end_date": "2026-04-15",
+        "media_filter": "all",
+        "retweets": false
+      },
+      "user_lookup": {
+        "data": {
+          "user": {
+            "result": {
+              "rest_id": "424242",
+              "avatar": {
+                "image_url": "https://pbs.twimg.com/profile_images/example/avatar_normal.jpg"
+              },
+              "core": {
+                "created_at": "Wed Dec 19 20:20:32 +0000 2007",
+                "name": "Example Display",
+                "screen_name": "example_user"
+              },
+              "legacy": {
+                "followers_count": 1200,
+                "friends_count": 34,
+                "statuses_count": 77
+              },
+              "location": {
+                "location": "Low Earth Orbit"
+              },
+              "privacy": {
+                "protected": false
+              },
+              "verification": {
+                "verified": false
+              }
+            }
+          }
+        }
+      },
+      "pages": [
+        {
+          "data": {
+            "search_by_raw_query": {
+              "search_timeline": {
+                "timeline": {
+                  "instructions": [
+                    {
+                      "type": "TimelineAddEntries",
+                      "entries": [
+                        {
+                          "entryId": "search-grid-0-tweet-8101",
+                          "content": {
+                            "itemContent": {
+                              "itemType": "TimelineTweet",
+                              "tweet_results": {
+                                "result": {
+                                  "rest_id": "8101",
+                                  "core": {
+                                    "user_results": {
+                                      "result": {
+                                        "rest_id": "424242",
+                                        "avatar": {
+                                          "image_url": "https://pbs.twimg.com/profile_images/example/avatar_normal.jpg"
+                                        },
+                                        "core": {
+                                          "created_at": "Wed Dec 19 20:20:32 +0000 2007",
+                                          "name": "Example Display",
+                                          "screen_name": "example_user"
+                                        },
+                                        "legacy": {
+                                          "followers_count": 1200,
+                                          "friends_count": 34,
+                                          "statuses_count": 77
+                                        },
+                                        "location": {
+                                          "location": "Low Earth Orbit"
+                                        },
+                                        "privacy": {
+                                          "protected": false
+                                        },
+                                        "verification": {
+                                          "verified": false
+                                        }
+                                      }
+                                    }
+                                  },
+                                  "legacy": {
+                                    "bookmark_count": 12,
+                                    "conversation_id_str": "8101",
+                                    "created_at": "Tue Apr 14 18:30:00 +0000 2026",
+                                    "favorite_count": 42,
+                                    "full_text": "Search photo",
+                                    "possibly_sensitive": false,
+                                    "quote_count": 4,
+                                    "reply_count": 5,
+                                    "retweet_count": 6,
+                                    "source": "<a href=\"https://www.sprinklr.com\" rel=\"nofollow\">Sprinklr</a>",
+                                    "entities": {
+                                      "hashtags": [
+                                        {
+                                          "text": "space"
+                                        }
+                                      ]
+                                    },
+                                    "extended_entities": {
+                                      "media": [
+                                        {
+                                          "type": "photo",
+                                          "media_url_https": "https://pbs.twimg.com/media/search-photo.jpg",
+                                          "original_info": {
+                                            "width": 1600,
+                                            "height": 900
+                                          }
+                                        }
+                                      ]
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        },
+                        {
+                          "entryId": "search-grid-0-tweet-8102",
+                          "content": {
+                            "itemContent": {
+                              "itemType": "TimelineTweet",
+                              "tweet_results": {
+                                "result": {
+                                  "rest_id": "8102",
+                                  "core": {
+                                    "user_results": {
+                                      "result": {
+                                        "rest_id": "424242",
+                                        "avatar": {
+                                          "image_url": "https://pbs.twimg.com/profile_images/example/avatar_normal.jpg"
+                                        },
+                                        "core": {
+                                          "created_at": "Wed Dec 19 20:20:32 +0000 2007",
+                                          "name": "Example Display",
+                                          "screen_name": "example_user"
+                                        },
+                                        "legacy": {
+                                          "followers_count": 1200,
+                                          "friends_count": 34,
+                                          "statuses_count": 77
+                                        },
+                                        "location": {
+                                          "location": "Low Earth Orbit"
+                                        },
+                                        "privacy": {
+                                          "protected": false
+                                        },
+                                        "verification": {
+                                          "verified": false
+                                        }
+                                      }
+                                    }
+                                  },
+                                  "legacy": {
+                                    "bookmark_count": 8,
+                                    "conversation_id_str": "8102",
+                                    "created_at": "Tue Apr 14 18:31:00 +0000 2026",
+                                    "favorite_count": 30,
+                                    "full_text": "Search video",
+                                    "possibly_sensitive": false,
+                                    "quote_count": 1,
+                                    "reply_count": 2,
+                                    "retweet_count": 3,
+                                    "source": "<a href=\"https://www.sprinklr.com\" rel=\"nofollow\">Sprinklr</a>",
+                                    "extended_entities": {
+                                      "media": [
+                                        {
+                                          "type": "video",
+                                          "original_info": {
+                                            "width": 1920,
+                                            "height": 1080
+                                          },
+                                          "video_info": {
+                                            "duration_millis": 12000,
+                                            "variants": [
+                                              {
+                                                "content_type": "video/mp4",
+                                                "bitrate": 832000,
+                                                "url": "https://video.twimg.com/search-video-low.mp4?tag=12"
+                                              },
+                                              {
+                                                "content_type": "video/mp4",
+                                                "bitrate": 2176000,
+                                                "url": "https://video.twimg.com/search-video-high.mp4?tag=18"
+                                              }
+                                            ]
+                                          }
+                                        }
+                                      ]
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      ],
+      "expected_response": {
+        "account_info": {
+          "name": "example_user",
+          "nick": "Example Display",
+          "date": "2007-12-19 20:20:32",
+          "followers_count": 1200,
+          "friends_count": 34,
+          "profile_image": "https://pbs.twimg.com/profile_images/example/avatar.jpg",
+          "statuses_count": 77
+        },
+        "total_urls": 2,
+        "timeline": [
+          {
+            "url": "https://pbs.twimg.com/media/search-photo?format=jpg&name=orig",
+            "date": "2026-04-14T18:30:00",
+            "tweet_id": "8101",
+            "type": "photo",
+            "extension": "jpg",
+            "width": 1600,
+            "height": 900,
+            "content": "Search photo",
+            "bookmark_count": 12,
+            "favorite_count": 42,
+            "retweet_count": 6,
+            "reply_count": 5,
+            "source": "Sprinklr",
+            "author_username": "example_user"
+          },
+          {
+            "url": "https://video.twimg.com/search-video-high.mp4?tag=18",
+            "date": "2026-04-14T18:31:00",
+            "tweet_id": "8102",
+            "type": "video",
+            "extension": "mp4",
+            "width": 1920,
+            "height": 1080,
+            "content": "Search video",
+            "bookmark_count": 8,
+            "favorite_count": 30,
+            "retweet_count": 3,
+            "reply_count": 2,
+            "source": "Sprinklr",
+            "author_username": "example_user"
+          }
+        ],
+        "metadata": {
+          "new_entries": 2,
+          "page": 0,
+          "batch_size": 0,
+          "has_more": false,
+          "completed": true
+        },
+        "completed": true
+      }
+    },
+    {
+      "name": "image-only",
+      "request": {
+        "username": "example_user",
+        "start_date": "2026-04-01",
+        "end_date": "2026-04-15",
+        "media_filter": "image",
+        "retweets": false
+      },
+      "user_lookup": {
+        "data": {
+          "user": {
+            "result": {
+              "rest_id": "424242",
+              "avatar": {
+                "image_url": "https://pbs.twimg.com/profile_images/example/avatar_normal.jpg"
+              },
+              "core": {
+                "created_at": "Wed Dec 19 20:20:32 +0000 2007",
+                "name": "Example Display",
+                "screen_name": "example_user"
+              },
+              "legacy": {
+                "followers_count": 1200,
+                "friends_count": 34,
+                "statuses_count": 77
+              },
+              "location": {
+                "location": "Low Earth Orbit"
+              },
+              "privacy": {
+                "protected": false
+              },
+              "verification": {
+                "verified": false
+              }
+            }
+          }
+        }
+      },
+      "pages": [
+        {
+          "data": {
+            "search_by_raw_query": {
+              "search_timeline": {
+                "timeline": {
+                  "instructions": [
+                    {
+                      "type": "TimelineAddEntries",
+                      "entries": [
+                        {
+                          "entryId": "search-grid-0-tweet-8201",
+                          "content": {
+                            "itemContent": {
+                              "itemType": "TimelineTweet",
+                              "tweet_results": {
+                                "result": {
+                                  "rest_id": "8201",
+                                  "core": {
+                                    "user_results": {
+                                      "result": {
+                                        "rest_id": "424242",
+                                        "avatar": {
+                                          "image_url": "https://pbs.twimg.com/profile_images/example/avatar_normal.jpg"
+                                        },
+                                        "core": {
+                                          "created_at": "Wed Dec 19 20:20:32 +0000 2007",
+                                          "name": "Example Display",
+                                          "screen_name": "example_user"
+                                        }
+                                      }
+                                    }
+                                  },
+                                  "legacy": {
+                                    "conversation_id_str": "8201",
+                                    "created_at": "Tue Apr 14 18:30:00 +0000 2026",
+                                    "favorite_count": 20,
+                                    "full_text": "Image only photo",
+                                    "reply_count": 1,
+                                    "retweet_count": 2,
+                                    "source": "<a href=\"https://www.sprinklr.com\" rel=\"nofollow\">Sprinklr</a>",
+                                    "extended_entities": {
+                                      "media": [
+                                        {
+                                          "type": "photo",
+                                          "media_url_https": "https://pbs.twimg.com/media/search-image-only.jpg",
+                                          "original_info": {
+                                            "width": 1200,
+                                            "height": 800
+                                          }
+                                        }
+                                      ]
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        },
+                        {
+                          "entryId": "search-grid-0-tweet-8202",
+                          "content": {
+                            "itemContent": {
+                              "itemType": "TimelineTweet",
+                              "tweet_results": {
+                                "result": {
+                                  "rest_id": "8202",
+                                  "core": {
+                                    "user_results": {
+                                      "result": {
+                                        "rest_id": "424242",
+                                        "avatar": {
+                                          "image_url": "https://pbs.twimg.com/profile_images/example/avatar_normal.jpg"
+                                        },
+                                        "core": {
+                                          "created_at": "Wed Dec 19 20:20:32 +0000 2007",
+                                          "name": "Example Display",
+                                          "screen_name": "example_user"
+                                        }
+                                      }
+                                    }
+                                  },
+                                  "legacy": {
+                                    "conversation_id_str": "8202",
+                                    "created_at": "Tue Apr 14 18:31:00 +0000 2026",
+                                    "favorite_count": 18,
+                                    "full_text": "Image only video",
+                                    "reply_count": 1,
+                                    "retweet_count": 1,
+                                    "source": "<a href=\"https://www.sprinklr.com\" rel=\"nofollow\">Sprinklr</a>",
+                                    "extended_entities": {
+                                      "media": [
+                                        {
+                                          "type": "video",
+                                          "original_info": {
+                                            "width": 1920,
+                                            "height": 1080
+                                          },
+                                          "video_info": {
+                                            "duration_millis": 12000,
+                                            "variants": [
+                                              {
+                                                "content_type": "video/mp4",
+                                                "bitrate": 1200000,
+                                                "url": "https://video.twimg.com/search-image-filter-video.mp4"
+                                              }
+                                            ]
+                                          }
+                                        }
+                                      ]
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      ],
+      "expected_response": {
+        "account_info": {
+          "name": "example_user",
+          "nick": "Example Display",
+          "date": "2007-12-19 20:20:32",
+          "followers_count": 1200,
+          "friends_count": 34,
+          "profile_image": "https://pbs.twimg.com/profile_images/example/avatar.jpg",
+          "statuses_count": 77
+        },
+        "total_urls": 1,
+        "timeline": [
+          {
+            "url": "https://pbs.twimg.com/media/search-image-only?format=jpg&name=orig",
+            "date": "2026-04-14T18:30:00",
+            "tweet_id": "8201",
+            "type": "photo",
+            "extension": "jpg",
+            "width": 1200,
+            "height": 800,
+            "content": "Image only photo",
+            "favorite_count": 20,
+            "retweet_count": 2,
+            "reply_count": 1,
+            "source": "Sprinklr",
+            "author_username": "example_user"
+          }
+        ],
+        "metadata": {
+          "new_entries": 1,
+          "page": 0,
+          "batch_size": 0,
+          "has_more": false,
+          "completed": true
+        },
+        "completed": true
+      }
+    },
+    {
+      "name": "video-only",
+      "request": {
+        "username": "example_user",
+        "start_date": "2026-04-01",
+        "end_date": "2026-04-15",
+        "media_filter": "video",
+        "retweets": false
+      },
+      "user_lookup": {
+        "data": {
+          "user": {
+            "result": {
+              "rest_id": "424242",
+              "avatar": {
+                "image_url": "https://pbs.twimg.com/profile_images/example/avatar_normal.jpg"
+              },
+              "core": {
+                "created_at": "Wed Dec 19 20:20:32 +0000 2007",
+                "name": "Example Display",
+                "screen_name": "example_user"
+              },
+              "legacy": {
+                "followers_count": 1200,
+                "friends_count": 34,
+                "statuses_count": 77
+              },
+              "location": {
+                "location": "Low Earth Orbit"
+              },
+              "privacy": {
+                "protected": false
+              },
+              "verification": {
+                "verified": false
+              }
+            }
+          }
+        }
+      },
+      "pages": [
+        {
+          "data": {
+            "search_by_raw_query": {
+              "search_timeline": {
+                "timeline": {
+                  "instructions": [
+                    {
+                      "type": "TimelineAddEntries",
+                      "entries": [
+                        {
+                          "entryId": "search-grid-0-tweet-8301",
+                          "content": {
+                            "itemContent": {
+                              "itemType": "TimelineTweet",
+                              "tweet_results": {
+                                "result": {
+                                  "rest_id": "8301",
+                                  "core": {
+                                    "user_results": {
+                                      "result": {
+                                        "rest_id": "424242",
+                                        "avatar": {
+                                          "image_url": "https://pbs.twimg.com/profile_images/example/avatar_normal.jpg"
+                                        },
+                                        "core": {
+                                          "created_at": "Wed Dec 19 20:20:32 +0000 2007",
+                                          "name": "Example Display",
+                                          "screen_name": "example_user"
+                                        }
+                                      }
+                                    }
+                                  },
+                                  "legacy": {
+                                    "conversation_id_str": "8301",
+                                    "created_at": "Tue Apr 14 18:32:00 +0000 2026",
+                                    "favorite_count": 50,
+                                    "full_text": "Video only tweet",
+                                    "reply_count": 3,
+                                    "retweet_count": 7,
+                                    "source": "<a href=\"https://www.sprinklr.com\" rel=\"nofollow\">Sprinklr</a>",
+                                    "extended_entities": {
+                                      "media": [
+                                        {
+                                          "type": "video",
+                                          "original_info": {
+                                            "width": 1280,
+                                            "height": 720
+                                          },
+                                          "video_info": {
+                                            "duration_millis": 8000,
+                                            "variants": [
+                                              {
+                                                "content_type": "video/mp4",
+                                                "bitrate": 512000,
+                                                "url": "https://video.twimg.com/search-video-filter-low.mp4"
+                                              },
+                                              {
+                                                "content_type": "video/mp4",
+                                                "bitrate": 1024000,
+                                                "url": "https://video.twimg.com/search-video-filter-high.mp4"
+                                              }
+                                            ]
+                                          }
+                                        }
+                                      ]
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      ],
+      "expected_response": {
+        "account_info": {
+          "name": "example_user",
+          "nick": "Example Display",
+          "date": "2007-12-19 20:20:32",
+          "followers_count": 1200,
+          "friends_count": 34,
+          "profile_image": "https://pbs.twimg.com/profile_images/example/avatar.jpg",
+          "statuses_count": 77
+        },
+        "total_urls": 1,
+        "timeline": [
+          {
+            "url": "https://video.twimg.com/search-video-filter-high.mp4",
+            "date": "2026-04-14T18:32:00",
+            "tweet_id": "8301",
+            "type": "video",
+            "extension": "mp4",
+            "width": 1280,
+            "height": 720,
+            "content": "Video only tweet",
+            "favorite_count": 50,
+            "retweet_count": 7,
+            "reply_count": 3,
+            "source": "Sprinklr",
+            "author_username": "example_user"
+          }
+        ],
+        "metadata": {
+          "new_entries": 1,
+          "page": 0,
+          "batch_size": 0,
+          "has_more": false,
+          "completed": true
+        },
+        "completed": true
+      }
+    },
+    {
+      "name": "gif-only",
+      "request": {
+        "username": "example_user",
+        "start_date": "2026-04-01",
+        "end_date": "2026-04-15",
+        "media_filter": "gif",
+        "retweets": false
+      },
+      "user_lookup": {
+        "data": {
+          "user": {
+            "result": {
+              "rest_id": "424242",
+              "avatar": {
+                "image_url": "https://pbs.twimg.com/profile_images/example/avatar_normal.jpg"
+              },
+              "core": {
+                "created_at": "Wed Dec 19 20:20:32 +0000 2007",
+                "name": "Example Display",
+                "screen_name": "example_user"
+              },
+              "legacy": {
+                "followers_count": 1200,
+                "friends_count": 34,
+                "statuses_count": 77
+              },
+              "location": {
+                "location": "Low Earth Orbit"
+              },
+              "privacy": {
+                "protected": false
+              },
+              "verification": {
+                "verified": false
+              }
+            }
+          }
+        }
+      },
+      "pages": [
+        {
+          "data": {
+            "search_by_raw_query": {
+              "search_timeline": {
+                "timeline": {
+                  "instructions": [
+                    {
+                      "type": "TimelineAddEntries",
+                      "entries": [
+                        {
+                          "entryId": "search-grid-0-tweet-8401",
+                          "content": {
+                            "itemContent": {
+                              "itemType": "TimelineTweet",
+                              "tweet_results": {
+                                "result": {
+                                  "rest_id": "8401",
+                                  "core": {
+                                    "user_results": {
+                                      "result": {
+                                        "rest_id": "424242",
+                                        "avatar": {
+                                          "image_url": "https://pbs.twimg.com/profile_images/example/avatar_normal.jpg"
+                                        },
+                                        "core": {
+                                          "created_at": "Wed Dec 19 20:20:32 +0000 2007",
+                                          "name": "Example Display",
+                                          "screen_name": "example_user"
+                                        }
+                                      }
+                                    }
+                                  },
+                                  "legacy": {
+                                    "conversation_id_str": "8401",
+                                    "created_at": "Tue Apr 14 18:33:00 +0000 2026",
+                                    "favorite_count": 12,
+                                    "full_text": "Gif only tweet",
+                                    "reply_count": 1,
+                                    "retweet_count": 1,
+                                    "source": "<a href=\"https://www.sprinklr.com\" rel=\"nofollow\">Sprinklr</a>",
+                                    "extended_entities": {
+                                      "media": [
+                                        {
+                                          "type": "animated_gif",
+                                          "original_info": {
+                                            "width": 720,
+                                            "height": 720
+                                          },
+                                          "video_info": {
+                                            "duration_millis": 4000,
+                                            "variants": [
+                                              {
+                                                "content_type": "video/mp4",
+                                                "url": "https://video.twimg.com/search-gif-filter.mp4"
+                                              }
+                                            ]
+                                          }
+                                        }
+                                      ]
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      ],
+      "expected_response": {
+        "account_info": {
+          "name": "example_user",
+          "nick": "Example Display",
+          "date": "2007-12-19 20:20:32",
+          "followers_count": 1200,
+          "friends_count": 34,
+          "profile_image": "https://pbs.twimg.com/profile_images/example/avatar.jpg",
+          "statuses_count": 77
+        },
+        "total_urls": 1,
+        "timeline": [
+          {
+            "url": "https://video.twimg.com/search-gif-filter.mp4",
+            "date": "2026-04-14T18:33:00",
+            "tweet_id": "8401",
+            "type": "animated_gif",
+            "extension": "mp4",
+            "width": 720,
+            "height": 720,
+            "content": "Gif only tweet",
+            "favorite_count": 12,
+            "retweet_count": 1,
+            "reply_count": 1,
+            "source": "Sprinklr",
+            "author_username": "example_user"
+          }
+        ],
+        "metadata": {
+          "new_entries": 1,
+          "page": 0,
+          "batch_size": 0,
+          "has_more": false,
+          "completed": true
+        },
+        "completed": true
+      }
+    },
+    {
+      "name": "text-only",
+      "request": {
+        "username": "example_user",
+        "start_date": "2026-04-01",
+        "end_date": "2026-04-15",
+        "media_filter": "text",
+        "retweets": false
+      },
+      "user_lookup": {
+        "data": {
+          "user": {
+            "result": {
+              "rest_id": "424242",
+              "avatar": {
+                "image_url": "https://pbs.twimg.com/profile_images/example/avatar_normal.jpg"
+              },
+              "core": {
+                "created_at": "Wed Dec 19 20:20:32 +0000 2007",
+                "name": "Example Display",
+                "screen_name": "example_user"
+              },
+              "legacy": {
+                "followers_count": 1200,
+                "friends_count": 34,
+                "statuses_count": 77
+              },
+              "location": {
+                "location": "Low Earth Orbit"
+              },
+              "privacy": {
+                "protected": false
+              },
+              "verification": {
+                "verified": false
+              }
+            }
+          }
+        }
+      },
+      "pages": [
+        {
+          "data": {
+            "search_by_raw_query": {
+              "search_timeline": {
+                "timeline": {
+                  "instructions": [
+                    {
+                      "type": "TimelineAddEntries",
+                      "entries": [
+                        {
+                          "entryId": "search-grid-0-tweet-8501",
+                          "content": {
+                            "itemContent": {
+                              "itemType": "TimelineTweet",
+                              "tweet_results": {
+                                "result": {
+                                  "rest_id": "8501",
+                                  "core": {
+                                    "user_results": {
+                                      "result": {
+                                        "rest_id": "424242",
+                                        "avatar": {
+                                          "image_url": "https://pbs.twimg.com/profile_images/example/avatar_normal.jpg"
+                                        },
+                                        "core": {
+                                          "created_at": "Wed Dec 19 20:20:32 +0000 2007",
+                                          "name": "Example Display",
+                                          "screen_name": "example_user"
+                                        }
+                                      }
+                                    }
+                                  },
+                                  "legacy": {
+                                    "conversation_id_str": "8501",
+                                    "created_at": "Tue Apr 14 18:34:00 +0000 2026",
+                                    "favorite_count": 11,
+                                    "full_text": "Text search result",
+                                    "reply_count": 2,
+                                    "retweet_count": 3,
+                                    "bookmark_count": 4,
+                                    "source": "<a href=\"https://www.sprinklr.com\" rel=\"nofollow\">Sprinklr</a>"
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      ],
+      "expected_response": {
+        "account_info": {
+          "name": "example_user",
+          "nick": "Example Display",
+          "date": "2007-12-19 20:20:32",
+          "followers_count": 1200,
+          "friends_count": 34,
+          "profile_image": "https://pbs.twimg.com/profile_images/example/avatar.jpg",
+          "statuses_count": 77
+        },
+        "total_urls": 1,
+        "timeline": [
+          {
+            "date": "2026-04-14T18:34:00",
+            "tweet_id": "8501",
+            "type": "text",
+            "extension": "txt",
+            "content": "Text search result",
+            "bookmark_count": 4,
+            "favorite_count": 11,
+            "retweet_count": 3,
+            "reply_count": 2,
+            "author_username": "example_user"
+          }
+        ],
+        "metadata": {
+          "new_entries": 1,
+          "page": 0,
+          "batch_size": 0,
+          "has_more": false,
+          "completed": true
+        },
+        "completed": true
+      }
+    },
+    {
+      "name": "empty-result",
+      "request": {
+        "username": "example_user",
+        "start_date": "2026-04-01",
+        "end_date": "2026-04-15",
+        "media_filter": "all",
+        "retweets": false
+      },
+      "user_lookup": {
+        "data": {
+          "user": {
+            "result": {
+              "rest_id": "424242",
+              "avatar": {
+                "image_url": "https://pbs.twimg.com/profile_images/example/avatar_normal.jpg"
+              },
+              "core": {
+                "created_at": "Wed Dec 19 20:20:32 +0000 2007",
+                "name": "Example Display",
+                "screen_name": "example_user"
+              },
+              "legacy": {
+                "followers_count": 1200,
+                "friends_count": 34,
+                "statuses_count": 77
+              },
+              "location": {
+                "location": "Low Earth Orbit"
+              },
+              "privacy": {
+                "protected": false
+              },
+              "verification": {
+                "verified": false
+              }
+            }
+          }
+        }
+      },
+      "pages": [
+        {
+          "data": {
+            "search_by_raw_query": {
+              "search_timeline": {
+                "timeline": {
+                  "instructions": [
+                    {
+                      "type": "TimelineAddEntries",
+                      "entries": []
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      ],
+      "expected_response": {
+        "account_info": {
+          "name": "example_user",
+          "nick": "Example Display",
+          "date": "2007-12-19 20:20:32",
+          "followers_count": 1200,
+          "friends_count": 34,
+          "profile_image": "https://pbs.twimg.com/profile_images/example/avatar.jpg",
+          "statuses_count": 77
+        },
+        "total_urls": 0,
+        "timeline": [],
+        "metadata": {
+          "new_entries": 0,
+          "page": 0,
+          "batch_size": 0,
+          "has_more": false,
+          "completed": true
+        },
+        "completed": true
+      }
+    },
+    {
+      "name": "retweets-included",
+      "request": {
+        "username": "example_user",
+        "start_date": "2026-04-01",
+        "end_date": "2026-04-15",
+        "media_filter": "all",
+        "retweets": true
+      },
+      "user_lookup": {
+        "data": {
+          "user": {
+            "result": {
+              "rest_id": "424242",
+              "avatar": {
+                "image_url": "https://pbs.twimg.com/profile_images/example/avatar_normal.jpg"
+              },
+              "core": {
+                "created_at": "Wed Dec 19 20:20:32 +0000 2007",
+                "name": "Example Display",
+                "screen_name": "example_user"
+              },
+              "legacy": {
+                "followers_count": 1200,
+                "friends_count": 34,
+                "statuses_count": 77
+              },
+              "location": {
+                "location": "Low Earth Orbit"
+              },
+              "privacy": {
+                "protected": false
+              },
+              "verification": {
+                "verified": false
+              }
+            }
+          }
+        }
+      },
+      "pages": [
+        {
+          "data": {
+            "search_by_raw_query": {
+              "search_timeline": {
+                "timeline": {
+                  "instructions": [
+                    {
+                      "type": "TimelineAddEntries",
+                      "entries": [
+                        {
+                          "entryId": "search-grid-0-tweet-8702",
+                          "content": {
+                            "itemContent": {
+                              "itemType": "TimelineTweet",
+                              "tweet_results": {
+                                "result": {
+                                  "rest_id": "8702",
+                                  "core": {
+                                    "user_results": {
+                                      "result": {
+                                        "rest_id": "424242",
+                                        "avatar": {
+                                          "image_url": "https://pbs.twimg.com/profile_images/example/avatar_normal.jpg"
+                                        },
+                                        "core": {
+                                          "created_at": "Wed Dec 19 20:20:32 +0000 2007",
+                                          "name": "Example Display",
+                                          "screen_name": "example_user"
+                                        }
+                                      }
+                                    }
+                                  },
+                                  "legacy": {
+                                    "conversation_id_str": "8702",
+                                    "created_at": "Tue Apr 14 18:35:00 +0000 2026",
+                                    "favorite_count": 9,
+                                    "full_text": "RT @original_user: Original media",
+                                    "reply_count": 1,
+                                    "retweet_count": 2,
+                                    "source": "<a href=\"https://www.sprinklr.com\" rel=\"nofollow\">Sprinklr</a>",
+                                    "retweeted_status_result": {
+                                      "result": {
+                                        "rest_id": "8701",
+                                        "core": {
+                                          "user_results": {
+                                            "result": {
+                                              "rest_id": "525252",
+                                              "avatar": {
+                                                "image_url": "https://pbs.twimg.com/profile_images/original/avatar_normal.jpg"
+                                              },
+                                              "core": {
+                                                "created_at": "Wed Dec 19 20:20:32 +0000 2007",
+                                                "name": "Original User",
+                                                "screen_name": "original_user"
+                                              }
+                                            }
+                                          }
+                                        },
+                                        "legacy": {
+                                          "conversation_id_str": "8701",
+                                          "created_at": "Tue Apr 14 18:34:00 +0000 2026",
+                                          "favorite_count": 99,
+                                          "full_text": "Original media",
+                                          "reply_count": 8,
+                                          "retweet_count": 11,
+                                          "source": "<a href=\"https://www.sprinklr.com\" rel=\"nofollow\">Sprinklr</a>",
+                                          "extended_entities": {
+                                            "media": [
+                                              {
+                                                "type": "photo",
+                                                "media_url_https": "https://pbs.twimg.com/media/search-retweet.jpg",
+                                                "original_info": {
+                                                  "width": 1600,
+                                                  "height": 900
+                                                }
+                                              }
+                                            ]
+                                          }
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      ],
+      "expected_response": {
+        "account_info": {
+          "name": "example_user",
+          "nick": "Example Display",
+          "date": "2007-12-19 20:20:32",
+          "followers_count": 1200,
+          "friends_count": 34,
+          "profile_image": "https://pbs.twimg.com/profile_images/example/avatar.jpg",
+          "statuses_count": 77
+        },
+        "total_urls": 1,
+        "timeline": [
+          {
+            "url": "https://pbs.twimg.com/media/search-retweet?format=jpg&name=orig",
+            "date": "2026-04-14T18:35:00",
+            "tweet_id": "8702",
+            "type": "photo",
+            "is_retweet": true,
+            "extension": "jpg",
+            "width": 1600,
+            "height": 900,
+            "content": "Original media",
+            "favorite_count": 9,
+            "retweet_count": 2,
+            "reply_count": 1,
+            "source": "Sprinklr",
+            "author_username": "original_user"
+          }
+        ],
+        "metadata": {
+          "new_entries": 1,
+          "page": 0,
+          "batch_size": 0,
+          "has_more": false,
+          "completed": true
+        },
+        "completed": true
+      }
+    },
+    {
+      "name": "quoted-result",
+      "request": {
+        "username": "example_user",
+        "start_date": "2026-04-01",
+        "end_date": "2026-04-15",
+        "media_filter": "all",
+        "retweets": false
+      },
+      "pages": [
+        {
+          "data": {
+            "search_by_raw_query": {
+              "search_timeline": {
+                "timeline": {
+                  "instructions": [
+                    {
+                      "type": "TimelineAddEntries",
+                      "entries": [
+                        {
+                          "entryId": "search-grid-0-tweet-8801",
+                          "content": {
+                            "itemContent": {
+                              "itemType": "TimelineTweet",
+                              "tweet_results": {
+                                "result": {
+                                  "rest_id": "8801",
+                                  "core": {
+                                    "user_results": {
+                                      "result": {
+                                        "rest_id": "424242",
+                                        "avatar": {
+                                          "image_url": "https://pbs.twimg.com/profile_images/example/avatar_normal.jpg"
+                                        },
+                                        "core": {
+                                          "created_at": "Wed Dec 19 20:20:32 +0000 2007",
+                                          "name": "Example Display",
+                                          "screen_name": "example_user"
+                                        }
+                                      }
+                                    }
+                                  },
+                                  "legacy": {
+                                    "conversation_id_str": "8801",
+                                    "created_at": "Tue Apr 14 18:36:00 +0000 2026",
+                                    "favorite_count": 17,
+                                    "full_text": "Quoted media tweet",
+                                    "reply_count": 2,
+                                    "retweet_count": 4,
+                                    "source": "<a href=\"https://www.sprinklr.com\" rel=\"nofollow\">Sprinklr</a>",
+                                    "extended_entities": {
+                                      "media": [
+                                        {
+                                          "type": "photo",
+                                          "media_url_https": "https://pbs.twimg.com/media/search-quoted.jpg",
+                                          "original_info": {
+                                            "width": 1400,
+                                            "height": 900
+                                          }
+                                        }
+                                      ]
+                                    }
+                                  },
+                                  "quoted_status_result": {
+                                    "result": {
+                                      "rest_id": "8800",
+                                      "core": {
+                                        "user_results": {
+                                          "result": {
+                                            "rest_id": "999000",
+                                            "core": {
+                                              "name": "Quoted User",
+                                              "screen_name": "quoted_user"
+                                            }
+                                          }
+                                        }
+                                      },
+                                      "legacy": {
+                                        "full_text": "Quoted content"
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      ],
+      "expected_response": {
+        "account_info": {
+          "name": "example_user",
+          "nick": "example_user",
+          "date": "",
+          "followers_count": 0,
+          "friends_count": 0,
+          "profile_image": "",
+          "statuses_count": 0
+        },
+        "total_urls": 1,
+        "timeline": [
+          {
+            "url": "https://pbs.twimg.com/media/search-quoted?format=jpg&name=orig",
+            "date": "2026-04-14T18:36:00",
+            "tweet_id": "8801",
+            "type": "photo",
+            "extension": "jpg",
+            "width": 1400,
+            "height": 900,
+            "content": "Quoted media tweet",
+            "favorite_count": 17,
+            "retweet_count": 4,
+            "reply_count": 2,
+            "source": "Sprinklr",
+            "author_username": "example_user"
+          }
+        ],
+        "metadata": {
+          "new_entries": 1,
+          "page": 0,
+          "batch_size": 0,
+          "has_more": false,
+          "completed": true
+        },
+        "completed": true
+      }
+    },
+    {
+      "name": "missing-core",
+      "request": {
+        "username": "example_user",
+        "start_date": "2026-04-01",
+        "end_date": "2026-04-15",
+        "media_filter": "all",
+        "retweets": false
+      },
+      "user_lookup": {
+        "data": {
+          "user": {
+            "result": {
+              "rest_id": "424242",
+              "avatar": {
+                "image_url": "https://pbs.twimg.com/profile_images/example/avatar_normal.jpg"
+              },
+              "core": {
+                "created_at": "Wed Dec 19 20:20:32 +0000 2007",
+                "name": "Example Display",
+                "screen_name": "example_user"
+              }
+            }
+          }
+        }
+      },
+      "pages": [
+        {
+          "data": {
+            "search_by_raw_query": {
+              "search_timeline": {
+                "timeline": {
+                  "instructions": [
+                    {
+                      "type": "TimelineAddEntries",
+                      "entries": [
+                        {
+                          "entryId": "search-grid-0-tweet-8901",
+                          "content": {
+                            "itemContent": {
+                              "itemType": "TimelineTweet",
+                              "tweet_results": {
+                                "result": {
+                                  "rest_id": "8901",
+                                  "legacy": {
+                                    "conversation_id_str": "8901",
+                                    "created_at": "Tue Apr 14 18:37:00 +0000 2026",
+                                    "full_text": "Broken core"
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      ],
+      "expected_stage": "parse",
+      "expected_code": "missing_core_user"
+    },
+    {
+      "name": "maxid-pagination",
+      "request": {
+        "username": "example_user",
+        "start_date": "2026-04-01",
+        "end_date": "2026-04-15",
+        "media_filter": "all",
+        "retweets": false
+      },
+      "user_lookup": {
+        "data": {
+          "user": {
+            "result": {
+              "rest_id": "424242",
+              "avatar": {
+                "image_url": "https://pbs.twimg.com/profile_images/example/avatar_normal.jpg"
+              },
+              "core": {
+                "created_at": "Wed Dec 19 20:20:32 +0000 2007",
+                "name": "Example Display",
+                "screen_name": "example_user"
+              },
+              "legacy": {
+                "followers_count": 1200,
+                "friends_count": 34,
+                "statuses_count": 77
+              },
+              "location": {
+                "location": "Low Earth Orbit"
+              },
+              "privacy": {
+                "protected": false
+              },
+              "verification": {
+                "verified": false
+              }
+            }
+          }
+        }
+      },
+      "pages": [
+        {
+          "data": {
+            "search_by_raw_query": {
+              "search_timeline": {
+                "timeline": {
+                  "instructions": [
+                    {
+                      "type": "TimelineAddEntries",
+                      "entries": [
+                        {
+                          "entryId": "search-grid-0-tweet-9002",
+                          "content": {
+                            "itemContent": {
+                              "itemType": "TimelineTweet",
+                              "tweet_results": {
+                                "result": {
+                                  "rest_id": "9002",
+                                  "core": {
+                                    "user_results": {
+                                      "result": {
+                                        "rest_id": "424242",
+                                        "avatar": {
+                                          "image_url": "https://pbs.twimg.com/profile_images/example/avatar_normal.jpg"
+                                        },
+                                        "core": {
+                                          "created_at": "Wed Dec 19 20:20:32 +0000 2007",
+                                          "name": "Example Display",
+                                          "screen_name": "example_user"
+                                        }
+                                      }
+                                    }
+                                  },
+                                  "legacy": {
+                                    "conversation_id_str": "9002",
+                                    "created_at": "Tue Apr 14 18:38:00 +0000 2026",
+                                    "favorite_count": 21,
+                                    "full_text": "Pagination first",
+                                    "reply_count": 2,
+                                    "retweet_count": 2,
+                                    "source": "<a href=\"https://www.sprinklr.com\" rel=\"nofollow\">Sprinklr</a>",
+                                    "extended_entities": {
+                                      "media": [
+                                        {
+                                          "type": "photo",
+                                          "media_url_https": "https://pbs.twimg.com/media/search-maxid-first.jpg",
+                                          "original_info": {
+                                            "width": 1200,
+                                            "height": 800
+                                          }
+                                        }
+                                      ]
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        },
+                        {
+                          "entryId": "cursor-bottom-1",
+                          "content": {
+                            "value": "cursor-maxid-1"
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        {
+          "data": {
+            "search_by_raw_query": {
+              "search_timeline": {
+                "timeline": {
+                  "instructions": [
+                    {
+                      "type": "TimelineAddEntries",
+                      "entries": [
+                        {
+                          "entryId": "search-grid-1-tweet-8999",
+                          "content": {
+                            "itemContent": {
+                              "itemType": "TimelineTweet",
+                              "tweet_results": {
+                                "result": {
+                                  "rest_id": "8999",
+                                  "core": {
+                                    "user_results": {
+                                      "result": {
+                                        "rest_id": "424242",
+                                        "avatar": {
+                                          "image_url": "https://pbs.twimg.com/profile_images/example/avatar_normal.jpg"
+                                        },
+                                        "core": {
+                                          "created_at": "Wed Dec 19 20:20:32 +0000 2007",
+                                          "name": "Example Display",
+                                          "screen_name": "example_user"
+                                        }
+                                      }
+                                    }
+                                  },
+                                  "legacy": {
+                                    "conversation_id_str": "8999",
+                                    "created_at": "Tue Apr 14 18:39:00 +0000 2026",
+                                    "favorite_count": 22,
+                                    "full_text": "Pagination second",
+                                    "reply_count": 1,
+                                    "retweet_count": 1,
+                                    "source": "<a href=\"https://www.sprinklr.com\" rel=\"nofollow\">Sprinklr</a>",
+                                    "extended_entities": {
+                                      "media": [
+                                        {
+                                          "type": "video",
+                                          "original_info": {
+                                            "width": 1280,
+                                            "height": 720
+                                          },
+                                          "video_info": {
+                                            "duration_millis": 9000,
+                                            "variants": [
+                                              {
+                                                "content_type": "video/mp4",
+                                                "bitrate": 1000000,
+                                                "url": "https://video.twimg.com/search-maxid-second.mp4"
+                                              }
+                                            ]
+                                          }
+                                        }
+                                      ]
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      ],
+      "expected_queries": [
+        "from:example_user since:2026-04-01 until:2026-04-15 filter:media -filter:retweets",
+        "from:example_user since:2026-04-01 until:2026-04-15 filter:media -filter:retweets max_id:9001"
+      ],
+      "expected_cursors": [
+        "",
+        ""
+      ],
+      "expected_response": {
+        "account_info": {
+          "name": "example_user",
+          "nick": "Example Display",
+          "date": "2007-12-19 20:20:32",
+          "followers_count": 1200,
+          "friends_count": 34,
+          "profile_image": "https://pbs.twimg.com/profile_images/example/avatar.jpg",
+          "statuses_count": 77
+        },
+        "total_urls": 2,
+        "timeline": [
+          {
+            "url": "https://pbs.twimg.com/media/search-maxid-first?format=jpg&name=orig",
+            "date": "2026-04-14T18:38:00",
+            "tweet_id": "9002",
+            "type": "photo",
+            "extension": "jpg",
+            "width": 1200,
+            "height": 800,
+            "content": "Pagination first",
+            "favorite_count": 21,
+            "retweet_count": 2,
+            "reply_count": 2,
+            "source": "Sprinklr",
+            "author_username": "example_user"
+          },
+          {
+            "url": "https://video.twimg.com/search-maxid-second.mp4",
+            "date": "2026-04-14T18:39:00",
+            "tweet_id": "8999",
+            "type": "video",
+            "extension": "mp4",
+            "width": 1280,
+            "height": 720,
+            "content": "Pagination second",
+            "favorite_count": 22,
+            "retweet_count": 1,
+            "reply_count": 1,
+            "source": "Sprinklr",
+            "author_username": "example_user"
+          }
+        ],
+        "metadata": {
+          "new_entries": 2,
+          "page": 0,
+          "batch_size": 0,
+          "has_more": false,
+          "completed": true
+        },
+        "completed": true
+      }
+    },
+    {
+      "name": "cursor-fallback-pagination",
+      "request": {
+        "username": "example_user",
+        "start_date": "2026-04-01",
+        "end_date": "2026-04-15",
+        "media_filter": "all",
+        "retweets": false
+      },
+      "user_lookup": {
+        "data": {
+          "user": {
+            "result": {
+              "rest_id": "424242",
+              "avatar": {
+                "image_url": "https://pbs.twimg.com/profile_images/example/avatar_normal.jpg"
+              },
+              "core": {
+                "created_at": "Wed Dec 19 20:20:32 +0000 2007",
+                "name": "Example Display",
+                "screen_name": "example_user"
+              },
+              "legacy": {
+                "followers_count": 1200,
+                "friends_count": 34,
+                "statuses_count": 77
+              },
+              "location": {
+                "location": "Low Earth Orbit"
+              },
+              "privacy": {
+                "protected": false
+              },
+              "verification": {
+                "verified": false
+              }
+            }
+          }
+        }
+      },
+      "pages": [
+        {
+          "data": {
+            "search_by_raw_query": {
+              "search_timeline": {
+                "timeline": {
+                  "instructions": [
+                    {
+                      "type": "TimelineAddEntries",
+                      "entries": [
+                        {
+                          "entryId": "cursor-bottom-1",
+                          "content": {
+                            "value": "cursor-search-fallback"
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        {
+          "data": {
+            "search_by_raw_query": {
+              "search_timeline": {
+                "timeline": {
+                  "instructions": [
+                    {
+                      "type": "TimelineAddEntries",
+                      "entries": [
+                        {
+                          "entryId": "search-grid-1-tweet-9101",
+                          "content": {
+                            "itemContent": {
+                              "itemType": "TimelineTweet",
+                              "tweet_results": {
+                                "result": {
+                                  "rest_id": "9101",
+                                  "core": {
+                                    "user_results": {
+                                      "result": {
+                                        "rest_id": "424242",
+                                        "avatar": {
+                                          "image_url": "https://pbs.twimg.com/profile_images/example/avatar_normal.jpg"
+                                        },
+                                        "core": {
+                                          "created_at": "Wed Dec 19 20:20:32 +0000 2007",
+                                          "name": "Example Display",
+                                          "screen_name": "example_user"
+                                        }
+                                      }
+                                    }
+                                  },
+                                  "legacy": {
+                                    "conversation_id_str": "9101",
+                                    "created_at": "Tue Apr 14 18:40:00 +0000 2026",
+                                    "favorite_count": 31,
+                                    "full_text": "Cursor fallback result",
+                                    "reply_count": 3,
+                                    "retweet_count": 5,
+                                    "source": "<a href=\"https://www.sprinklr.com\" rel=\"nofollow\">Sprinklr</a>",
+                                    "extended_entities": {
+                                      "media": [
+                                        {
+                                          "type": "photo",
+                                          "media_url_https": "https://pbs.twimg.com/media/search-cursor-fallback.jpg",
+                                          "original_info": {
+                                            "width": 1300,
+                                            "height": 800
+                                          }
+                                        }
+                                      ]
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      ],
+      "expected_queries": [
+        "from:example_user since:2026-04-01 until:2026-04-15 filter:media -filter:retweets",
+        "from:example_user since:2026-04-01 until:2026-04-15 filter:media -filter:retweets"
+      ],
+      "expected_cursors": [
+        "",
+        "cursor-search-fallback"
+      ],
+      "expected_response": {
+        "account_info": {
+          "name": "example_user",
+          "nick": "Example Display",
+          "date": "2007-12-19 20:20:32",
+          "followers_count": 1200,
+          "friends_count": 34,
+          "profile_image": "https://pbs.twimg.com/profile_images/example/avatar.jpg",
+          "statuses_count": 77
+        },
+        "total_urls": 1,
+        "timeline": [
+          {
+            "url": "https://pbs.twimg.com/media/search-cursor-fallback?format=jpg&name=orig",
+            "date": "2026-04-14T18:40:00",
+            "tweet_id": "9101",
+            "type": "photo",
+            "extension": "jpg",
+            "width": 1300,
+            "height": 800,
+            "content": "Cursor fallback result",
+            "favorite_count": 31,
+            "retweet_count": 5,
+            "reply_count": 3,
+            "source": "Sprinklr",
+            "author_username": "example_user"
+          }
+        ],
+        "metadata": {
+          "new_entries": 1,
+          "page": 0,
+          "batch_size": 0,
+          "has_more": false,
+          "completed": true
+        },
+        "completed": true
+      }
+    }
+  ]
+}

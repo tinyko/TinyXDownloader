@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -102,6 +103,7 @@ func TestAppDataOverridePaths(t *testing.T) {
 
 func TestExportSupportBundleRedactsSensitiveSettingsAndExcludesSecrets(t *testing.T) {
 	withTempAppData(t, func(root string) {
+		resetExtractorDiagnosticsForTests()
 		if err := InitDB(); err != nil {
 			t.Fatalf("init db: %v", err)
 		}
@@ -126,6 +128,8 @@ func TestExportSupportBundleRedactsSensitiveSettingsAndExcludesSecrets(t *testin
 		}
 
 		outputPath := filepath.Join(root, "support.zip")
+		expectedMetrics := GetExtractorMetricsSnapshot()
+		expectedExtractorDiagnostics := GetExtractorDiagnosticsSnapshot()
 		if err := ExportSupportBundle(outputPath, SupportBundleOptions{
 			AppName:    "TinyXDownloader",
 			AppVersion: "1.2.2",
@@ -162,6 +166,13 @@ func TestExportSupportBundleRedactsSensitiveSettingsAndExcludesSecrets(t *testin
 		if _, ok := entries["logs/backend.log"]; !ok {
 			t.Fatal("expected logs/backend.log entry")
 		}
+		extractorDiagnosticsJSON, ok := entries["extractor_diagnostics.json"]
+		if !ok {
+			t.Fatal("expected extractor_diagnostics.json entry")
+		}
+		if _, ok := entries["extractor_rollout_policy.json"]; !ok {
+			t.Fatal("expected extractor_rollout_policy.json entry")
+		}
 		if _, ok := entries["db/accounts.db"]; !ok {
 			t.Fatal("expected db/accounts.db entry")
 		}
@@ -187,6 +198,17 @@ func TestExportSupportBundleRedactsSensitiveSettingsAndExcludesSecrets(t *testin
 		}
 		if manifest.Counts.Accounts != 1 || manifest.Counts.PublicCount != 1 {
 			t.Fatalf("unexpected db counts in manifest: %+v", manifest.Counts)
+		}
+		if !reflect.DeepEqual(manifest.ExtractorMetrics, expectedMetrics) {
+			t.Fatalf("unexpected extractor metrics in manifest: %+v", manifest.ExtractorMetrics)
+		}
+
+		var extractorDiagnostics ExtractorDiagnosticsSnapshot
+		if err := json.Unmarshal([]byte(extractorDiagnosticsJSON), &extractorDiagnostics); err != nil {
+			t.Fatalf("decode extractor diagnostics: %v", err)
+		}
+		if !reflect.DeepEqual(extractorDiagnostics, expectedExtractorDiagnostics) {
+			t.Fatalf("unexpected extractor diagnostics snapshot: %+v", extractorDiagnostics)
 		}
 	})
 }

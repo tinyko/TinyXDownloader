@@ -69,6 +69,7 @@ type supportBundleManifest struct {
 	DatabaseSchemaVersion int                      `json:"database_schema_version"`
 	Counts                supportBundleDBSummary   `json:"counts"`
 	Tasks                 SupportBundleTaskSummary `json:"tasks"`
+	ExtractorMetrics      ExtractorMetricsSnapshot `json:"extractor_metrics"`
 }
 
 type supportBundleDBSummary struct {
@@ -165,6 +166,24 @@ func ExportSupportBundle(outputPath string, options SupportBundleOptions) error 
 		DatabaseSchemaVersion: GetDatabaseSchemaVersion(),
 		Counts:                buildSupportBundleDBSummary(),
 		Tasks:                 options.TaskSummary,
+		ExtractorMetrics:      GetExtractorMetricsSnapshot(),
+	}
+	extractorDiagnostics := GetExtractorDiagnosticsSnapshot()
+	runbookJSON, err := buildExtractorRunbookSnapshot()
+	if err != nil {
+		return err
+	}
+	rolloutJSON, err := buildExtractorRolloutPolicySnapshot()
+	if err != nil {
+		return err
+	}
+	reportFiles, err := collectExtractorValidationReportFiles(extractorValidationReportSupportBundleLimit)
+	if err != nil {
+		return err
+	}
+	liveReportFiles, err := collectExtractorLiveValidationReportFiles(extractorLiveValidationReportSupportBundleLimit)
+	if err != nil {
+		return err
 	}
 
 	logFiles, err := collectSupportBundleLogFiles()
@@ -174,6 +193,15 @@ func ExportSupportBundle(outputPath string, options SupportBundleOptions) error 
 
 	if err := writeBundleZip(outputPath, func(writer *zip.Writer) error {
 		if err := writeJSONZipEntry(writer, "manifest.json", manifest); err != nil {
+			return err
+		}
+		if err := writeJSONZipEntry(writer, "extractor_diagnostics.json", extractorDiagnostics); err != nil {
+			return err
+		}
+		if err := writeBytesZipEntry(writer, "extractor_runbook.json", runbookJSON); err != nil {
+			return err
+		}
+		if err := writeBytesZipEntry(writer, "extractor_rollout_policy.json", rolloutJSON); err != nil {
 			return err
 		}
 		if err := writeBytesZipEntry(writer, "settings.redacted.json", settingsJSON); err != nil {
@@ -188,6 +216,24 @@ func ExportSupportBundle(outputPath string, options SupportBundleOptions) error 
 				filepath.Join("logs", filepath.Base(logFile)),
 				logFile,
 				supportBundleMaxLogBytesPerFile,
+			); err != nil {
+				return err
+			}
+		}
+		for _, reportFile := range reportFiles {
+			if err := writeFileZipEntry(
+				writer,
+				filepath.Join("extractor_reports", filepath.Base(reportFile)),
+				reportFile,
+			); err != nil {
+				return err
+			}
+		}
+		for _, reportFile := range liveReportFiles {
+			if err := writeFileZipEntry(
+				writer,
+				filepath.Join("extractor_live_reports", filepath.Base(reportFile)),
+				reportFile,
 			); err != nil {
 				return err
 			}
@@ -548,6 +594,47 @@ func buildRedactedSettingsSnapshot() ([]byte, error) {
 		return nil, err
 	}
 	return append(data, '\n'), nil
+}
+
+func buildExtractorRunbookSnapshot() ([]byte, error) {
+	config, err := loadExtractorRunbookConfig()
+	if err != nil {
+		if os.IsNotExist(err) {
+			return []byte("{}\n"), nil
+		}
+		return nil, err
+	}
+	data, err := json.MarshalIndent(config, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+	return append(data, '\n'), nil
+}
+
+func buildExtractorRolloutPolicySnapshot() ([]byte, error) {
+	policy, err := loadExtractorRolloutPolicy()
+	if err != nil {
+		if os.IsNotExist(err) {
+			return []byte("{}\n"), nil
+		}
+		return nil, err
+	}
+	data, err := json.MarshalIndent(policy, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+	return append(data, '\n'), nil
+}
+
+func collectExtractorValidationReportFiles(limit int) ([]string, error) {
+	paths, err := listExtractorValidationReportPaths()
+	if err != nil {
+		return nil, err
+	}
+	if limit > 0 && len(paths) > limit {
+		paths = paths[:limit]
+	}
+	return paths, nil
 }
 
 func redactProxyURL(raw string) string {

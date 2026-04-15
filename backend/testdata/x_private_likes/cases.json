@@ -1,0 +1,615 @@
+{
+  "cases": [
+    {
+      "name": "mixed-media",
+      "request": {
+        "username": "likes_user",
+        "timeline_type": "likes",
+        "media_type": "all",
+        "batch_size": 20,
+        "page": 1
+      },
+      "expected_cursor": "",
+      "user_lookup": {
+        "data": {
+          "user": {
+            "result": {
+              "rest_id": "9000",
+              "avatar": {
+                "image_url": "https://pbs.twimg.com/profile_images/likes_user/avatar_normal.jpg"
+              },
+              "core": {
+                "created_at": "Wed Dec 19 20:20:32 +0000 2007",
+                "name": "Likes User",
+                "screen_name": "likes_user"
+              },
+              "legacy": {
+                "followers_count": 321,
+                "friends_count": 45,
+                "statuses_count": 876
+              }
+            }
+          }
+        }
+      },
+      "page": {
+        "data": {
+          "user": {
+            "result": {
+              "timeline": {
+                "timeline": {
+                  "instructions": [
+                    {
+                      "type": "TimelineAddEntries",
+                      "entries": [
+                        {
+                          "entryId": "tweet-9101",
+                          "content": {
+                            "itemContent": {
+                              "itemType": "TimelineTweet",
+                              "tweet_results": {
+                                "result": {
+                                  "rest_id": "9101",
+                                  "core": {
+                                    "user_results": {
+                                      "result": {
+                                        "rest_id": "9000",
+                                        "avatar": {
+                                          "image_url": "https://pbs.twimg.com/profile_images/likes_user/avatar_normal.jpg"
+                                        },
+                                        "core": {
+                                          "created_at": "Wed Dec 19 20:20:32 +0000 2007",
+                                          "name": "Likes User",
+                                          "screen_name": "likes_user"
+                                        },
+                                        "legacy": {
+                                          "followers_count": 321,
+                                          "friends_count": 45,
+                                          "statuses_count": 876
+                                        }
+                                      }
+                                    }
+                                  },
+                                  "legacy": {
+                                    "bookmark_count": 9,
+                                    "conversation_id_str": "9101",
+                                    "created_at": "Tue Apr 14 18:30:00 +0000 2026",
+                                    "favorite_count": 17,
+                                    "full_text": "Liked photo",
+                                    "quote_count": 2,
+                                    "reply_count": 3,
+                                    "retweet_count": 4,
+                                    "source": "<a href=\"https://www.sprinklr.com\" rel=\"nofollow\">Sprinklr</a>",
+                                    "extended_entities": {
+                                      "media": [
+                                        {
+                                          "type": "photo",
+                                          "media_url_https": "https://pbs.twimg.com/media/private-like-photo.jpg",
+                                          "original_info": {
+                                            "width": 1280,
+                                            "height": 720
+                                          }
+                                        }
+                                      ]
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        },
+                        {
+                          "entryId": "tweet-9102",
+                          "content": {
+                            "itemContent": {
+                              "itemType": "TimelineTweet",
+                              "tweet_results": {
+                                "result": {
+                                  "rest_id": "9102",
+                                  "core": {
+                                    "user_results": {
+                                      "result": {
+                                        "rest_id": "9000",
+                                        "avatar": {
+                                          "image_url": "https://pbs.twimg.com/profile_images/likes_user/avatar_normal.jpg"
+                                        },
+                                        "core": {
+                                          "created_at": "Wed Dec 19 20:20:32 +0000 2007",
+                                          "name": "Likes User",
+                                          "screen_name": "likes_user"
+                                        },
+                                        "legacy": {
+                                          "followers_count": 321,
+                                          "friends_count": 45,
+                                          "statuses_count": 876
+                                        }
+                                      }
+                                    }
+                                  },
+                                  "legacy": {
+                                    "bookmark_count": 2,
+                                    "conversation_id_str": "9102",
+                                    "created_at": "Tue Apr 14 18:31:00 +0000 2026",
+                                    "favorite_count": 6,
+                                    "full_text": "Plain liked text",
+                                    "quote_count": 0,
+                                    "reply_count": 1,
+                                    "retweet_count": 1,
+                                    "source": "<a href=\"https://mobile.twitter.com\" rel=\"nofollow\">Twitter Web App</a>"
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        },
+                        {
+                          "entryId": "cursor-bottom-1",
+                          "content": {
+                            "value": "likes-fixture-cursor-1"
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "expected_response": {
+        "account_info": {
+          "name": "likes",
+          "nick": "My Likes",
+          "date": "2007-12-19 20:20:32",
+          "followers_count": 321,
+          "friends_count": 45,
+          "profile_image": "https://pbs.twimg.com/profile_images/likes_user/avatar.jpg",
+          "statuses_count": 876
+        },
+        "total_urls": 1,
+        "timeline": [
+          {
+            "url": "https://pbs.twimg.com/media/private-like-photo?format=jpg&name=orig",
+            "date": "2026-04-14T18:30:00",
+            "tweet_id": "9101",
+            "type": "photo",
+            "extension": "jpg",
+            "width": 1280,
+            "height": 720,
+            "content": "Liked photo",
+            "bookmark_count": 9,
+            "favorite_count": 17,
+            "retweet_count": 4,
+            "reply_count": 3,
+            "source": "Sprinklr",
+            "author_username": "likes_user"
+          }
+        ],
+        "metadata": {
+          "new_entries": 1,
+          "page": 1,
+          "batch_size": 20,
+          "has_more": true,
+          "cursor": "likes-fixture-cursor-1"
+        },
+        "cursor": "likes-fixture-cursor-1"
+      }
+    },
+    {
+      "name": "text-only",
+      "request": {
+        "username": "likes_user",
+        "timeline_type": "likes",
+        "media_type": "text",
+        "batch_size": 20,
+        "page": 1
+      },
+      "expected_cursor": "",
+      "user_lookup": {
+        "data": {
+          "user": {
+            "result": {
+              "rest_id": "9000",
+              "avatar": {
+                "image_url": "https://pbs.twimg.com/profile_images/likes_user/avatar_normal.jpg"
+              },
+              "core": {
+                "created_at": "Wed Dec 19 20:20:32 +0000 2007",
+                "name": "Likes User",
+                "screen_name": "likes_user"
+              },
+              "legacy": {
+                "followers_count": 321,
+                "friends_count": 45,
+                "statuses_count": 876
+              }
+            }
+          }
+        }
+      },
+      "page": {
+        "data": {
+          "user": {
+            "result": {
+              "timeline": {
+                "timeline": {
+                  "instructions": [
+                    {
+                      "type": "TimelineAddEntries",
+                      "entries": [
+                        {
+                          "entryId": "tweet-9201",
+                          "content": {
+                            "itemContent": {
+                              "itemType": "TimelineTweet",
+                              "tweet_results": {
+                                "result": {
+                                  "rest_id": "9201",
+                                  "core": {
+                                    "user_results": {
+                                      "result": {
+                                        "rest_id": "9000",
+                                        "avatar": {
+                                          "image_url": "https://pbs.twimg.com/profile_images/likes_user/avatar_normal.jpg"
+                                        },
+                                        "core": {
+                                          "created_at": "Wed Dec 19 20:20:32 +0000 2007",
+                                          "name": "Likes User",
+                                          "screen_name": "likes_user"
+                                        },
+                                        "legacy": {
+                                          "followers_count": 321,
+                                          "friends_count": 45,
+                                          "statuses_count": 876
+                                        }
+                                      }
+                                    }
+                                  },
+                                  "legacy": {
+                                    "bookmark_count": 5,
+                                    "conversation_id_str": "9201",
+                                    "created_at": "Tue Apr 14 18:40:00 +0000 2026",
+                                    "favorite_count": 10,
+                                    "full_text": "Liked media tweet",
+                                    "quote_count": 0,
+                                    "reply_count": 0,
+                                    "retweet_count": 2,
+                                    "source": "<a href=\"https://mobile.twitter.com\" rel=\"nofollow\">Twitter Web App</a>",
+                                    "extended_entities": {
+                                      "media": [
+                                        {
+                                          "type": "photo",
+                                          "media_url_https": "https://pbs.twimg.com/media/private-like-text-photo.jpg",
+                                          "original_info": {
+                                            "width": 1000,
+                                            "height": 600
+                                          }
+                                        }
+                                      ]
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        },
+                        {
+                          "entryId": "tweet-9202",
+                          "content": {
+                            "itemContent": {
+                              "itemType": "TimelineTweet",
+                              "tweet_results": {
+                                "result": {
+                                  "rest_id": "9202",
+                                  "core": {
+                                    "user_results": {
+                                      "result": {
+                                        "rest_id": "9000",
+                                        "avatar": {
+                                          "image_url": "https://pbs.twimg.com/profile_images/likes_user/avatar_normal.jpg"
+                                        },
+                                        "core": {
+                                          "created_at": "Wed Dec 19 20:20:32 +0000 2007",
+                                          "name": "Likes User",
+                                          "screen_name": "likes_user"
+                                        },
+                                        "legacy": {
+                                          "followers_count": 321,
+                                          "friends_count": 45,
+                                          "statuses_count": 876
+                                        }
+                                      }
+                                    }
+                                  },
+                                  "legacy": {
+                                    "bookmark_count": 1,
+                                    "conversation_id_str": "9202",
+                                    "created_at": "Tue Apr 14 18:41:00 +0000 2026",
+                                    "favorite_count": 7,
+                                    "full_text": "Just text liked tweet",
+                                    "quote_count": 0,
+                                    "reply_count": 1,
+                                    "retweet_count": 1,
+                                    "source": "<a href=\"https://mobile.twitter.com\" rel=\"nofollow\">Twitter Web App</a>"
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "expected_response": {
+        "account_info": {
+          "name": "likes",
+          "nick": "My Likes",
+          "date": "2007-12-19 20:20:32",
+          "followers_count": 321,
+          "friends_count": 45,
+          "profile_image": "https://pbs.twimg.com/profile_images/likes_user/avatar.jpg",
+          "statuses_count": 876
+        },
+        "total_urls": 1,
+        "timeline": [
+          {
+            "date": "2026-04-14T18:41:00",
+            "tweet_id": "9202",
+            "type": "text",
+            "extension": "txt",
+            "content": "Just text liked tweet",
+            "bookmark_count": 1,
+            "favorite_count": 7,
+            "retweet_count": 1,
+            "reply_count": 1,
+            "author_username": "likes_user"
+          }
+        ],
+        "metadata": {
+          "new_entries": 1,
+          "page": 1,
+          "batch_size": 20,
+          "has_more": false,
+          "completed": true
+        },
+        "completed": true
+      }
+    },
+    {
+      "name": "missing-core",
+      "request": {
+        "username": "likes_user",
+        "timeline_type": "likes",
+        "media_type": "all",
+        "batch_size": 20,
+        "page": 1
+      },
+      "expected_cursor": "",
+      "user_lookup": {
+        "data": {
+          "user": {
+            "result": {
+              "rest_id": "9000",
+              "avatar": {
+                "image_url": "https://pbs.twimg.com/profile_images/likes_user/avatar_normal.jpg"
+              },
+              "core": {
+                "created_at": "Wed Dec 19 20:20:32 +0000 2007",
+                "name": "Likes User",
+                "screen_name": "likes_user"
+              }
+            }
+          }
+        }
+      },
+      "page": {
+        "data": {
+          "user": {
+            "result": {
+              "timeline": {
+                "timeline": {
+                  "instructions": [
+                    {
+                      "type": "TimelineAddEntries",
+                      "entries": [
+                        {
+                          "entryId": "tweet-9301",
+                          "content": {
+                            "itemContent": {
+                              "itemType": "TimelineTweet",
+                              "tweet_results": {
+                                "result": {
+                                  "rest_id": "9301",
+                                  "legacy": {
+                                    "conversation_id_str": "9301",
+                                    "created_at": "Tue Apr 14 18:50:00 +0000 2026",
+                                    "favorite_count": 2,
+                                    "full_text": "Broken liked tweet"
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "expected_stage": "parse",
+      "expected_code": "missing_core_user"
+    },
+    {
+      "name": "continuation-page2",
+      "request": {
+        "username": "likes_user",
+        "timeline_type": "likes",
+        "media_type": "video",
+        "batch_size": 20,
+        "page": 2,
+        "cursor": "likes-fixture-cursor-1"
+      },
+      "expected_cursor": "likes-fixture-cursor-1",
+      "user_lookup": {
+        "data": {
+          "user": {
+            "result": {
+              "rest_id": "9000",
+              "avatar": {
+                "image_url": "https://pbs.twimg.com/profile_images/likes_user/avatar_normal.jpg"
+              },
+              "core": {
+                "created_at": "Wed Dec 19 20:20:32 +0000 2007",
+                "name": "Likes User",
+                "screen_name": "likes_user"
+              },
+              "legacy": {
+                "followers_count": 321,
+                "friends_count": 45,
+                "statuses_count": 876
+              }
+            }
+          }
+        }
+      },
+      "page": {
+        "data": {
+          "user": {
+            "result": {
+              "timeline": {
+                "timeline": {
+                  "instructions": [
+                    {
+                      "type": "TimelineAddEntries",
+                      "entries": [
+                        {
+                          "entryId": "tweet-9401",
+                          "content": {
+                            "itemContent": {
+                              "itemType": "TimelineTweet",
+                              "tweet_results": {
+                                "result": {
+                                  "rest_id": "9401",
+                                  "core": {
+                                    "user_results": {
+                                      "result": {
+                                        "rest_id": "9000",
+                                        "avatar": {
+                                          "image_url": "https://pbs.twimg.com/profile_images/likes_user/avatar_normal.jpg"
+                                        },
+                                        "core": {
+                                          "created_at": "Wed Dec 19 20:20:32 +0000 2007",
+                                          "name": "Likes User",
+                                          "screen_name": "likes_user"
+                                        },
+                                        "legacy": {
+                                          "followers_count": 321,
+                                          "friends_count": 45,
+                                          "statuses_count": 876
+                                        }
+                                      }
+                                    }
+                                  },
+                                  "legacy": {
+                                    "bookmark_count": 4,
+                                    "conversation_id_str": "9401",
+                                    "created_at": "Tue Apr 14 19:00:00 +0000 2026",
+                                    "favorite_count": 11,
+                                    "full_text": "Liked video",
+                                    "quote_count": 1,
+                                    "reply_count": 2,
+                                    "retweet_count": 3,
+                                    "source": "<a href=\"https://mobile.twitter.com\" rel=\"nofollow\">Twitter Web App</a>",
+                                    "extended_entities": {
+                                      "media": [
+                                        {
+                                          "type": "video",
+                                          "original_info": {
+                                            "width": 1920,
+                                            "height": 1080
+                                          },
+                                          "video_info": {
+                                            "duration_millis": 12000,
+                                            "variants": [
+                                              {
+                                                "content_type": "video/mp4",
+                                                "bitrate": 832000,
+                                                "url": "https://video.twimg.com/private-like-video-low.mp4?tag=12"
+                                              },
+                                              {
+                                                "content_type": "video/mp4",
+                                                "bitrate": 2176000,
+                                                "url": "https://video.twimg.com/private-like-video-high.mp4?tag=18"
+                                              }
+                                            ]
+                                          }
+                                        }
+                                      ]
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "expected_response": {
+        "account_info": {
+          "name": "likes",
+          "nick": "My Likes",
+          "date": "2007-12-19 20:20:32",
+          "followers_count": 321,
+          "friends_count": 45,
+          "profile_image": "https://pbs.twimg.com/profile_images/likes_user/avatar.jpg",
+          "statuses_count": 876
+        },
+        "total_urls": 1,
+        "timeline": [
+          {
+            "url": "https://video.twimg.com/private-like-video-high.mp4?tag=18",
+            "date": "2026-04-14T19:00:00",
+            "tweet_id": "9401",
+            "type": "video",
+            "extension": "mp4",
+            "width": 1920,
+            "height": 1080,
+            "content": "Liked video",
+            "bookmark_count": 4,
+            "favorite_count": 11,
+            "retweet_count": 3,
+            "reply_count": 2,
+            "source": "Twitter Web App",
+            "author_username": "likes_user"
+          }
+        ],
+        "metadata": {
+          "new_entries": 1,
+          "page": 2,
+          "batch_size": 20,
+          "has_more": false,
+          "completed": true
+        },
+        "completed": true
+      }
+    }
+  ]
+}

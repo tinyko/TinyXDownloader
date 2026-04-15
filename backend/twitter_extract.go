@@ -1,6 +1,9 @@
 package backend
 
-import "strings"
+import (
+	"context"
+	"strings"
+)
 
 func shouldRetryAsGuest(authToken string, timelineType string, err error) bool {
 	if err == nil || strings.TrimSpace(authToken) == "" {
@@ -34,31 +37,21 @@ func buildGuestExtractorArgs(args []string) []string {
 }
 
 func ExtractTimeline(req TimelineRequest) (*TwitterResponse, error) {
-	exePath, err := ensureExtractor()
-	if err != nil {
-		return nil, err
-	}
-
-	spec := buildTimelineExtractorSpec(req)
-	cliResponse, err := executeExtractorSpec(exePath, req.RequestID, spec)
-	if err != nil {
-		return nil, err
-	}
-
-	return buildTimelineResponseFromCLIResponse(req, spec, cliResponse), nil
+	return extractTimelineWithEngines(
+		context.Background(),
+		req,
+		currentExtractorEngineMode(),
+		newPythonGalleryDLEngine(),
+		newGoTwitterEngine(),
+	)
 }
 
 func ExtractDateRange(req DateRangeRequest) (*TwitterResponse, error) {
-	exePath, err := ensureExtractor()
-	if err != nil {
-		return nil, err
-	}
-
-	spec := buildDateRangeExtractorSpec(req)
-	cliResponse, err := executeExtractorSpec(exePath, req.RequestID, spec)
-	if err != nil {
-		return nil, err
-	}
-
-	return buildDateRangeResponseFromCLIResponse(req, spec, cliResponse), nil
+	return extractDateRangeWithEngines(
+		context.Background(),
+		req,
+		currentExtractorEngineMode(),
+		newPythonGalleryDLEngine(),
+		newGoTwitterEngine(),
+	)
 }

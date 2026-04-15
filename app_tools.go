@@ -143,6 +143,42 @@ func (a *App) WriteSmokeReport(payload string) error {
 	return backend.WriteSmokeReport(payload)
 }
 
+func (a *App) GetExtractorMetricsSnapshot() backend.ExtractorMetricsSnapshot {
+	return backend.GetExtractorMetricsSnapshot()
+}
+
+func (a *App) GetExtractorDiagnosticsSnapshot() backend.ExtractorDiagnosticsSnapshot {
+	return backend.GetExtractorDiagnosticsSnapshot()
+}
+
+func (a *App) SaveExtractorRunbookConfig(config backend.ExtractorRunbookConfig) (backend.ExtractorRunbookConfig, error) {
+	if a.smoke != nil {
+		return backend.ExtractorRunbookConfig{}, fmt.Errorf("extractor runbook is unavailable in smoke mode")
+	}
+	return backend.SaveExtractorRunbookConfig(config)
+}
+
+func (a *App) SaveExtractorRolloutPolicy(policy backend.ExtractorRolloutPolicy) (backend.ExtractorRolloutPolicy, error) {
+	if a.smoke != nil {
+		return backend.ExtractorRolloutPolicy{}, fmt.Errorf("extractor rollout policy is unavailable in smoke mode")
+	}
+	return backend.SaveExtractorRolloutPolicy(policy)
+}
+
+func (a *App) RunExtractorValidationRunbook(req backend.ExtractorValidationRunRequest) (*backend.ExtractorValidationReport, error) {
+	if a.smoke != nil {
+		return nil, fmt.Errorf("extractor validation runbook is unavailable in smoke mode")
+	}
+	return backend.RunExtractorValidationRunbook(AppVersion(), req)
+}
+
+func (a *App) RunExtractorLiveValidationSession(req backend.ExtractorValidationRunRequest) (*backend.ExtractorLiveValidationReport, error) {
+	if a.smoke != nil {
+		return nil, fmt.Errorf("extractor live validation is unavailable in smoke mode")
+	}
+	return backend.RunExtractorLiveValidationSession(AppVersion(), req)
+}
+
 func (a *App) IsFFmpegInstalled() bool {
 	return backend.IsFFmpegInstalled()
 }

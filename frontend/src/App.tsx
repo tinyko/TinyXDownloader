@@ -1,5 +1,5 @@
 import { lazy, Suspense, useState, useCallback, useEffect } from "react";
-import { getSettings, syncSettingsSnapshot } from "@/lib/settings";
+import { getSettings, syncSettingsSnapshot, SETTINGS_CHANGED_EVENT, type Settings } from "@/lib/settings";
 import { APP_VERSION } from "@/lib/app-info";
 import { toastWithSound as toast } from "@/lib/toast-with-sound";
 import { logger } from "@/lib/logger";
@@ -20,6 +20,7 @@ import type { FetchType } from "@/types/fetch";
 import { useActivityPanelState } from "@/hooks/workspace/useActivityPanelState";
 import {
   formatNumberWithComma,
+  parseUsernameList,
   resolveFetchTimelineType,
 } from "@/lib/fetch/session";
 import { useSingleFetchController } from "@/hooks/fetch/useSingleFetchController";
@@ -30,6 +31,7 @@ import { useGlobalDownloadMonitor } from "@/hooks/download/useGlobalDownloadMoni
 import { useGlobalIntegrityMonitor } from "@/hooks/integrity/useGlobalIntegrityMonitor";
 import { useWorkspaceChromeState } from "@/hooks/workspace/useWorkspaceChromeState";
 import { useWorkspaceSettingsState } from "@/hooks/workspace/useWorkspaceSettingsState";
+import type { DiagnosticsParityContext } from "@/types/diagnostics";
 
 // Wails bindings
 import { DownloadSavedScopes } from "../wailsjs/go/main/App";
@@ -51,6 +53,152 @@ const DiagnosticsPanel = lazy(() =>
   import("@/components/workspace/DiagnosticsPanel").then((module) => ({ default: module.DiagnosticsPanel }))
 );
 
+function buildDiagnosticsParityContext(options: {
+  username: string;
+  fetchType: FetchType;
+  searchMode: "public" | "private";
+  searchPrivateType: "bookmarks" | "likes";
+  publicAuthToken: string;
+  privateAuthToken: string;
+  useDateRange: boolean;
+  startDate: string;
+  endDate: string;
+  settings: Settings;
+}): DiagnosticsParityContext {
+  const effectiveMediaType = options.settings.mediaType || "all";
+  const effectiveRetweets = Boolean(options.settings.includeRetweets);
+
+  if (options.fetchType !== "single") {
+    return {
+      enabled: false,
+      request_kind: null,
+      summary_label: "Single-account parity only",
+      disabled_reason: "Parity is only available for the current single-account fetch context.",
+    };
+  }
+
+  if (options.searchMode === "private" && options.searchPrivateType === "bookmarks") {
+    if (!options.privateAuthToken.trim()) {
+      return {
+        enabled: false,
+        request_kind: null,
+        summary_label: `Private bookmarks · ${effectiveMediaType}`,
+        disabled_reason: "Private auth token is required to run bookmarks parity.",
+      };
+    }
+
+    return {
+      enabled: true,
+      request_kind: "timeline",
+      summary_label: `Private bookmarks · ${effectiveMediaType}`,
+      scope: "private",
+      timeline_request: {
+        username: "",
+        auth_token: options.privateAuthToken.trim(),
+        timeline_type: "bookmarks",
+        batch_size: 0,
+        page: 0,
+        media_type: effectiveMediaType,
+        retweets: effectiveRetweets,
+      },
+    };
+  }
+
+  const usernames = parseUsernameList(options.username);
+  if (usernames.length === 0) {
+    return {
+      enabled: false,
+      request_kind: null,
+      summary_label: "No active fetch target",
+      disabled_reason: "Enter a username to run extractor parity.",
+    };
+  }
+  if (usernames.length > 1) {
+    return {
+      enabled: false,
+      request_kind: null,
+      summary_label: "Multiple usernames detected",
+      disabled_reason: "Parity only supports one username at a time.",
+    };
+  }
+
+  const singleUsername = usernames[0];
+  const authToken =
+    options.searchMode === "private" ? options.privateAuthToken.trim() : options.publicAuthToken.trim();
+  if (!authToken) {
+    return {
+      enabled: false,
+      request_kind: null,
+      summary_label:
+        options.searchMode === "private"
+          ? `Private ${options.searchPrivateType} @${singleUsername}`
+          : `Public @${singleUsername}`,
+      disabled_reason: "An auth token is required to run extractor parity.",
+    };
+  }
+
+  if (options.useDateRange) {
+    if (options.searchMode !== "public") {
+      return {
+        enabled: false,
+        request_kind: null,
+        summary_label: `Private @${singleUsername}`,
+        disabled_reason: "Date-range parity is only available for public fetches.",
+      };
+    }
+    if (!options.startDate || !options.endDate) {
+      return {
+        enabled: false,
+        request_kind: null,
+        summary_label: `Public @${singleUsername} date range`,
+        disabled_reason: "Start and end dates are required to run date-range parity.",
+      };
+    }
+
+    return {
+      enabled: true,
+      request_kind: "date_range",
+      summary_label: `Public @${singleUsername} · ${options.startDate}..${options.endDate} · ${effectiveMediaType}`,
+      scope: "public",
+      date_range_request: {
+        username: singleUsername,
+        auth_token: authToken,
+        start_date: options.startDate,
+        end_date: options.endDate,
+        media_filter: effectiveMediaType,
+        retweets: effectiveRetweets,
+      },
+    };
+  }
+
+  const timelineType = resolveFetchTimelineType(
+    false,
+    options.searchMode,
+    options.searchPrivateType,
+    effectiveMediaType,
+    effectiveRetweets
+  );
+
+  return {
+    enabled: true,
+    request_kind: "timeline",
+    scope: options.searchMode,
+    summary_label:
+      options.searchMode === "private"
+        ? `Private ${options.searchPrivateType} @${singleUsername} · ${effectiveMediaType}`
+        : `Public @${singleUsername} · ${timelineType} · ${effectiveMediaType}`,
+    timeline_request: {
+      username: singleUsername,
+      auth_token: authToken,
+      timeline_type: timelineType,
+      batch_size: 0,
+      page: 0,
+      media_type: effectiveMediaType,
+      retweets: effectiveRetweets,
+    },
+  };
+}
+
 function App() {
   const {
     workspaceTab,
@@ -61,6 +209,7 @@ function App() {
     settingsOpen,
     setSettingsOpen,
   } = useWorkspaceChromeState();
+  const [workspaceSettings, setWorkspaceSettings] = useState<Settings>(() => getSettings());
   const [username, setUsername] = useState("");
   const [fetchedMediaType, setFetchedMediaType] = useState<string>("all");
   const [savedTimelineSelection, setSavedTimelineSelection] = useState<{
@@ -92,6 +241,18 @@ function App() {
 
   useEffect(() => {
     syncSettingsSnapshot(getSettings());
+  }, []);
+
+  useEffect(() => {
+    const handleSettingsChanged = (event: Event) => {
+      const nextSettings = (event as CustomEvent<Settings>).detail || getSettings();
+      setWorkspaceSettings(nextSettings);
+    };
+
+    window.addEventListener(SETTINGS_CHANGED_EVENT, handleSettingsChanged as EventListener);
+    return () => {
+      window.removeEventListener(SETTINGS_CHANGED_EVENT, handleSettingsChanged as EventListener);
+    };
   }, []);
 
   const {
@@ -413,6 +574,19 @@ function App() {
     />
   );
 
+  const diagnosticsParityContext = buildDiagnosticsParityContext({
+    username,
+    fetchType,
+    searchMode,
+    searchPrivateType,
+    publicAuthToken,
+    privateAuthToken,
+    useDateRange,
+    startDate,
+    endDate,
+    settings: workspaceSettings,
+  });
+
   return (
     <WorkspaceChrome
       version={APP_VERSION}
@@ -426,7 +600,15 @@ function App() {
           onDiagnosticsOpenChange={setDiagnosticsOpen}
           diagnosticsContent={
             <Suspense fallback={<WorkspaceLoadingState label="diagnostics" />}>
-              <DiagnosticsPanel embedded fillHeight />
+              <DiagnosticsPanel
+                embedded
+                fillHeight
+                parityContext={diagnosticsParityContext}
+                runbookTokens={{
+                  public_auth_token: publicAuthToken.trim(),
+                  private_auth_token: privateAuthToken.trim(),
+                }}
+              />
             </Suspense>
           }
           settingsOpen={settingsOpen}
