@@ -67,6 +67,12 @@ jobs:
         shell: bash
         run: |
           source ./scripts/common.sh
+          ensure_embed_inputs
+          cat > backend/bin/extractor <<'EOF'
+          #!/usr/bin/env bash
+          exit 0
+          EOF
+          chmod +x backend/bin/extractor
           generate_wails_bindings
 
       - name: Install Playwright Chromium
