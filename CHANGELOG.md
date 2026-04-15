@@ -1,5 +1,11 @@
 # Changelog
 
+## V1.2.3 - 2026-04-15
+
+- hardened macOS release packaging with checksum output, stricter signing/notarization validation hooks, and release-ready artifacts
+- added self-hosted desktop smoke automation for the real Wails app, plus GitHub workflows for `desktop-smoke` and tag-based releases
+- introduced unified app data directory overrides, persistent diagnostics logging, support bundle export, database backup/restore, and diagnostics actions in the desktop UI
+
 ## V1.2.2 - 2026-04-14
 
 - added seeded Playwright smoke coverage for Saved Accounts, fetch, download, integrity, and the unified activity panel lifecycle states

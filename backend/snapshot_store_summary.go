@@ -3,7 +3,6 @@ package backend
 import (
 	"database/sql"
 	"strings"
-	"time"
 )
 
 const accountSummarySelectQuery = `
@@ -35,7 +34,7 @@ type accountSummaryScanner interface {
 
 func scanAccountSummary(scanner accountSummaryScanner) (*accountSummaryRecord, error) {
 	var summary accountSummaryRecord
-	var lastFetched time.Time
+	var lastFetchedValue any
 	var retweetsInt int
 	var completedInt int
 
@@ -46,7 +45,7 @@ func scanAccountSummary(scanner accountSummaryScanner) (*accountSummaryRecord, e
 		&summary.ProfileImage,
 		&summary.AccountInfoJSON,
 		&summary.TotalMedia,
-		&lastFetched,
+		&lastFetchedValue,
 		&summary.ResponseJSON,
 		&summary.MediaType,
 		&summary.TimelineType,
@@ -62,6 +61,11 @@ func scanAccountSummary(scanner accountSummaryScanner) (*accountSummaryRecord, e
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
+	if err != nil {
+		return nil, err
+	}
+
+	lastFetched, err := parseDBTimeValue(lastFetchedValue)
 	if err != nil {
 		return nil, err
 	}

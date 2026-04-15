@@ -97,6 +97,7 @@ This produces:
 build/bin/TinyXDownloader.app
 build/release/TinyXDownloader-v{version}-macos-arm64.zip
 build/release/TinyXDownloader-v{version}-macos-arm64.dmg
+build/release/SHA256SUMS.txt
 ```
 
 ## Signing and Notarization Preparation
@@ -131,3 +132,87 @@ codesign --verify --deep --strict build/bin/TinyXDownloader.app
 spctl -a -vv build/bin/TinyXDownloader.app
 xcrun stapler validate build/bin/TinyXDownloader.app
 ```
+
+## App Data Root
+
+Runtime state now lives under an app-data root that can be overridden for smoke tests, CI, or isolated local runs.
+
+- default root: `~/.twitterxmediabatchdownloader`
+- override env: `XDOWNLOADER_APPDATA_DIR`
+
+The following files/directories are derived from that root:
+
+- `accounts.db`
+- `auth_tokens.json`
+- `logs/`
+- managed `ffmpeg`
+- managed `extractor`
+- managed `exiftool`
+
+Example:
+
+```bash
+XDOWNLOADER_APPDATA_DIR="$(mktemp -d)" ./build/bin/TinyXDownloader.app/Contents/MacOS/TinyXDownloader
+```
+
+## Desktop Smoke
+
+Run the real macOS app in smoke mode with deterministic fetch/download/integrity providers:
+
+```bash
+./scripts/desktop-smoke.sh
+```
+
+This script:
+
+- builds the real `.app`
+- seeds a temporary app-data directory with the saved-accounts test database
+- launches the Wails app with `XDOWNLOADER_SMOKE_MODE=1`
+- waits for `report.json`
+- captures failure artifacts under `build/desktop-smoke/`
+
+The smoke runner uses these env vars:
+
+```bash
+XDOWNLOADER_SMOKE_MODE=1
+XDOWNLOADER_SMOKE_REPORT_PATH=/abs/path/report.json
+XDOWNLOADER_APPDATA_DIR=/abs/path/tmp-appdata
+```
+
+## Self-Hosted macOS Runner Prep
+
+Desktop smoke, signed release builds, notarization, and GitHub Release publishing are designed to run on a self-hosted macOS runner labeled:
+
+```text
+self-hosted, macOS, xdownloader-macos
+```
+
+That runner should already have:
+
+- Xcode Command Line Tools
+- Go
+- Node.js + pnpm
+- Python 3
+- a Developer ID Application certificate in the login keychain
+- a stored notary profile created with `xcrun notarytool store-credentials`
+
+The release workflow reads these repo variables:
+
+```text
+MACOS_SIGN_IDENTITY
+MACOS_TEAM_ID
+MACOS_NOTARY_PROFILE
+```
+
+## GitHub Actions
+
+Two workflows are expected on the mainline:
+
+- `ci`: backend tests, frontend lint/test/build/browser smoke, plus self-hosted desktop smoke
+- `release`: tag-driven signed build, notarization, desktop smoke, and GitHub Release upload
+
+The release workflow publishes:
+
+- `TinyXDownloader-v{version}-macos-arm64.zip`
+- `TinyXDownloader-v{version}-macos-arm64.dmg`
+- `SHA256SUMS.txt`

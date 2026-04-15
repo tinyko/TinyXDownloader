@@ -8,15 +8,21 @@ CODESIGN_BIN="/usr/bin/codesign"
 XCRUN_BIN="/usr/bin/xcrun"
 DITTO_BIN="/usr/bin/ditto"
 HDIUTIL_BIN="/usr/bin/hdiutil"
+SPCTL_BIN="/usr/sbin/spctl"
+SHASUM_BIN="/usr/bin/shasum"
 
 [[ -x "$CODESIGN_BIN" ]] || fail "Missing macOS system codesign at $CODESIGN_BIN"
 [[ -x "$XCRUN_BIN" ]] || fail "Missing macOS system xcrun at $XCRUN_BIN"
 [[ -x "$DITTO_BIN" ]] || fail "Missing macOS system ditto at $DITTO_BIN"
 [[ -x "$HDIUTIL_BIN" ]] || fail "Missing macOS system hdiutil at $HDIUTIL_BIN"
+[[ -x "$SPCTL_BIN" ]] || fail "Missing macOS system spctl at $SPCTL_BIN"
+[[ -x "$SHASUM_BIN" ]] || fail "Missing macOS system shasum at $SHASUM_BIN"
 
 if [[ "$(host_os)" != "darwin" ]]; then
   fail "./build-macos.sh must be run on macOS"
 fi
+
+normalize_macos_toolchain
 
 APP_NAME="$(app_name)"
 APP_VERSION="$(app_version)"
@@ -25,6 +31,7 @@ APP_PATH="$ROOT_DIR/build/bin/${OUTPUT_NAME}.app"
 RELEASE_DIR="$ROOT_DIR/build/release"
 ZIP_PATH="$RELEASE_DIR/${APP_NAME}-v${APP_VERSION}-macos-arm64.zip"
 DMG_PATH="$RELEASE_DIR/${APP_NAME}-v${APP_VERSION}-macos-arm64.dmg"
+CHECKSUMS_PATH="$RELEASE_DIR/SHA256SUMS.txt"
 
 signing_enabled=false
 if [[ -n "${MACOS_SIGN_IDENTITY:-}" || -n "${MACOS_TEAM_ID:-}" || -n "${MACOS_NOTARY_PROFILE:-}" ]]; then
@@ -42,7 +49,7 @@ run_wails build -clean -platform "$MACOS_TARGET_PLATFORM" "$@"
 [[ -d "$APP_PATH" ]] || fail "Expected app bundle was not generated: $APP_PATH"
 
 mkdir -p "$RELEASE_DIR"
-rm -f "$ZIP_PATH" "$DMG_PATH"
+rm -f "$ZIP_PATH" "$DMG_PATH" "$CHECKSUMS_PATH"
 
 if [[ "$signing_enabled" == true ]]; then
   log_step "Signing app bundle with Developer ID"
@@ -72,6 +79,9 @@ if [[ "$signing_enabled" == true ]]; then
   log_step "Stapling notarization ticket"
   "$XCRUN_BIN" stapler staple "$APP_PATH"
   "$XCRUN_BIN" stapler validate "$APP_PATH"
+
+  log_step "Checking Gatekeeper acceptance"
+  "$SPCTL_BIN" -a -vv "$APP_PATH"
   trap - EXIT
   cleanup_submission_zip
 else
@@ -104,8 +114,15 @@ ln -s /Applications "$dmg_staging_dir/Applications"
 trap - EXIT
 cleanup_dmg_staging_dir
 
+log_step "Writing release checksums"
+(
+  cd "$RELEASE_DIR"
+  "$SHASUM_BIN" -a 256 "$(basename "$ZIP_PATH")" "$(basename "$DMG_PATH")" > "$CHECKSUMS_PATH"
+)
+
 log_step "Release artifacts ready"
 printf 'App bundle: %s\n' "$APP_PATH"
 printf 'ZIP archive: %s\n' "$ZIP_PATH"
 printf 'DMG image: %s\n' "$DMG_PATH"
+printf 'Checksums: %s\n' "$CHECKSUMS_PATH"
 printf 'Bundle ID: %s\n' "$MACOS_BUNDLE_ID"

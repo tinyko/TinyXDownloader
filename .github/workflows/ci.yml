@@ -63,3 +63,45 @@ jobs:
 
       - name: Run frontend smoke tests
         run: pnpm --dir frontend test:e2e
+
+  desktop-smoke:
+    name: desktop-smoke
+    runs-on: [self-hosted, macOS, xdownloader-macos]
+    needs:
+      - backend
+      - frontend
+    env:
+      CC: clang
+      CXX: clang++
+      SMOKE_OUTPUT_DIR: build/desktop-smoke
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.14.0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 25.9.0
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Run desktop smoke
+        run: ./scripts/desktop-smoke.sh
+
+      - name: Upload desktop smoke artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-smoke-artifacts
+          path: build/desktop-smoke
+          if-no-files-found: ignore

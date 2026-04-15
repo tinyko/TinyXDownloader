@@ -96,6 +96,24 @@ require_command() {
   command -v "$1" >/dev/null 2>&1 || fail "Missing required command: $1"
 }
 
+normalize_macos_toolchain() {
+  if [[ "$(host_os)" != "darwin" ]]; then
+    return 0
+  fi
+
+  if [[ -n "${CC:-}" ]] && ! command -v "$CC" >/dev/null 2>&1; then
+    export CC="clang"
+  elif [[ -z "${CC:-}" ]]; then
+    export CC="clang"
+  fi
+
+  if [[ -n "${CXX:-}" ]] && ! command -v "$CXX" >/dev/null 2>&1; then
+    export CXX="clang++"
+  elif [[ -z "${CXX:-}" ]]; then
+    export CXX="clang++"
+  fi
+}
+
 resolve_wails_version() {
   (
     cd "$ROOT_DIR"
@@ -199,6 +217,7 @@ generate_wails_bindings() {
 }
 
 bootstrap_project() {
+  normalize_macos_toolchain
   require_command go
   require_command pnpm
   require_command python3

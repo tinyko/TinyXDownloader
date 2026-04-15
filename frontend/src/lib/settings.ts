@@ -1,4 +1,5 @@
 import { GetDefaults } from "../../wailsjs/go/main/App";
+import { persistSettingsSnapshot } from "@/lib/diagnostics-client";
 
 export type FontFamily = "google-sans" | "inter" | "poppins" | "roboto" | "dm-sans" | "plus-jakarta-sans" | "manrope" | "space-grotesk" | "noto-sans" | "nunito-sans" | "figtree" | "raleway" | "public-sans" | "outfit" | "jetbrains-mono" | "geist-sans";
 export type GifQuality = "fast" | "better";
@@ -107,6 +108,9 @@ export async function getSettingsWithDefaults(): Promise<Settings> {
 export function saveSettings(settings: Settings): void {
   try {
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+    void persistSettingsSnapshot(JSON.stringify(settings)).catch((error: unknown) => {
+      console.error("Failed to persist settings snapshot:", error);
+    });
     if (typeof window !== "undefined") {
       window.dispatchEvent(
         new CustomEvent(SETTINGS_CHANGED_EVENT, {
@@ -117,6 +121,12 @@ export function saveSettings(settings: Settings): void {
   } catch (error) {
     console.error("Failed to save settings:", error);
   }
+}
+
+export function syncSettingsSnapshot(settings: Settings = getSettings()): void {
+  void persistSettingsSnapshot(JSON.stringify(settings)).catch((error: unknown) => {
+    console.error("Failed to sync settings snapshot:", error);
+  });
 }
 
 export function updateSettings(partial: Partial<Settings>): Settings {

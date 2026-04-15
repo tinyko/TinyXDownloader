@@ -3,7 +3,6 @@ package backend
 import (
 	"database/sql"
 	"encoding/json"
-	"time"
 )
 
 // SaveAccount saves or updates an account in the database
@@ -91,10 +90,14 @@ func GetAllAccounts() ([]AccountListItem, error) {
 	var accounts []AccountListItem
 	for rows.Next() {
 		var acc AccountListItem
-		var lastFetched time.Time
+		var lastFetchedValue any
 		var retweetsInt int
 		var completedInt int
-		if err := rows.Scan(&acc.ID, &acc.Username, &acc.Name, &acc.ProfileImage, &acc.TotalMedia, &lastFetched, &acc.GroupName, &acc.GroupColor, &acc.MediaType, &acc.TimelineType, &retweetsInt, &acc.QueryKey, &acc.Cursor, &completedInt, &acc.FollowersCount, &acc.StatusesCount); err != nil {
+		if err := rows.Scan(&acc.ID, &acc.Username, &acc.Name, &acc.ProfileImage, &acc.TotalMedia, &lastFetchedValue, &acc.GroupName, &acc.GroupColor, &acc.MediaType, &acc.TimelineType, &retweetsInt, &acc.QueryKey, &acc.Cursor, &completedInt, &acc.FollowersCount, &acc.StatusesCount); err != nil {
+			continue
+		}
+		lastFetched, err := parseDBTimeValue(lastFetchedValue)
+		if err != nil {
 			continue
 		}
 		acc.LastFetched = lastFetched.Format("2006-01-02 15:04")

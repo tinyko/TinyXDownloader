@@ -504,7 +504,29 @@ export async function installWailsHarness(
       async GetDefaults() {
         return {
           downloadPath: config.defaultSettings.downloadPath,
+          appDataDir: "/tmp/xdownloader-e2e-appdata",
+          smokeMode: "",
+          smokeReportPath: "",
         };
+      },
+      async WriteSettingsSnapshot() {
+        return true;
+      },
+      async CreateDatabaseBackup() {
+        return "/tmp/xdownloader-e2e-backup.zip";
+      },
+      async ExportSupportBundle() {
+        return "/tmp/xdownloader-e2e-support.zip";
+      },
+      async RestoreDatabaseBackup() {
+        return {
+          success: true,
+          requires_restart: true,
+          message: "Database backup restored. Restart the app to refresh open views.",
+        };
+      },
+      async OpenAppDataFolder() {
+        return true;
       },
       async GetStoredAuthTokens() {
         return storedTokens;

@@ -35,8 +35,7 @@ const (
 
 // GetExifToolPath returns the path to exiftool binary
 func GetExifToolPath() string {
-	homeDir, _ := os.UserHomeDir()
-	baseDir := filepath.Join(homeDir, ".twitterxmediabatchdownloader")
+	baseDir := GetAppDataDir()
 
 	switch runtime.GOOS {
 	case "windows":
@@ -345,4 +344,3 @@ func extractExifToolFromTarGz(tarGzPath, destPath string) error {
 
 	return nil
 }
-

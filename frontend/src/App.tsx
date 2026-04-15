@@ -1,5 +1,5 @@
-import { lazy, Suspense, useState, useCallback } from "react";
-import { getSettings } from "@/lib/settings";
+import { lazy, Suspense, useState, useCallback, useEffect } from "react";
+import { getSettings, syncSettingsSnapshot } from "@/lib/settings";
 import { APP_VERSION } from "@/lib/app-info";
 import { toastWithSound as toast } from "@/lib/toast-with-sound";
 import { logger } from "@/lib/logger";
@@ -10,6 +10,7 @@ import { ActivityPanel } from "@/components/workspace/ActivityPanel";
 import { FetchWorkspaceLayout } from "@/components/workspace/FetchWorkspaceLayout";
 import { SavedWorkspaceLayout } from "@/components/workspace/SavedWorkspaceLayout";
 import { WorkspaceChrome } from "@/components/workspace/WorkspaceChrome";
+import { DesktopSmokeDriver } from "@/components/workspace/DesktopSmokeDriver";
 import { WorkspaceDrawers } from "@/components/workspace/WorkspaceDrawers";
 import { WorkspaceLoadingState } from "@/components/workspace/WorkspaceLoadingState";
 import { WorkspaceRouter } from "@/components/workspace/WorkspaceRouter";
@@ -88,6 +89,11 @@ function App() {
     endDate,
     setEndDate,
   } = useWorkspaceSettingsState();
+
+  useEffect(() => {
+    syncSettingsSnapshot(getSettings());
+  }, []);
+
   const {
     fetchHistory,
     addToHistory,
@@ -458,6 +464,7 @@ function App() {
         />
       }
     >
+      <DesktopSmokeDriver />
       <WorkspaceRouter
         workspaceTab={workspaceTab}
         savedTabVisited={savedTabVisited}

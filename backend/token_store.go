@@ -12,16 +12,8 @@ type StoredAuthTokens struct {
 	PrivateToken string `json:"private_token"`
 }
 
-func appDataDir() string {
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		return "."
-	}
-	return filepath.Join(homeDir, ".twitterxmediabatchdownloader")
-}
-
 func authTokensPath() string {
-	return filepath.Join(appDataDir(), "auth_tokens.json")
+	return ResolveAppDataPath("auth_tokens.json")
 }
 
 func LoadStoredAuthTokens() (StoredAuthTokens, error) {

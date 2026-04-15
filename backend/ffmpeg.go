@@ -24,14 +24,11 @@ const (
 
 // GetFFmpegPath returns the path to ffmpeg binary
 func GetFFmpegPath() string {
-	homeDir, _ := os.UserHomeDir()
-	baseDir := filepath.Join(homeDir, ".twitterxmediabatchdownloader")
-
 	switch runtime.GOOS {
 	case "windows":
-		return filepath.Join(baseDir, "ffmpeg.exe")
+		return ResolveAppDataPath("ffmpeg.exe")
 	default:
-		return filepath.Join(baseDir, "ffmpeg")
+		return ResolveAppDataPath("ffmpeg")
 	}
 }
 

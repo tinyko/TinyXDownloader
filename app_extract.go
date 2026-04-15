@@ -7,6 +7,10 @@ import (
 )
 
 func (a *App) ExtractTimeline(req TimelineRequest) (string, error) {
+	if a.smoke != nil {
+		return a.smoke.extractTimeline(req)
+	}
+
 	if req.Username == "" && req.TimelineType != "bookmarks" {
 		return "", fmt.Errorf("username is required")
 	}
@@ -38,6 +42,10 @@ func (a *App) ExtractTimeline(req TimelineRequest) (string, error) {
 }
 
 func (a *App) ExtractTimelineStructured(req TimelineRequest) (*backend.TwitterResponse, error) {
+	if a.smoke != nil {
+		return a.smoke.extractTimelineStructured(req)
+	}
+
 	if req.Username == "" && req.TimelineType != "bookmarks" {
 		return nil, fmt.Errorf("username is required")
 	}
@@ -64,6 +72,10 @@ func (a *App) ExtractTimelineStructured(req TimelineRequest) (*backend.TwitterRe
 }
 
 func (a *App) ExtractDateRange(req DateRangeRequest) (string, error) {
+	if a.smoke != nil {
+		return a.smoke.extractDateRange(req)
+	}
+
 	if req.Username == "" {
 		return "", fmt.Errorf("username is required")
 	}
@@ -99,6 +111,10 @@ func (a *App) ExtractDateRange(req DateRangeRequest) (string, error) {
 }
 
 func (a *App) ExtractDateRangeStructured(req DateRangeRequest) (*backend.TwitterResponse, error) {
+	if a.smoke != nil {
+		return a.smoke.extractDateRangeStructured(req)
+	}
+
 	if req.Username == "" {
 		return nil, fmt.Errorf("username is required")
 	}

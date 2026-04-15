@@ -364,7 +364,7 @@ func InitDB() error {
 	dbPath := GetDBPath()
 
 	dir := filepath.Dir(dbPath)
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
 
@@ -380,6 +380,7 @@ func InitDB() error {
 // CloseDB closes the database connection
 func CloseDB() {
 	if db != nil {
-		db.Close()
+		_ = db.Close()
+		db = nil
 	}
 }

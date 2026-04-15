@@ -6,10 +6,36 @@ export interface LogEntry {
   message: string;
 }
 
+type BrowserWindowWithWails = Window & {
+  go?: {
+    main?: {
+      App?: {
+        WriteDiagnosticLog?: (level: LogLevel, message: string) => Promise<void> | void;
+      };
+    };
+  };
+};
+
 class Logger {
   private logs: LogEntry[] = [];
   private maxLogs = 500;
   private listeners: Set<() => void> = new Set();
+
+  private persistLog(entry: LogEntry) {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const browserWindow = window as BrowserWindowWithWails;
+    const writeLog = browserWindow.go?.main?.App?.WriteDiagnosticLog;
+    if (!writeLog) {
+      return;
+    }
+
+    Promise.resolve(writeLog(entry.level, entry.message)).catch((error: unknown) => {
+      console.error("Failed to persist diagnostic log:", error);
+    });
+  }
 
   private addLog(level: LogLevel, message: string) {
     const entry: LogEntry = {
@@ -21,6 +47,7 @@ class Logger {
     if (this.logs.length > this.maxLogs) {
       this.logs.shift();
     }
+    this.persistLog(entry);
     this.notifyListeners();
   }
 

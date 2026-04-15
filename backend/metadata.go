@@ -192,7 +192,7 @@ func buildMetadataComment(tweetContent string, tweetURL string, originalFilename
 	return strings.Join(parts, " | ")
 }
 
-// findExifTool searches for exiftool, prioritizing the installed version in .twitterxmediabatchdownloader
+// findExifTool searches for exiftool, prioritizing the managed copy in app data.
 func findExifTool() string {
 	exifToolPathMu.RLock()
 	cachedPath := exifToolPathCache
@@ -201,7 +201,7 @@ func findExifTool() string {
 		return cachedPath
 	}
 
-	// First, check if exiftool is installed in .twitterxmediabatchdownloader
+	// First, check if exiftool is installed in the managed app-data directory.
 	if IsExifToolInstalled() {
 		path := GetExifToolPath()
 		cacheExifToolPath(path)

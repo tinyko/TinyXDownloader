@@ -2,8 +2,6 @@ package backend
 
 import (
 	"database/sql"
-	"os"
-	"path/filepath"
 	"strings"
 	"time"
 )
@@ -63,9 +61,9 @@ type SavedAccountsWorkspaceData struct {
 }
 
 type SavedAccountsBootstrap struct {
-	Groups       []GroupInfo      `json:"groups"`
-	PublicCount  int              `json:"public_count"`
-	PrivateCount int              `json:"private_count"`
+	Groups       []GroupInfo       `json:"groups"`
+	PublicCount  int               `json:"public_count"`
+	PrivateCount int               `json:"private_count"`
 	AccountRefs  []SavedAccountRef `json:"account_refs"`
 }
 
@@ -80,11 +78,7 @@ var db *sql.DB
 
 // GetDBPath returns the database file path
 func GetDBPath() string {
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		homeDir = "."
-	}
-	return filepath.Join(homeDir, ".twitterxmediabatchdownloader", "accounts.db")
+	return ResolveAppDataPath("accounts.db")
 }
 
 func buildFetchKey(username, mediaType, timelineType string, retweets bool, queryKey string) string {

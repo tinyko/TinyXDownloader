@@ -11,7 +11,7 @@
   },
   "info": {
     "productName": "TinyXDownloader",
-    "productVersion": "1.2.2"
+    "productVersion": "1.2.3"
   },
   "wailsjsdir": "./frontend",
   "assetdir": "./frontend/dist",

@@ -3,7 +3,6 @@ package backend
 import (
 	"fmt"
 	"strings"
-	"time"
 )
 
 const (
@@ -182,7 +181,7 @@ func scanAccountListItem(scanner interface {
 	Scan(dest ...interface{}) error
 }) (AccountListItem, error) {
 	var item AccountListItem
-	var lastFetched time.Time
+	var lastFetchedValue any
 	var retweetsInt int
 	var completedInt int
 	err := scanner.Scan(
@@ -191,7 +190,7 @@ func scanAccountListItem(scanner interface {
 		&item.Name,
 		&item.ProfileImage,
 		&item.TotalMedia,
-		&lastFetched,
+		&lastFetchedValue,
 		&item.GroupName,
 		&item.GroupColor,
 		&item.MediaType,
@@ -203,6 +202,11 @@ func scanAccountListItem(scanner interface {
 		&item.FollowersCount,
 		&item.StatusesCount,
 	)
+	if err != nil {
+		return AccountListItem{}, err
+	}
+
+	lastFetched, err := parseDBTimeValue(lastFetchedValue)
 	if err != nil {
 		return AccountListItem{}, err
 	}

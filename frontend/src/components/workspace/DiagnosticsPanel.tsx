@@ -1,7 +1,14 @@
 import { useState, useEffect, useRef } from "react";
 import { Trash2, Copy, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  createDatabaseBackup,
+  exportSupportBundle,
+  openAppDataFolder,
+  restoreDatabaseBackup,
+} from "@/lib/diagnostics-client";
 import { logger, type LogEntry } from "@/lib/logger";
+import { toastWithSound as toast } from "@/lib/toast-with-sound";
 
 interface DiagnosticsPanelProps {
   embedded?: boolean;
@@ -31,6 +38,7 @@ export function DiagnosticsPanel({
 }: DiagnosticsPanelProps) {
   const [logs, setLogs] = useState<LogEntry[]>(() => logger.getLogs());
   const [copied, setCopied] = useState(false);
+  const [busyAction, setBusyAction] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -66,6 +74,65 @@ export function DiagnosticsPanel({
     }
   };
 
+  const runAsyncAction = async (
+    action: string,
+    run: () => Promise<void>
+  ) => {
+    setBusyAction(action);
+    try {
+      await run();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      toast.error(message || "Action failed");
+    } finally {
+      setBusyAction((current) => (current === action ? null : current));
+    }
+  };
+
+  const handleExportSupportBundle = async () => {
+    await runAsyncAction("support-bundle", async () => {
+      const outputPath = await exportSupportBundle();
+      if (!outputPath) {
+        return;
+      }
+      toast.success(`Support bundle exported to ${outputPath}`);
+    });
+  };
+
+  const handleCreateDatabaseBackup = async () => {
+    await runAsyncAction("backup", async () => {
+      const outputPath = await createDatabaseBackup();
+      if (!outputPath) {
+        return;
+      }
+      toast.success(`Database backup created at ${outputPath}`);
+    });
+  };
+
+  const handleRestoreDatabaseBackup = async () => {
+    await runAsyncAction("restore", async () => {
+      const result = await restoreDatabaseBackup();
+      if (!result.success) {
+        if (result.message && result.message !== "Cancelled") {
+          toast.error(result.message);
+        }
+        return;
+      }
+
+      if (result.requires_restart) {
+        toast.warning(result.message);
+      } else {
+        toast.success(result.message);
+      }
+    });
+  };
+
+  const handleOpenAppDataFolder = async () => {
+    await runAsyncAction("open-app-data", async () => {
+      await openAppDataFolder();
+    });
+  };
+
   return (
     <div
       className={
@@ -78,7 +145,47 @@ export function DiagnosticsPanel({
     >
       <div className={`flex items-center ${embedded ? "justify-end" : "justify-between"}`}>
         {!embedded ? <h1 className="text-2xl font-bold">Debug Logs</h1> : null}
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => void handleExportSupportBundle()}
+            disabled={busyAction !== null}
+            className="gap-1.5"
+            data-testid="diagnostics-export-support-bundle"
+          >
+            Export Support Bundle
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => void handleCreateDatabaseBackup()}
+            disabled={busyAction !== null}
+            className="gap-1.5"
+            data-testid="diagnostics-create-backup"
+          >
+            Create Database Backup
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => void handleRestoreDatabaseBackup()}
+            disabled={busyAction !== null}
+            className="gap-1.5"
+            data-testid="diagnostics-restore-backup"
+          >
+            Restore Database Backup
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => void handleOpenAppDataFolder()}
+            disabled={busyAction !== null}
+            className="gap-1.5"
+            data-testid="diagnostics-open-app-data"
+          >
+            Open App Data Folder
+          </Button>
           <Button
             variant="outline"
             size="sm"

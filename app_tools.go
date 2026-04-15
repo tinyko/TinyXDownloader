@@ -3,7 +3,9 @@ package main
 import (
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
+	"time"
 	"twitterxmediabatchdownloader/backend"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
@@ -23,6 +25,122 @@ func (a *App) OpenFolder(path string) error {
 
 func (a *App) SelectFolder(defaultPath string) (string, error) {
 	return backend.SelectFolderDialog(a.ctx, defaultPath)
+}
+
+func (a *App) OpenAppDataFolder() error {
+	return backend.OpenFolderInExplorer(backend.GetAppDataDir())
+}
+
+func (a *App) CreateDatabaseBackup() (string, error) {
+	outputPath, err := openZipSaveDialog(
+		a.ctx,
+		"Create Database Backup",
+		fmt.Sprintf("xdownloader-backup-%s.zip", timestampForFilename()),
+	)
+	if err != nil {
+		return "", err
+	}
+	if outputPath == "" {
+		return "", nil
+	}
+
+	if err := backend.CreateDatabaseBackup(outputPath, AppVersion()); err != nil {
+		return "", err
+	}
+	return outputPath, nil
+}
+
+func (a *App) ExportSupportBundle() (string, error) {
+	outputPath, err := openZipSaveDialog(
+		a.ctx,
+		"Export Support Bundle",
+		fmt.Sprintf("xdownloader-support-%s.zip", timestampForFilename()),
+	)
+	if err != nil {
+		return "", err
+	}
+	if outputPath == "" {
+		return "", nil
+	}
+
+	a.downloadMu.Lock()
+	downloadState := a.downloadState
+	a.downloadMu.Unlock()
+
+	a.integrityMu.Lock()
+	integrityTask := a.integrityTask
+	a.integrityMu.Unlock()
+
+	if err := backend.ExportSupportBundle(outputPath, backend.SupportBundleOptions{
+		AppName:    AppName(),
+		AppVersion: AppVersion(),
+		TaskSummary: backend.SupportBundleTaskSummary{
+			Download: backend.SupportBundleDownloadSummary{
+				Status:     map[bool]string{true: "running", false: "idle"}[downloadState.InProgress],
+				InProgress: downloadState.InProgress,
+				Current:    downloadState.Current,
+				Total:      downloadState.Total,
+				Percent:    downloadState.Percent,
+			},
+			Integrity: backend.SupportBundleIntegritySummary{
+				Status:      integrityTask.Status,
+				InProgress:  integrityTask.InProgress,
+				Phase:       integrityTask.Phase,
+				Mode:        integrityTask.Mode,
+				IssuesCount: integrityTask.IssuesCount,
+			},
+		},
+	}); err != nil {
+		return "", err
+	}
+
+	return outputPath, nil
+}
+
+func (a *App) RestoreDatabaseBackup() (RestoreDatabaseBackupResponse, error) {
+	inputPath, err := openZipOpenDialog(a.ctx, "Restore Database Backup")
+	if err != nil {
+		return RestoreDatabaseBackupResponse{
+			Success: false,
+			Message: err.Error(),
+		}, err
+	}
+	if inputPath == "" {
+		return RestoreDatabaseBackupResponse{
+			Success:         false,
+			RequiresRestart: false,
+			Message:         "Cancelled",
+		}, nil
+	}
+
+	if err := backend.RestoreDatabaseBackup(inputPath); err != nil {
+		return RestoreDatabaseBackupResponse{
+			Success: false,
+			Message: err.Error(),
+		}, err
+	}
+
+	return RestoreDatabaseBackupResponse{
+		Success:         true,
+		RequiresRestart: true,
+		Message:         "Database backup restored. Restart the app to refresh open views.",
+	}, nil
+}
+
+func (a *App) WriteDiagnosticLog(level, message string) {
+	if err := backend.AppendDiagnosticLog(level, message); err != nil {
+		_ = backend.AppendBackendDiagnosticLog("error", fmt.Sprintf("failed to persist frontend diagnostic log: %v", err))
+	}
+}
+
+func (a *App) WriteSettingsSnapshot(raw string) {
+	if err := backend.WriteSettingsSnapshot(raw); err != nil {
+		_ = backend.AppendBackendDiagnosticLog("error", fmt.Sprintf("failed to persist settings snapshot: %v", err))
+	}
+}
+
+func (a *App) WriteSmokeReport(payload string) error {
+	return backend.WriteSmokeReport(payload)
 }
 
 func (a *App) IsFFmpegInstalled() bool {
@@ -129,4 +247,40 @@ func openJSONImportDialog(ctx context.Context) (string, error) {
 			{DisplayName: "JSON Files", Pattern: "*.json"},
 		},
 	})
+}
+
+func openZipSaveDialog(ctx context.Context, title, defaultFilename string) (string, error) {
+	defaultDirectory, err := os.UserHomeDir()
+	if err != nil {
+		defaultDirectory = backend.GetAppDataDir()
+	}
+
+	return runtime.SaveFileDialog(ctx, runtime.SaveDialogOptions{
+		Title:                title,
+		DefaultDirectory:     defaultDirectory,
+		DefaultFilename:      defaultFilename,
+		CanCreateDirectories: true,
+		Filters: []runtime.FileFilter{
+			{DisplayName: "ZIP Archives", Pattern: "*.zip"},
+		},
+	})
+}
+
+func openZipOpenDialog(ctx context.Context, title string) (string, error) {
+	defaultDirectory, err := os.UserHomeDir()
+	if err != nil {
+		defaultDirectory = backend.GetAppDataDir()
+	}
+
+	return runtime.OpenFileDialog(ctx, runtime.OpenDialogOptions{
+		Title:            title,
+		DefaultDirectory: defaultDirectory,
+		Filters: []runtime.FileFilter{
+			{DisplayName: "ZIP Archives", Pattern: "*.zip"},
+		},
+	})
+}
+
+func timestampForFilename() string {
+	return time.Now().Format("20060102-150405")
 }

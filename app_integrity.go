@@ -15,10 +15,17 @@ const (
 )
 
 func (a *App) CheckDownloadIntegrity(req CheckDownloadIntegrityRequest) (backend.DownloadIntegrityReport, error) {
+	if a.smoke != nil {
+		return a.checkSmokeDownloadIntegrity(req)
+	}
 	return backend.CheckDownloadIntegrity(req.DownloadPath, req.Proxy, req.Mode)
 }
 
 func (a *App) StartDownloadIntegrityTask(req CheckDownloadIntegrityRequest) (DownloadIntegrityTaskStatusResponse, error) {
+	if a.smoke != nil {
+		return a.startSmokeIntegrityTask(req)
+	}
+
 	mode := backend.NormalizeDownloadIntegrityModeForApp(req.Mode)
 
 	a.integrityMu.Lock()

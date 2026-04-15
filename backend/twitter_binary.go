@@ -17,19 +17,14 @@ func getExecutableName() string {
 	return "extractor"
 }
 
-// getExtractorPath returns the path to extractor binary
-// Binary is stored in ~/.twitterxmediabatchdownloader/ (same as ffmpeg and database)
+// getExtractorPath returns the path to extractor binary.
 func getExtractorPath() string {
-	homeDir, _ := os.UserHomeDir()
-	baseDir := filepath.Join(homeDir, ".twitterxmediabatchdownloader")
-	return filepath.Join(baseDir, getExecutableName())
+	return ResolveAppDataPath(getExecutableName())
 }
 
 // getHashFilePath returns the path to the hash file for version checking
 func getHashFilePath() string {
-	homeDir, _ := os.UserHomeDir()
-	baseDir := filepath.Join(homeDir, ".twitterxmediabatchdownloader")
-	return filepath.Join(baseDir, "extractor.sha256")
+	return ResolveAppDataPath("extractor.sha256")
 }
 
 // calculateHash calculates SHA256 hash of data

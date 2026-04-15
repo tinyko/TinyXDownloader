@@ -1,0 +1,122 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "V*"
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing release tag to publish
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    name: publish
+    runs-on: [self-hosted, macOS, xdownloader-macos]
+    env:
+      CC: clang
+      CXX: clang++
+      MACOS_SIGN_IDENTITY: ${{ vars.MACOS_SIGN_IDENTITY }}
+      MACOS_TEAM_ID: ${{ vars.MACOS_TEAM_ID }}
+      MACOS_NOTARY_PROFILE: ${{ vars.MACOS_NOTARY_PROFILE }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.14.0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 25.9.0
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Resolve release tag
+        id: tag
+        run: |
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            echo "value=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          elif [[ -n "${{ github.event.inputs.release_tag }}" ]]; then
+            echo "value=${{ github.event.inputs.release_tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "release_tag is required for workflow_dispatch" >&2
+            exit 1
+          fi
+
+      - name: Verify release tag exists
+        run: git rev-parse "${{ steps.tag.outputs.value }}"
+
+      - name: Run backend tests
+        run: go test ./...
+
+      - name: Install frontend dependencies
+        run: pnpm --dir frontend install --frozen-lockfile
+
+      - name: Lint frontend
+        run: pnpm --dir frontend lint
+
+      - name: Run frontend unit tests
+        run: pnpm --dir frontend test
+
+      - name: Build frontend
+        run: pnpm --dir frontend build
+
+      - name: Install Playwright Chromium
+        run: pnpm --dir frontend exec playwright install chromium
+
+      - name: Run browser smoke
+        run: pnpm --dir frontend test:e2e
+
+      - name: Run desktop smoke
+        run: ./scripts/desktop-smoke.sh
+
+      - name: Build signed macOS release
+        run: ./build-macos.sh
+
+      - name: Extract release notes
+        run: |
+          tag="${{ steps.tag.outputs.value }}"
+          notes_path="build/release/release-notes.md"
+          mkdir -p "$(dirname "$notes_path")"
+          awk -v tag="$tag" '
+            $0 ~ "^## " tag {
+              flag=1
+              next
+            }
+            /^## / && flag {
+              exit
+            }
+            flag {
+              print
+            }
+          ' CHANGELOG.md > "$notes_path"
+          [[ -s "$notes_path" ]] || {
+            echo "Failed to extract release notes for $tag" >&2
+            exit 1
+          }
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.value }}
+          body_path: build/release/release-notes.md
+          files: |
+            build/release/*.zip
+            build/release/*.dmg
+            build/release/SHA256SUMS.txt

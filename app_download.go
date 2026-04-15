@@ -10,6 +10,10 @@ import (
 )
 
 func (a *App) DownloadMedia(req DownloadMediaRequest) (DownloadMediaResponse, error) {
+	if a.smoke != nil {
+		return a.runSmokeDownloadSession(len(req.URLs))
+	}
+
 	if len(req.URLs) == 0 {
 		return DownloadMediaResponse{Success: false, Message: "No URLs provided"}, fmt.Errorf("no URLs provided")
 	}
@@ -43,6 +47,10 @@ func (a *App) DownloadMedia(req DownloadMediaRequest) (DownloadMediaResponse, er
 }
 
 func (a *App) DownloadMediaWithMetadata(req DownloadMediaWithMetadataRequest) (DownloadMediaResponse, error) {
+	if a.smoke != nil {
+		return a.runSmokeDownloadSession(len(req.Items))
+	}
+
 	if len(req.Items) == 0 {
 		return DownloadMediaResponse{Success: false, Message: "No items provided"}, fmt.Errorf("no items provided")
 	}
@@ -156,6 +164,10 @@ func (a *App) runSavedScopeDownloads(payloads []*backend.ScopeMediaDownloadPaylo
 }
 
 func (a *App) DownloadSavedScopes(req DownloadSavedScopesRequest) (DownloadMediaResponse, error) {
+	if a.smoke != nil {
+		return a.runSmokeDownloadSession(len(req.Scopes) * 6)
+	}
+
 	if len(req.Scopes) == 0 {
 		return DownloadMediaResponse{Success: false, Message: "No scopes provided"}, fmt.Errorf("no scopes provided")
 	}

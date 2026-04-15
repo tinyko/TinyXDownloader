@@ -181,6 +181,12 @@ type ImportAccountResponse struct {
 	Message  string `json:"message"`
 }
 
+type RestoreDatabaseBackupResponse struct {
+	Success         bool   `json:"success"`
+	RequiresRestart bool   `json:"requires_restart"`
+	Message         string `json:"message"`
+}
+
 func toBackendFetchScope(scope FetchScopeRequest) backend.FetchScopeRecord {
 	return backend.FetchScopeRecord{
 		Username:     scope.Username,
