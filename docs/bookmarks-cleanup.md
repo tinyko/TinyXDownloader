@@ -5,16 +5,16 @@ This repo includes a two-step local workflow for clearing `x.com` bookmarks with
 1. export decrypted Chrome cookies into a local JSON file
 2. run the Playwright cleanup tool against that cookies file
 
-The public entrypoint is [bookmarks.sh](/Users/tiny/DevecostudioProjects/Xdownloader/bookmarks.sh). It keeps the toolchain in one place while reusing the existing Python and Playwright implementations underneath.
+The public entrypoint is [`bookmarks.sh`](../bookmarks.sh). It keeps the toolchain in one place while reusing the existing Python and Playwright implementations underneath.
 
 ## Files
 
 - Cookie export script:
-  [/Users/tiny/DevecostudioProjects/Xdownloader/scripts/export_chrome_x_cookies.py](/Users/tiny/DevecostudioProjects/Xdownloader/scripts/export_chrome_x_cookies.py)
+  [`scripts/export_chrome_x_cookies.py`](../scripts/export_chrome_x_cookies.py)
 - Bookmark cleanup script:
-  [/Users/tiny/DevecostudioProjects/Xdownloader/frontend/scripts/clear-x-bookmarks-playwright.mjs](/Users/tiny/DevecostudioProjects/Xdownloader/frontend/scripts/clear-x-bookmarks-playwright.mjs)
+  [`frontend/scripts/clear-x-bookmarks-playwright.mjs`](../frontend/scripts/clear-x-bookmarks-playwright.mjs)
 - Root wrapper:
-  [/Users/tiny/DevecostudioProjects/Xdownloader/bookmarks.sh](/Users/tiny/DevecostudioProjects/Xdownloader/bookmarks.sh)
+  [`bookmarks.sh`](../bookmarks.sh)
 
 ## Quick Start
 

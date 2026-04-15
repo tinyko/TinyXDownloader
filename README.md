@@ -4,7 +4,7 @@ TinyXDownloader is a desktop-first X/Twitter fetch and download workspace built 
 
 ## Latest Workspace
 
-![TinyXDownloader workspace](docs/images/workspace-2026-04-13.png)
+![TinyXDownloader workspace](docs/images/workspace-2026-04-15.png)
 
 The current UI is organized into three persistent work areas:
 

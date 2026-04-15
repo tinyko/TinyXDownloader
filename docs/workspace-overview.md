@@ -4,7 +4,7 @@
 
 TinyXDownloader is organized as a single desktop workspace instead of a page-heavy navigation model. The goal is to keep fetch, review, and download actions visible at the same time, while moving lower-frequency controls such as Settings and Diagnostics into drawers.
 
-![Workspace screenshot](images/workspace-2026-04-13.png)
+![Workspace screenshot](images/workspace-2026-04-15.png)
 
 ## Layout
 
