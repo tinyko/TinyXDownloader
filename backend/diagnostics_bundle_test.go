@@ -3,6 +3,7 @@ package backend
 import (
 	"archive/zip"
 	"encoding/json"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -190,6 +191,107 @@ func TestExportSupportBundleRedactsSensitiveSettingsAndExcludesSecrets(t *testin
 	})
 }
 
+func TestAppendDiagnosticLogRotatesAndCapsArchives(t *testing.T) {
+	withTempAppData(t, func(root string) {
+		previousMaxBytes := diagnosticsLogMaxBytes
+		previousArchives := diagnosticsLogArchives
+		diagnosticsLogMaxBytes = 120
+		diagnosticsLogArchives = 2
+		t.Cleanup(func() {
+			diagnosticsLogMaxBytes = previousMaxBytes
+			diagnosticsLogArchives = previousArchives
+		})
+
+		for index := 0; index < 5; index++ {
+			message := fmt.Sprintf("frontend-log-%d-%s", index, strings.Repeat("x", 70))
+			if err := AppendDiagnosticLog("info", message); err != nil {
+				t.Fatalf("append rotated log %d: %v", index, err)
+			}
+		}
+
+		currentPath := filepath.Join(root, "logs", frontendDiagnosticsLogName)
+		archiveOne := filepath.Join(root, "logs", "frontend.1.log")
+		archiveTwo := filepath.Join(root, "logs", "frontend.2.log")
+		archiveThree := filepath.Join(root, "logs", "frontend.3.log")
+
+		currentContent, err := os.ReadFile(currentPath)
+		if err != nil {
+			t.Fatalf("read current log: %v", err)
+		}
+		archiveOneContent, err := os.ReadFile(archiveOne)
+		if err != nil {
+			t.Fatalf("read archive one: %v", err)
+		}
+		archiveTwoContent, err := os.ReadFile(archiveTwo)
+		if err != nil {
+			t.Fatalf("read archive two: %v", err)
+		}
+
+		if strings.Contains(string(currentContent), "frontend-log-0-") {
+			t.Fatal("current log should not keep the oldest rotated entries")
+		}
+		if !strings.Contains(string(currentContent), "frontend-log-4-") {
+			t.Fatal("current log should contain the newest entry")
+		}
+		if !strings.Contains(string(archiveOneContent), "frontend-log-3-") {
+			t.Fatal("first archive should contain the previously current entry")
+		}
+		if !strings.Contains(string(archiveTwoContent), "frontend-log-2-") {
+			t.Fatal("second archive should contain the older rotated entry")
+		}
+		if _, err := os.Stat(archiveThree); !os.IsNotExist(err) {
+			t.Fatalf("expected archive cap to remove %s, err=%v", archiveThree, err)
+		}
+	})
+}
+
+func TestExportSupportBundleTruncatesLargeLogFiles(t *testing.T) {
+	withTempAppData(t, func(root string) {
+		previousMaxLogBytes := supportBundleMaxLogBytesPerFile
+		supportBundleMaxLogBytesPerFile = 80
+		t.Cleanup(func() {
+			supportBundleMaxLogBytesPerFile = previousMaxLogBytes
+		})
+
+		if err := InitDB(); err != nil {
+			t.Fatalf("init db: %v", err)
+		}
+		insertTestAccountRecord(t, "log_bundle_user")
+
+		largeLogBody := strings.Repeat("0123456789", 40)
+		if err := os.MkdirAll(GetLogsDir(), 0o700); err != nil {
+			t.Fatalf("create logs dir: %v", err)
+		}
+		if err := os.WriteFile(
+			filepath.Join(GetLogsDir(), backendDiagnosticsLogName),
+			[]byte(largeLogBody),
+			0o600,
+		); err != nil {
+			t.Fatalf("write oversized log: %v", err)
+		}
+
+		outputPath := filepath.Join(root, "support-truncated.zip")
+		if err := ExportSupportBundle(outputPath, SupportBundleOptions{
+			AppName:    "TinyXDownloader",
+			AppVersion: "1.2.3",
+		}); err != nil {
+			t.Fatalf("export support bundle: %v", err)
+		}
+
+		entries := readZipEntries(t, outputPath)
+		logBody, ok := entries["logs/backend.log"]
+		if !ok {
+			t.Fatal("expected logs/backend.log entry")
+		}
+		if !strings.HasPrefix(logBody, "[truncated to last 80 bytes]") {
+			t.Fatalf("expected truncated prefix, got %q", logBody)
+		}
+		if strings.Contains(logBody, largeLogBody[:120]) {
+			t.Fatal("expected support bundle log entry to omit the full oversized body")
+		}
+	})
+}
+
 func TestRestoreDatabaseBackupRejectsFutureSchema(t *testing.T) {
 	withTempAppData(t, func(root string) {
 		backupPath := filepath.Join(root, "future-schema.zip")
@@ -212,6 +314,45 @@ func TestRestoreDatabaseBackupRejectsFutureSchema(t *testing.T) {
 			t.Fatal("expected future schema restore to fail")
 		}
 		if !strings.Contains(err.Error(), "newer than this app supports") {
+			t.Fatalf("unexpected restore error: %v", err)
+		}
+	})
+}
+
+func TestRestoreDatabaseBackupRejectsChecksumMismatch(t *testing.T) {
+	withTempAppData(t, func(root string) {
+		if err := InitDB(); err != nil {
+			t.Fatalf("init db: %v", err)
+		}
+		insertTestAccountRecord(t, "checksum_user")
+
+		snapshotPath, err := createDatabaseSnapshotFile()
+		if err != nil {
+			t.Fatalf("create snapshot: %v", err)
+		}
+		defer os.Remove(snapshotPath)
+
+		backupPath := filepath.Join(root, "checksum-mismatch.zip")
+		if err := writeBundleZip(backupPath, func(writer *zip.Writer) error {
+			if err := writeJSONZipEntry(writer, "manifest.json", DatabaseBackupManifest{
+				FormatVersion:         supportBundleFormatVersion,
+				AppVersion:            "1.2.3",
+				DatabaseSchemaVersion: GetDatabaseSchemaVersion(),
+				CreatedAt:             "2026-04-15T00:00:00Z",
+				SHA256:                strings.Repeat("0", 64),
+			}); err != nil {
+				return err
+			}
+			return writeFileZipEntry(writer, "db/accounts.db", snapshotPath)
+		}); err != nil {
+			t.Fatalf("write backup zip: %v", err)
+		}
+
+		err = RestoreDatabaseBackup(backupPath)
+		if err == nil {
+			t.Fatal("expected checksum mismatch restore to fail")
+		}
+		if !strings.Contains(err.Error(), "checksum mismatch") {
 			t.Fatalf("unexpected restore error: %v", err)
 		}
 	})

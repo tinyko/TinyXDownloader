@@ -62,6 +62,15 @@ jobs:
       - name: Verify release tag exists
         run: git rev-parse "${{ steps.tag.outputs.value }}"
 
+      - name: Prepare embedded assets
+        shell: bash
+        run: |
+          source ./scripts/common.sh
+          require_command python3
+          ensure_embed_inputs
+          ensure_python_venv
+          build_extractor
+
       - name: Run backend tests
         run: go test ./...
 
