@@ -33,3 +33,18 @@ export async function waitForTaskStatus(
     timeout: 10_000,
   });
 }
+
+export async function waitForTaskStatusOneOf(
+  page: Page,
+  testId: string,
+  expected: string[]
+) {
+  await expect
+    .poll(async () => {
+      const value = (await page.getByTestId(testId).textContent())?.trim() ?? "";
+      return expected.includes(value);
+    }, {
+      timeout: 10_000,
+    })
+    .toBe(true);
+}

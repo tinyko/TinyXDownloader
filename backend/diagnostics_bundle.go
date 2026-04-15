@@ -2,6 +2,7 @@ package backend
 
 import (
 	"archive/zip"
+	"bufio"
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
@@ -19,6 +20,8 @@ import (
 )
 
 const supportBundleFormatVersion = 1
+
+var supportBundleMaxLogBytesPerFile int64 = 256 * 1024
 
 type DatabaseBackupManifest struct {
 	FormatVersion         int    `json:"format_version"`
@@ -164,11 +167,10 @@ func ExportSupportBundle(outputPath string, options SupportBundleOptions) error 
 		Tasks:                 options.TaskSummary,
 	}
 
-	logFiles, err := filepath.Glob(filepath.Join(GetLogsDir(), "*.log"))
+	logFiles, err := collectSupportBundleLogFiles()
 	if err != nil {
 		return err
 	}
-	slices.Sort(logFiles)
 
 	if err := writeBundleZip(outputPath, func(writer *zip.Writer) error {
 		if err := writeJSONZipEntry(writer, "manifest.json", manifest); err != nil {
@@ -181,7 +183,12 @@ func ExportSupportBundle(outputPath string, options SupportBundleOptions) error 
 			return err
 		}
 		for _, logFile := range logFiles {
-			if err := writeFileZipEntry(writer, filepath.Join("logs", filepath.Base(logFile)), logFile); err != nil {
+			if err := writeTailFileZipEntry(
+				writer,
+				filepath.Join("logs", filepath.Base(logFile)),
+				logFile,
+				supportBundleMaxLogBytesPerFile,
+			); err != nil {
 				return err
 			}
 		}
@@ -391,6 +398,14 @@ func writeFileZipEntry(writer *zip.Writer, entryName, sourcePath string) error {
 	return err
 }
 
+func writeTailFileZipEntry(writer *zip.Writer, entryName, sourcePath string, maxBytes int64) error {
+	data, err := readTailFileBytes(sourcePath, maxBytes)
+	if err != nil {
+		return err
+	}
+	return writeBytesZipEntry(writer, entryName, data)
+}
+
 func decodeZipJSONEntry(entry *zip.File, target any) error {
 	handle, err := entry.Open()
 	if err != nil {
@@ -434,6 +449,80 @@ func copyFileContents(sourcePath, destinationPath string, mode os.FileMode) erro
 		return err
 	}
 	return output.Chmod(mode)
+}
+
+func collectSupportBundleLogFiles() ([]string, error) {
+	matches, err := filepath.Glob(filepath.Join(GetLogsDir(), "*.log"))
+	if err != nil {
+		return nil, err
+	}
+
+	files := make([]string, 0, len(matches))
+	for _, match := range matches {
+		info, err := os.Stat(match)
+		if err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			return nil, err
+		}
+		if info.Mode().IsRegular() {
+			files = append(files, match)
+		}
+	}
+
+	slices.SortFunc(files, func(left, right string) int {
+		leftInfo, leftErr := os.Stat(left)
+		rightInfo, rightErr := os.Stat(right)
+		if leftErr == nil && rightErr == nil {
+			if leftInfo.ModTime().After(rightInfo.ModTime()) {
+				return -1
+			}
+			if leftInfo.ModTime().Before(rightInfo.ModTime()) {
+				return 1
+			}
+		}
+		return strings.Compare(filepath.Base(left), filepath.Base(right))
+	})
+
+	return files, nil
+}
+
+func readTailFileBytes(sourcePath string, maxBytes int64) ([]byte, error) {
+	file, err := os.Open(sourcePath)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	info, err := file.Stat()
+	if err != nil {
+		return nil, err
+	}
+
+	if maxBytes <= 0 || info.Size() <= maxBytes {
+		return io.ReadAll(file)
+	}
+
+	startOffset := info.Size() - maxBytes
+	if _, err := file.Seek(startOffset, io.SeekStart); err != nil {
+		return nil, err
+	}
+
+	reader := bufio.NewReader(file)
+	if startOffset > 0 {
+		if _, err := reader.ReadString('\n'); err != nil && err != io.EOF {
+			return nil, err
+		}
+	}
+
+	data, err := io.ReadAll(reader)
+	if err != nil {
+		return nil, err
+	}
+
+	prefix := []byte(fmt.Sprintf("[truncated to last %d bytes]\n", maxBytes))
+	return append(prefix, data...), nil
 }
 
 func buildRedactedSettingsSnapshot() ([]byte, error) {

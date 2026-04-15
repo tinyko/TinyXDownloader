@@ -24,6 +24,15 @@ jobs:
         with:
           go-version-file: go.mod
 
+      - name: Prepare embedded assets
+        shell: bash
+        run: |
+          source ./scripts/common.sh
+          require_command python3
+          ensure_embed_inputs
+          ensure_python_venv
+          build_extractor
+
       - name: Run backend tests
         run: go test ./...
 
@@ -33,6 +42,11 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -48,6 +62,18 @@ jobs:
 
       - name: Install frontend dependencies
         run: pnpm --dir frontend install --frozen-lockfile
+
+      - name: Generate Wails bindings
+        shell: bash
+        run: |
+          source ./scripts/common.sh
+          ensure_embed_inputs
+          cat > backend/bin/extractor <<'EOF'
+          #!/usr/bin/env bash
+          exit 0
+          EOF
+          chmod +x backend/bin/extractor
+          generate_wails_bindings
 
       - name: Install Playwright Chromium
         run: pnpm --dir frontend exec playwright install chromium
@@ -83,17 +109,16 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 10.14.0
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 25.9.0
-          cache: pnpm
-          cache-dependency-path: frontend/pnpm-lock.yaml
+      - name: Verify self-hosted toolchain
+        shell: bash
+        run: |
+          source ./scripts/common.sh
+          normalize_macos_toolchain
+          require_command node
+          require_command pnpm
+          require_command python3
+          node --version
+          pnpm --version
 
       - name: Run desktop smoke
         run: ./scripts/desktop-smoke.sh

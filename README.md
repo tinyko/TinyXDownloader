@@ -155,6 +155,24 @@ Example:
 XDOWNLOADER_APPDATA_DIR="$(mktemp -d)" ./build/bin/TinyXDownloader.app/Contents/MacOS/TinyXDownloader
 ```
 
+## Diagnostics and Backups
+
+Diagnostics now use a dual path:
+
+- the in-app diagnostics panel still shows the current session log stream
+- frontend and backend diagnostic logs are also written to persistent files under `logs/`
+
+Persistent diagnostic logs rotate automatically so the app-data directory does not grow without bound. Support bundles intentionally include only the most recent tail of each log file instead of the full unbounded history.
+
+The Diagnostics drawer now includes native actions for:
+
+- exporting a support bundle
+- creating a database backup
+- restoring a database backup
+- opening the app-data folder
+
+Support bundles exclude raw `auth_tokens.json`, managed binaries, and downloaded media payloads. Database backups include `accounts.db` plus a manifest with schema and checksum metadata so restores can validate compatibility before replacing local state.
+
 ## Desktop Smoke
 
 Run the real macOS app in smoke mode with deterministic fetch/download/integrity providers:
