@@ -378,6 +378,16 @@ export function DiagnosticsPanel({
                 (routeState.default_served_by_go
                   ? "Serving Go by default with the current baseline."
                   : "Awaiting a valid promoted baseline for default Go.");
+              const healthGate: ExtractorValidationGate = soakState.blocker_open
+                ? "blocked"
+                : routeState.default_served_by_go
+                  ? "ready"
+                  : "incomplete";
+              const healthLabel = soakState.blocker_open
+                ? "Blocker open"
+                : routeState.default_served_by_go
+                  ? "Healthy"
+                  : "Pending";
               const routeTone = routeState.default_served_by_go
                 ? "border-green-500/40 bg-green-500/10 text-green-700 dark:text-green-300"
                 : routeState.fallback_served_by_python
@@ -399,9 +409,9 @@ export function DiagnosticsPanel({
                     </div>
                     <Badge
                       variant="outline"
-                      className={soakState.blocker_open ? gateTone("blocked") : gateTone("ready")}
+                      className={gateTone(healthGate)}
                     >
-                      {soakState.blocker_open ? "Blocker open" : "Healthy"}
+                      {healthLabel}
                     </Badge>
                   </div>
 

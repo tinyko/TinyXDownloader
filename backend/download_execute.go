@@ -123,6 +123,7 @@ func executeDownloadTasks(
 	var failedCount int64
 	var completedCount int64
 	var lastReportedPercent int64 = -1
+	var callbackMu sync.Mutex
 
 	reportProgress := func(completed int64) {
 		if progress == nil {
@@ -140,7 +141,9 @@ func executeDownloadTasks(
 				return
 			}
 			if atomic.CompareAndSwapInt64(&lastReportedPercent, last, percent) {
+				callbackMu.Lock()
 				progress(int(completed), reportedTotal)
+				callbackMu.Unlock()
 				return
 			}
 		}
@@ -172,7 +175,9 @@ func executeDownloadTasks(
 				if shouldSkip, err := shouldSkipExistingFile(ctx, sharedClient, task.item.URL, task.outputPath, task.item.Type); err == nil && shouldSkip {
 					status = "skipped"
 					if itemStatus != nil {
+						callbackMu.Lock()
 						itemStatus(task.item.TweetID, task.index, status)
+						callbackMu.Unlock()
 					}
 					atomic.AddInt64(&skippedCount, 1)
 					completed := atomic.AddInt64(&completedCount, 1)
@@ -203,7 +208,9 @@ func executeDownloadTasks(
 				}
 
 				if itemStatus != nil {
+					callbackMu.Lock()
 					itemStatus(task.item.TweetID, task.index, status)
+					callbackMu.Unlock()
 				}
 
 				completed := atomic.AddInt64(&completedCount, 1)

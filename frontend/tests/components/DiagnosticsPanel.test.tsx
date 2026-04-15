@@ -266,9 +266,9 @@ function createBaseSnapshot(): ExtractorDiagnosticsSnapshot {
         promoted: true,
         baseline_active: true,
         default_served_by_go: true,
-        fallback_served_by_python: true,
-        inactive_reason: "go runtime fell back to python after a blocker",
-        last_failure_reason: "go runtime fell back to python after a blocker",
+        fallback_served_by_python: false,
+        inactive_reason: "default-go soak has an open blocker in the current release cycle",
+        last_failure_reason: "go runtime blocked on a current-release default-route soak failure",
         depythonization_ready: false,
       },
       date_range: {
@@ -289,9 +289,9 @@ function createBaseSnapshot(): ExtractorDiagnosticsSnapshot {
         promoted: false,
         baseline_active: false,
         default_served_by_go: false,
-        fallback_served_by_python: true,
-        inactive_reason: "default route recently fell back to python",
-        last_failure_reason: "default route recently fell back to python",
+        fallback_served_by_python: false,
+        inactive_reason: "awaiting a valid promoted baseline",
+        last_failure_reason: "historical baseline not approved for default go",
         depythonization_ready: false,
       },
     },
@@ -309,13 +309,13 @@ function createBaseSnapshot(): ExtractorDiagnosticsSnapshot {
       timeline: {
         total_requests: 3,
         go_selected_successes: 1,
-        python_fallbacks: 2,
+        python_fallbacks: 0,
         fallback_required_count: 1,
         runtime_failures: 0,
         cursor_semantic_failures: 0,
         last_success_at: "2026-04-15T06:22:00Z",
         last_failure_at: "2026-04-15T06:23:00Z",
-        last_failure_reason: "go runtime fell back to python after a blocker",
+        last_failure_reason: "go runtime blocked on a current-release default-route soak failure",
         blocker_open: true,
       },
       date_range: {
@@ -340,12 +340,12 @@ function createBaseSnapshot(): ExtractorDiagnosticsSnapshot {
       bookmarks: {
         total_requests: 1,
         go_selected_successes: 0,
-        python_fallbacks: 1,
-        fallback_required_count: 1,
+        python_fallbacks: 0,
+        fallback_required_count: 0,
         runtime_failures: 0,
         cursor_semantic_failures: 0,
         last_failure_at: "2026-04-15T06:25:00Z",
-        last_failure_reason: "default route recently fell back to python",
+        last_failure_reason: "historical baseline not approved for default go",
         blocker_open: true,
       },
     },
@@ -1110,7 +1110,7 @@ describe("DiagnosticsPanel", () => {
     expect(screen.getByTestId("diagnostics-history-panel").textContent).toContain("live-001");
     expect(screen.getByTestId("diagnostics-default-soak-media").textContent).toContain("Default Go");
     expect(screen.getByTestId("diagnostics-default-soak-status-timeline").textContent).toContain(
-      "go runtime fell back to python after a blocker"
+      "go runtime blocked on a current-release default-route soak failure"
     );
     expect(screen.getByTestId("diagnostics-phase7-ready").textContent).toContain("not ready");
     expect(screen.queryByText("Debug Logs")).toBeNull();
@@ -1134,7 +1134,7 @@ describe("DiagnosticsPanel", () => {
       ).toBeTruthy();
     });
 
-    expect(screen.getByTestId("diagnostics-default-soak-bookmarks").textContent).toContain("Python fallback");
+    expect(screen.getByTestId("diagnostics-default-soak-bookmarks").textContent).toContain("Not on Go");
   });
 
   it("shows go-only fallback status in the health summary", async () => {

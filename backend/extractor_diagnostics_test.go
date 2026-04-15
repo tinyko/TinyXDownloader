@@ -13,13 +13,14 @@ func TestGetExtractorDiagnosticsSnapshotIncludesRecentEventsAndParity(t *testing
 		_ = root
 		resetExtractorDiagnosticsForTests()
 		SetExtractorAppVersion("1.2.3")
+		writeExtractorSoakTestPromotionPolicy(t, ExtractorRequestFamilyMedia)
 
 		appendExtractorLog(extractorRequestLogEntry{
 			Event:          "extractor_request",
 			RequestKind:    "timeline",
-			ConfiguredMode: ExtractorEngineModeGo,
+			ConfiguredMode: ExtractorEngineModePython,
 			EffectiveMode:  ExtractorEngineModeGo,
-			ModeSource:     "env",
+			ModeSource:     "deprecated_python_mode",
 			RequestFamily:  ExtractorRequestFamilyMedia,
 			Mode:           ExtractorEngineModeGo,
 			SelectedEngine: "go-twitter",
@@ -123,8 +124,11 @@ func TestGetExtractorDiagnosticsSnapshotIncludesRecentEventsAndParity(t *testing
 		if snapshot.SoakFamilyStates.Media.TotalRequests != 1 {
 			t.Fatalf("expected one soak media request, got %d", snapshot.SoakFamilyStates.Media.TotalRequests)
 		}
-		if snapshot.DefaultRouteStates.Media.DepythonizationReady {
-			t.Fatal("expected depythonization-ready to remain false without promotion baseline")
+		if !snapshot.DefaultRouteStates.Media.DefaultServedByGo {
+			t.Fatal("expected promoted media family to report default Go once a real default request has been observed")
+		}
+		if !snapshot.DefaultRouteStates.Media.DepythonizationReady {
+			t.Fatal("expected media family to become depythonization-ready once a valid baseline and real default sample exist")
 		}
 		if snapshot.Phase7Ready {
 			t.Fatal("expected phase 7 gate to remain false with incomplete families")

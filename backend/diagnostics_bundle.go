@@ -147,6 +147,10 @@ func CreateDatabaseBackup(outputPath, appVersion string) error {
 }
 
 func ExportSupportBundle(outputPath string, options SupportBundleOptions) error {
+	if err := flushExtractorSoakState(); err != nil {
+		return err
+	}
+
 	snapshotPath, err := createDatabaseSnapshotFile()
 	if err != nil {
 		return err

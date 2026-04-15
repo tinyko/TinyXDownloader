@@ -573,14 +573,16 @@ func buildExtractorDefaultRouteState(
 	liveGate ExtractorFamilyGateSummary,
 	soakState ExtractorSoakFamilyState,
 ) ExtractorDefaultRouteState {
+	baselineActive := policyState.Promoted && extractorPublicPromotionBaselineValid(policyState)
 	state := ExtractorDefaultRouteState{
-		Promoted:          policyState.Promoted,
-		BaselineActive:    extractorPublicPromotionBaselineValid(policyState),
-		DefaultServedByGo: true,
-		LastFailureReason: strings.TrimSpace(soakState.LastFailureReason),
-		InactiveReason:    "",
+		Promoted:               policyState.Promoted,
+		BaselineActive:         baselineActive,
+		DefaultServedByGo:      baselineActive,
+		FallbackServedByPython: false,
+		LastFailureReason:      strings.TrimSpace(soakState.LastFailureReason),
+		InactiveReason:         "",
 		DepythonizationReady: policyState.Promoted &&
-			extractorPublicPromotionBaselineValid(policyState) &&
+			baselineActive &&
 			!soakState.BlockerOpen &&
 			soakState.TotalRequests > 0 &&
 			validationGate.Gate != ExtractorValidationGateBlocked &&
@@ -588,12 +590,13 @@ func buildExtractorDefaultRouteState(
 	}
 	if promotionState.Active {
 		state.BaselineActive = true
+		state.DefaultServedByGo = true
 	}
 	if state.Promoted && !state.BaselineActive {
 		state.InactiveReason = "go-only runtime is active, but the historical promotion baseline is missing or invalid"
 	}
-	if state.LastFailureReason != "" {
-		state.FallbackServedByPython = false
+	if state.LastFailureReason != "" && state.InactiveReason == "" {
+		state.InactiveReason = "default-go soak has an open blocker in the current release cycle"
 	}
 	return state
 }
@@ -619,6 +622,9 @@ func resetExtractorDiagnosticsForTests() {
 	atomic.StoreUint64(&extractorMetrics.rolloutTrialPythonBypass, 0)
 	atomic.StoreUint64(&extractorMetrics.rolloutTrialGoSelected, 0)
 	_ = os.Remove(extractorSoakStatePath())
+	resetExtractorSoakStateForTests()
 	SetExtractorAppVersion("")
 	resetPythonFallbackStatusForTests()
+	resetExtractorValidationReportSummariesCache()
+	resetExtractorLiveValidationReportSummariesCache()
 }

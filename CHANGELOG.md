@@ -1,5 +1,11 @@
 # Changelog
 
+## V1.3.2 - 2026-04-15
+
+- fixed default-route soak and `phase7_ready` semantics so only real default Go traffic contributes to depythonization evidence
+- reduced diagnostics snapshot read amplification with cached validation/live summaries and throttled soak-state flushing instead of rewriting the full soak file on every request
+- fixed the unified batch download progress race so `go test ./...` passes reliably again in GitHub CI
+
 ## V1.3.1 - 2026-04-15
 
 - fixed diagnostics support-matrix serialization so go-only snapshots and legacy bundles no longer crash the page when optional arrays are absent

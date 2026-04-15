@@ -11,6 +11,7 @@ import (
 const (
 	extractorSoakReleaseRetentionLimit = 12
 	extractorSoakRecentBlockerLimit    = 20
+	extractorSoakFlushDelay            = 750 * time.Millisecond
 )
 
 type ExtractorSoakBlockerEvent struct {
@@ -76,9 +77,12 @@ type ExtractorDefaultRouteStates struct {
 }
 
 var (
-	extractorSoakMu sync.Mutex
-	extractorAppMu  sync.RWMutex
-	extractorAppVer string
+	extractorSoakMu          sync.Mutex
+	extractorAppMu           sync.RWMutex
+	extractorAppVer          string
+	extractorSoakStateLoaded bool
+	extractorSoakStateCache  ExtractorSoakState
+	extractorSoakFlushTimer  *time.Timer
 )
 
 func SetExtractorAppVersion(version string) {
@@ -132,32 +136,109 @@ func sanitizeExtractorSoakState(state ExtractorSoakState) ExtractorSoakState {
 	return state
 }
 
-func loadExtractorSoakState() (ExtractorSoakState, error) {
+func cloneExtractorSoakBlockerEvents(events []ExtractorSoakBlockerEvent) []ExtractorSoakBlockerEvent {
+	if len(events) == 0 {
+		return []ExtractorSoakBlockerEvent{}
+	}
+	cloned := make([]ExtractorSoakBlockerEvent, len(events))
+	copy(cloned, events)
+	return cloned
+}
+
+func cloneExtractorSoakState(state ExtractorSoakState) ExtractorSoakState {
+	state = sanitizeExtractorSoakState(state)
+	if len(state.Releases) == 0 {
+		state.Releases = []ExtractorSoakReleaseState{}
+		return state
+	}
+	clonedReleases := make([]ExtractorSoakReleaseState, len(state.Releases))
+	for index, release := range state.Releases {
+		clonedReleases[index] = release
+		clonedReleases[index].RecentBlockers = cloneExtractorSoakBlockerEvents(release.RecentBlockers)
+	}
+	state.Releases = clonedReleases
+	return state
+}
+
+func loadExtractorSoakStateLocked() (ExtractorSoakState, error) {
+	if extractorSoakStateLoaded {
+		return cloneExtractorSoakState(extractorSoakStateCache), nil
+	}
+
 	state := defaultExtractorSoakState()
 	raw, err := os.ReadFile(extractorSoakStatePath())
 	if err != nil {
 		if os.IsNotExist(err) {
-			return state, nil
+			extractorSoakStateLoaded = true
+			extractorSoakStateCache = sanitizeExtractorSoakState(state)
+			return cloneExtractorSoakState(extractorSoakStateCache), nil
 		}
 		return state, err
 	}
 	if err := json.Unmarshal(raw, &state); err != nil {
 		return defaultExtractorSoakState(), err
 	}
-	return sanitizeExtractorSoakState(state), nil
+	extractorSoakStateLoaded = true
+	extractorSoakStateCache = sanitizeExtractorSoakState(state)
+	return cloneExtractorSoakState(extractorSoakStateCache), nil
+}
+
+func loadExtractorSoakState() (ExtractorSoakState, error) {
+	extractorSoakMu.Lock()
+	defer extractorSoakMu.Unlock()
+	return loadExtractorSoakStateLocked()
 }
 
 func saveExtractorSoakState(state ExtractorSoakState) error {
+	extractorSoakMu.Lock()
+	defer extractorSoakMu.Unlock()
+
+	extractorSoakStateLoaded = true
+	extractorSoakStateCache = sanitizeExtractorSoakState(state)
+	return flushExtractorSoakStateLocked()
+}
+
+func scheduleExtractorSoakFlushLocked() {
+	if extractorSoakFlushTimer == nil {
+		extractorSoakFlushTimer = time.AfterFunc(extractorSoakFlushDelay, func() {
+			_ = flushExtractorSoakState()
+		})
+		return
+	}
+	extractorSoakFlushTimer.Reset(extractorSoakFlushDelay)
+}
+
+func flushExtractorSoakStateLocked() error {
+	if !extractorSoakStateLoaded {
+		return nil
+	}
 	if err := EnsureAppDataDir(); err != nil {
 		return err
 	}
-	state = sanitizeExtractorSoakState(state)
-	data, err := json.MarshalIndent(state, "", "  ")
+	extractorSoakStateCache = sanitizeExtractorSoakState(extractorSoakStateCache)
+	data, err := json.MarshalIndent(extractorSoakStateCache, "", "  ")
 	if err != nil {
 		return err
 	}
 	data = append(data, '\n')
 	return os.WriteFile(extractorSoakStatePath(), data, 0o600)
+}
+
+func flushExtractorSoakState() error {
+	extractorSoakMu.Lock()
+	defer extractorSoakMu.Unlock()
+	return flushExtractorSoakStateLocked()
+}
+
+func resetExtractorSoakStateForTests() {
+	extractorSoakMu.Lock()
+	defer extractorSoakMu.Unlock()
+	extractorSoakStateLoaded = false
+	extractorSoakStateCache = defaultExtractorSoakState()
+	if extractorSoakFlushTimer != nil {
+		extractorSoakFlushTimer.Stop()
+		extractorSoakFlushTimer = nil
+	}
 }
 
 func extractorSoakFamilyStateByName(states ExtractorSoakFamilyStates, family ExtractorRequestFamily) ExtractorSoakFamilyState {
@@ -254,7 +335,7 @@ func recordExtractorSoakRequest(entry extractorRequestLogEntry) {
 	extractorSoakMu.Lock()
 	defer extractorSoakMu.Unlock()
 
-	state, err := loadExtractorSoakState()
+	state, err := loadExtractorSoakStateLocked()
 	if err != nil {
 		return
 	}
@@ -315,26 +396,42 @@ func recordExtractorSoakRequest(entry extractorRequestLogEntry) {
 	}
 
 	assignExtractorSoakFamilyState(&release.Families, entry.RequestFamily, familyState)
-	_ = saveExtractorSoakState(state)
+	extractorSoakStateLoaded = true
+	extractorSoakStateCache = sanitizeExtractorSoakState(state)
+	scheduleExtractorSoakFlushLocked()
 }
 
 func isExtractorSoakCandidate(entry extractorRequestLogEntry) bool {
 	if strings.TrimSpace(entry.Event) != "extractor_request" {
 		return false
 	}
-	if entry.ModeSource == "live_validation" || entry.ModeSource == "rollout_policy" {
+	if entry.ModeSource == "live_validation" || entry.ModeSource == "rollout_policy" || entry.ModeSource == "promotion_policy" {
 		return false
 	}
 	if strings.TrimSpace(entry.SelectedEngine) == "" {
 		return false
 	}
-	switch entry.RequestFamily {
-	case ExtractorRequestFamilyMedia, ExtractorRequestFamilyTimeline, ExtractorRequestFamilyDateRange,
-		ExtractorRequestFamilyLikes, ExtractorRequestFamilyBookmarks:
-		return true
+	switch entry.ModeSource {
+	case "default_runtime", "deprecated_python_mode":
 	default:
 		return false
 	}
+	switch entry.RequestFamily {
+	case ExtractorRequestFamilyMedia, ExtractorRequestFamilyTimeline, ExtractorRequestFamilyDateRange,
+		ExtractorRequestFamilyLikes, ExtractorRequestFamilyBookmarks:
+		return extractorSoakFamilyEligible(entry.RequestFamily)
+	default:
+		return false
+	}
+}
+
+func extractorSoakFamilyEligible(family ExtractorRequestFamily) bool {
+	policy, err := loadExtractorRolloutPolicy()
+	if err != nil {
+		return false
+	}
+	policyState := extractorPromotionPolicyStateByFamily(policy, family)
+	return policyState.Promoted && extractorPublicPromotionBaselineValid(policyState)
 }
 
 func validateSoakCursorSemantics(entry extractorRequestLogEntry) string {

@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -124,6 +125,11 @@ var (
 	extractorRunbookNow               = time.Now
 	compareTimelineExtractorParityFn  = CompareTimelineExtractorParity
 	compareDateRangeExtractorParityFn = CompareDateRangeExtractorParity
+	extractorValidationSummaryCache   struct {
+		mu        sync.RWMutex
+		loaded    bool
+		summaries []ExtractorValidationReportSummary
+	}
 )
 
 func formatExtractorRunbookTimestamp(value time.Time) string {
@@ -136,6 +142,53 @@ func extractorRunbookConfigPath() string {
 
 func extractorValidationReportsDir() string {
 	return ResolveAppDataPath("extractor_reports")
+}
+
+func cloneExtractorValidationReportSummaries(
+	summaries []ExtractorValidationReportSummary,
+) []ExtractorValidationReportSummary {
+	if len(summaries) == 0 {
+		return []ExtractorValidationReportSummary{}
+	}
+	cloned := make([]ExtractorValidationReportSummary, len(summaries))
+	copy(cloned, summaries)
+	return cloned
+}
+
+func cacheExtractorValidationReportSummaries(summaries []ExtractorValidationReportSummary) {
+	extractorValidationSummaryCache.mu.Lock()
+	defer extractorValidationSummaryCache.mu.Unlock()
+	extractorValidationSummaryCache.loaded = true
+	extractorValidationSummaryCache.summaries = cloneExtractorValidationReportSummaries(summaries)
+}
+
+func resetExtractorValidationReportSummariesCache() {
+	extractorValidationSummaryCache.mu.Lock()
+	defer extractorValidationSummaryCache.mu.Unlock()
+	extractorValidationSummaryCache.loaded = false
+	extractorValidationSummaryCache.summaries = nil
+}
+
+func rebuildExtractorValidationReportSummaries(limit int) ([]ExtractorValidationReportSummary, error) {
+	paths, err := listExtractorValidationReportPaths()
+	if err != nil {
+		return nil, err
+	}
+	if limit > 0 && len(paths) > limit {
+		paths = paths[:limit]
+	}
+	summaries := make([]ExtractorValidationReportSummary, 0, len(paths))
+	for _, path := range paths {
+		report, err := loadExtractorValidationReport(path)
+		if err != nil {
+			continue
+		}
+		summaries = append(summaries, summarizeExtractorValidationReport(report))
+	}
+	if summaries == nil {
+		summaries = []ExtractorValidationReportSummary{}
+	}
+	return summaries, nil
 }
 
 func loadExtractorRunbookConfig() (ExtractorRunbookConfig, error) {
@@ -546,7 +599,16 @@ func saveExtractorValidationReport(report *ExtractorValidationReport) error {
 	if err := os.WriteFile(path, data, 0o600); err != nil {
 		return err
 	}
-	return trimExtractorValidationReports(extractorValidationReportRetentionLimit)
+	if err := trimExtractorValidationReports(extractorValidationReportRetentionLimit); err != nil {
+		return err
+	}
+	summaries, err := rebuildExtractorValidationReportSummaries(extractorValidationReportSnapshotSummaryLimit)
+	if err != nil {
+		resetExtractorValidationReportSummariesCache()
+		return nil
+	}
+	cacheExtractorValidationReportSummaries(summaries)
+	return nil
 }
 
 func sanitizeExtractorRunbookFilename(raw string) string {
@@ -614,25 +676,26 @@ func listExtractorValidationReportPaths() ([]string, error) {
 }
 
 func loadExtractorValidationReportSummaries(limit int) ([]ExtractorValidationReportSummary, error) {
-	paths, err := listExtractorValidationReportPaths()
+	extractorValidationSummaryCache.mu.RLock()
+	if extractorValidationSummaryCache.loaded {
+		summaries := cloneExtractorValidationReportSummaries(extractorValidationSummaryCache.summaries)
+		extractorValidationSummaryCache.mu.RUnlock()
+		if limit > 0 && len(summaries) > limit {
+			summaries = summaries[:limit]
+		}
+		return summaries, nil
+	}
+	extractorValidationSummaryCache.mu.RUnlock()
+
+	summaries, err := rebuildExtractorValidationReportSummaries(extractorValidationReportSnapshotSummaryLimit)
 	if err != nil {
 		return nil, err
 	}
-	if limit > 0 && len(paths) > limit {
-		paths = paths[:limit]
+	cacheExtractorValidationReportSummaries(summaries)
+	if limit > 0 && len(summaries) > limit {
+		summaries = summaries[:limit]
 	}
-	summaries := make([]ExtractorValidationReportSummary, 0, len(paths))
-	for _, path := range paths {
-		report, err := loadExtractorValidationReport(path)
-		if err != nil {
-			continue
-		}
-		summaries = append(summaries, summarizeExtractorValidationReport(report))
-	}
-	if summaries == nil {
-		summaries = []ExtractorValidationReportSummary{}
-	}
-	return summaries, nil
+	return cloneExtractorValidationReportSummaries(summaries), nil
 }
 
 func loadExtractorValidationReport(path string) (*ExtractorValidationReport, error) {

@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 )
 
 const (
@@ -102,12 +103,64 @@ type ExtractorLiveValidationReport struct {
 }
 
 var (
-	runTimelineLiveCandidateFn  = runTimelineLiveCandidate
-	runDateRangeLiveCandidateFn = runDateRangeLiveCandidate
+	runTimelineLiveCandidateFn          = runTimelineLiveCandidate
+	runDateRangeLiveCandidateFn         = runDateRangeLiveCandidate
+	extractorLiveValidationSummaryCache struct {
+		mu        sync.RWMutex
+		loaded    bool
+		summaries []ExtractorLiveValidationReportSummary
+	}
 )
 
 func extractorLiveValidationReportsDir() string {
 	return ResolveAppDataPath("extractor_live_reports")
+}
+
+func cloneExtractorLiveValidationReportSummaries(
+	summaries []ExtractorLiveValidationReportSummary,
+) []ExtractorLiveValidationReportSummary {
+	if len(summaries) == 0 {
+		return []ExtractorLiveValidationReportSummary{}
+	}
+	cloned := make([]ExtractorLiveValidationReportSummary, len(summaries))
+	copy(cloned, summaries)
+	return cloned
+}
+
+func cacheExtractorLiveValidationReportSummaries(summaries []ExtractorLiveValidationReportSummary) {
+	extractorLiveValidationSummaryCache.mu.Lock()
+	defer extractorLiveValidationSummaryCache.mu.Unlock()
+	extractorLiveValidationSummaryCache.loaded = true
+	extractorLiveValidationSummaryCache.summaries = cloneExtractorLiveValidationReportSummaries(summaries)
+}
+
+func resetExtractorLiveValidationReportSummariesCache() {
+	extractorLiveValidationSummaryCache.mu.Lock()
+	defer extractorLiveValidationSummaryCache.mu.Unlock()
+	extractorLiveValidationSummaryCache.loaded = false
+	extractorLiveValidationSummaryCache.summaries = nil
+}
+
+func rebuildExtractorLiveValidationReportSummaries(limit int) ([]ExtractorLiveValidationReportSummary, error) {
+	paths, err := listExtractorLiveValidationReportPaths()
+	if err != nil {
+		return nil, err
+	}
+	if limit > 0 && len(paths) > limit {
+		paths = paths[:limit]
+	}
+	summaries := make([]ExtractorLiveValidationReportSummary, 0, len(paths))
+	for _, path := range paths {
+		report, err := loadExtractorLiveValidationReport(path)
+		if err != nil {
+			continue
+		}
+		summaries = append(summaries, summarizeExtractorLiveValidationReport(report))
+	}
+	if summaries == nil {
+		summaries = []ExtractorLiveValidationReportSummary{}
+	}
+	return summaries, nil
 }
 
 func RunExtractorLiveValidationSession(
@@ -543,7 +596,16 @@ func saveExtractorLiveValidationReport(report *ExtractorLiveValidationReport) er
 	if err := os.WriteFile(path, data, 0o600); err != nil {
 		return err
 	}
-	return trimExtractorLiveValidationReports(extractorLiveValidationReportRetentionLimit)
+	if err := trimExtractorLiveValidationReports(extractorLiveValidationReportRetentionLimit); err != nil {
+		return err
+	}
+	summaries, err := rebuildExtractorLiveValidationReportSummaries(extractorLiveValidationReportSnapshotSummaryLimit)
+	if err != nil {
+		resetExtractorLiveValidationReportSummariesCache()
+		return nil
+	}
+	cacheExtractorLiveValidationReportSummaries(summaries)
+	return nil
 }
 
 func trimExtractorLiveValidationReports(limit int) error {
@@ -637,25 +699,26 @@ func summarizeExtractorLiveValidationReport(report *ExtractorLiveValidationRepor
 }
 
 func loadExtractorLiveValidationReportSummaries(limit int) ([]ExtractorLiveValidationReportSummary, error) {
-	paths, err := listExtractorLiveValidationReportPaths()
+	extractorLiveValidationSummaryCache.mu.RLock()
+	if extractorLiveValidationSummaryCache.loaded {
+		summaries := cloneExtractorLiveValidationReportSummaries(extractorLiveValidationSummaryCache.summaries)
+		extractorLiveValidationSummaryCache.mu.RUnlock()
+		if limit > 0 && len(summaries) > limit {
+			summaries = summaries[:limit]
+		}
+		return summaries, nil
+	}
+	extractorLiveValidationSummaryCache.mu.RUnlock()
+
+	summaries, err := rebuildExtractorLiveValidationReportSummaries(extractorLiveValidationReportSnapshotSummaryLimit)
 	if err != nil {
 		return nil, err
 	}
-	if limit > 0 && len(paths) > limit {
-		paths = paths[:limit]
+	cacheExtractorLiveValidationReportSummaries(summaries)
+	if limit > 0 && len(summaries) > limit {
+		summaries = summaries[:limit]
 	}
-	summaries := make([]ExtractorLiveValidationReportSummary, 0, len(paths))
-	for _, path := range paths {
-		report, err := loadExtractorLiveValidationReport(path)
-		if err != nil {
-			continue
-		}
-		summaries = append(summaries, summarizeExtractorLiveValidationReport(report))
-	}
-	if summaries == nil {
-		summaries = []ExtractorLiveValidationReportSummary{}
-	}
-	return summaries, nil
+	return cloneExtractorLiveValidationReportSummaries(summaries), nil
 }
 
 func resolveExtractorLiveValidationGates(

@@ -937,8 +937,14 @@ func resolveTimelineExtractorModeForExecution(
 		return resolution
 	}
 	resolution.RequestFamily = family
-	if mode == ExtractorEngineModePython {
+	if applyExtractorExecutionOverride(&resolution, family, override) {
+		return resolution
+	}
+	switch {
+	case mode == ExtractorEngineModePython:
 		resolution.ModeSource = "deprecated_python_mode"
+	case !isExtractorEngineEnvExplicit():
+		resolution.ModeSource = "default_runtime"
 	}
 	return resolution
 }
@@ -962,10 +968,21 @@ func resolveDateRangeExtractorModeForExecution(
 		return resolution
 	}
 	resolution.RequestFamily = family
-	if mode == ExtractorEngineModePython {
+	if applyExtractorExecutionOverride(&resolution, family, override) {
+		return resolution
+	}
+	switch {
+	case mode == ExtractorEngineModePython:
 		resolution.ModeSource = "deprecated_python_mode"
+	case !isExtractorEngineEnvExplicit():
+		resolution.ModeSource = "default_runtime"
 	}
 	return resolution
+}
+
+func isExtractorEngineEnvExplicit() bool {
+	value, ok := os.LookupEnv(ExtractorEngineEnv)
+	return ok && strings.TrimSpace(value) != ""
 }
 
 func applyExtractorExecutionOverride(
@@ -973,7 +990,16 @@ func applyExtractorExecutionOverride(
 	family ExtractorRequestFamily,
 	override *extractorExecutionOverride,
 ) bool {
-	return false
+	if resolution == nil || override == nil {
+		return false
+	}
+	if override.CandidateFamily == "" || override.CandidateFamily != family {
+		return false
+	}
+	resolution.RequestFamily = family
+	resolution.EffectiveMode = ExtractorEngineModeGo
+	resolution.ModeSource = "live_validation"
+	return true
 }
 
 func resolveRolloutTrialMode(
