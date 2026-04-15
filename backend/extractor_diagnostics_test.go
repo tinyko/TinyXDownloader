@@ -1,7 +1,9 @@
 package backend
 
 import (
+	"encoding/json"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 )
@@ -153,6 +155,17 @@ func TestGetExtractorDiagnosticsSnapshotReportsGoOnlyFallbackStatus(t *testing.T
 		}
 		if snapshot.AdHocParityUnavailableReason == "" {
 			t.Fatal("expected ad hoc parity unavailable reason to be populated")
+		}
+		if snapshot.SupportMatrix.PrivateAutoPinnedTimeline == nil {
+			t.Fatal("expected private auto pinned timeline support matrix slice to be non-nil")
+		}
+
+		payload, err := json.Marshal(snapshot)
+		if err != nil {
+			t.Fatalf("marshal diagnostics snapshot: %v", err)
+		}
+		if !strings.Contains(string(payload), `"private_auto_pinned_timeline_types":[]`) {
+			t.Fatalf("expected serialized diagnostics snapshot to include empty private_auto_pinned_timeline_types array, got %s", string(payload))
 		}
 	})
 }

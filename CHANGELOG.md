@@ -1,5 +1,11 @@
 # Changelog
 
+## V1.3.1 - 2026-04-15
+
+- fixed diagnostics support-matrix serialization so go-only snapshots and legacy bundles no longer crash the page when optional arrays are absent
+- simplified the diagnostics drawer into a tighter support-and-health layout with clearer soak rows, lighter evidence summaries, and dedicated maintenance actions
+- restored diagnostics drawer scrolling and rebuilt the macOS release artifacts for the updated go-only support experience
+
 ## V1.3.0 - 2026-04-15
 
 - cut the extractor runtime over to Go-only for public media, public timeline, public date-range, private likes, and private bookmarks

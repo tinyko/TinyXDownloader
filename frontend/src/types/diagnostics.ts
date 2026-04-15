@@ -50,13 +50,13 @@ export interface ExtractorParityReport {
 }
 
 export interface ExtractorSupportMatrixSummary {
-  public_media_types: string[];
-  public_timeline_types: string[];
-  public_timeline_media_types: string[];
-  public_date_range_media_filters: string[];
-  private_explicit_go_timeline_types: string[];
-  private_explicit_go_media_types: string[];
-  private_auto_pinned_timeline_types: string[];
+  public_media_types?: string[];
+  public_timeline_types?: string[];
+  public_timeline_media_types?: string[];
+  public_date_range_media_filters?: string[];
+  private_explicit_go_timeline_types?: string[];
+  private_explicit_go_media_types?: string[];
+  private_auto_pinned_timeline_types?: string[];
   raw_search_timeline_supported: boolean;
 }
 

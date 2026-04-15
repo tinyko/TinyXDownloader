@@ -1087,18 +1087,16 @@ describe("DiagnosticsPanel", () => {
   beforeEach(() => {
     diagnosticsClientMocks.resetSnapshot();
     diagnosticsClientMocks.getExtractorDiagnosticsSnapshot.mockClear();
-    diagnosticsClientMocks.compareTimelineExtractorParity.mockClear();
-    diagnosticsClientMocks.compareDateRangeExtractorParity.mockClear();
-    diagnosticsClientMocks.saveExtractorRunbookConfig.mockClear();
-    diagnosticsClientMocks.saveExtractorRolloutPolicy.mockClear();
-    diagnosticsClientMocks.runExtractorValidationRunbook.mockClear();
-    diagnosticsClientMocks.runExtractorLiveValidationSession.mockClear();
+    diagnosticsClientMocks.createDatabaseBackup.mockClear();
+    diagnosticsClientMocks.exportSupportBundle.mockClear();
+    diagnosticsClientMocks.openAppDataFolder.mockClear();
+    diagnosticsClientMocks.restoreDatabaseBackup.mockClear();
     toastMocks.success.mockClear();
     toastMocks.warning.mockClear();
     toastMocks.error.mockClear();
   });
 
-  it("renders extractor diagnostics, runbook gates, and recent reports", async () => {
+  it("renders the support and health summary with soak and audit evidence", async () => {
     render(<DiagnosticsPanel embedded fillHeight parityContext={createTimelineParityContext()} />);
 
     await waitFor(() => {
@@ -1106,41 +1104,19 @@ describe("DiagnosticsPanel", () => {
     });
 
     expect(screen.getByTestId("diagnostics-go-only-runtime").textContent).toContain("Go-only runtime is active");
-    expect(
-      screen
-        .getAllByTestId("diagnostics-private-gate")
-        .some((element) => element.textContent?.includes("Private gate: ready"))
-    ).toBe(true);
-    expect(
-      screen
-        .getAllByTestId("diagnostics-public-gate")
-        .some((element) => element.textContent?.includes("Public gate: incomplete"))
-    ).toBe(true);
-    expect(
-      (screen.getByTestId("diagnostics-runbook-label-preset-bookmarks") as HTMLInputElement).value
-    ).toBe("Private bookmarks · text");
-    expect(screen.getByTestId("diagnostics-validation-reports").textContent).toContain("report-001");
-    expect(screen.getByTestId("diagnostics-live-reports").textContent).toContain("live-001");
-    expect(screen.getByTestId("diagnostics-recent-events").textContent).toContain("private bookmarks [text]");
-    expect(screen.getByTestId("diagnostics-recent-parity").textContent).toContain(
-      "go engine error: missing cursor"
-    );
-    expect(screen.getByTestId("diagnostics-public-trial-status-timeline").textContent).toContain(
-      "armed but inactive"
-    );
-    expect(screen.getByTestId("diagnostics-public-promotion-status-timeline").textContent).toContain(
-      "latest evidence has drifted"
-    );
-    expect(screen.getByTestId("diagnostics-public-trial-toggle-media")).toHaveProperty("disabled", true);
-    expect(screen.getByTestId("diagnostics-public-promotion-toggle-media")).toHaveProperty("disabled", true);
-    expect(screen.getByTestId("diagnostics-run-parity")).toHaveProperty("disabled", true);
-    expect(screen.getByTestId("diagnostics-default-soak-media").textContent).toContain(
-      "default served by Go"
-    );
+    expect(screen.getByTestId("diagnostics-build-flavor").textContent).toContain("go-only");
+    expect(screen.getByTestId("diagnostics-support-summary-panel").textContent).toContain("Private auto pinned: none");
+    expect(screen.getByTestId("diagnostics-history-panel").textContent).toContain("report-001");
+    expect(screen.getByTestId("diagnostics-history-panel").textContent).toContain("live-001");
+    expect(screen.getByTestId("diagnostics-default-soak-media").textContent).toContain("Default Go");
     expect(screen.getByTestId("diagnostics-default-soak-status-timeline").textContent).toContain(
       "go runtime fell back to python after a blocker"
     );
     expect(screen.getByTestId("diagnostics-phase7-ready").textContent).toContain("not ready");
+    expect(screen.queryByText("Debug Logs")).toBeNull();
+    expect(screen.queryByTestId("diagnostics-run-parity")).toBeNull();
+    expect(screen.queryByTestId("diagnostics-run-validation")).toBeNull();
+    expect(screen.queryByTestId("diagnostics-run-live-validation")).toBeNull();
   });
 
   it("shows the python deprecated notice and soak fallback state", async () => {
@@ -1153,18 +1129,15 @@ describe("DiagnosticsPanel", () => {
     render(<DiagnosticsPanel embedded fillHeight parityContext={createTimelineParityContext()} />);
 
     await waitFor(() => {
-      expect(screen.getByTestId("diagnostics-python-deprecated").textContent).toContain(
-        "Python deprecated"
-      );
+      expect(
+        screen.getByText("python extractor is retired; the python mode alias now runs the go-only runtime")
+      ).toBeTruthy();
     });
 
-    expect(screen.getByText("python extractor is retired; the python mode alias now runs the go-only runtime")).toBeTruthy();
-    expect(screen.getByTestId("diagnostics-default-soak-bookmarks").textContent).toContain(
-      "fallback served by Python"
-    );
+    expect(screen.getByTestId("diagnostics-default-soak-bookmarks").textContent).toContain("Python fallback");
   });
 
-  it("shows go-only fallback status and disables fresh parity actions", async () => {
+  it("shows go-only fallback status in the health summary", async () => {
     diagnosticsClientMocks.setSnapshot({
       ...createBaseSnapshot(),
       current_mode: "python",
@@ -1187,252 +1160,68 @@ describe("DiagnosticsPanel", () => {
     expect(screen.getByTestId("diagnostics-python-fallback-availability").textContent).toContain(
       "Python fallback unavailable"
     );
-    expect(screen.getByTestId("diagnostics-ad-hoc-parity-unavailable").textContent).toContain(
-      "Ad hoc parity unavailable"
-    );
-    expect(screen.getByTestId("diagnostics-run-parity")).toHaveProperty("disabled", true);
-    expect(screen.getByTestId("diagnostics-run-validation")).toHaveProperty("disabled", true);
-    expect(screen.getByTestId("diagnostics-run-live-validation")).toHaveProperty("disabled", true);
-  });
-
-  it("keeps public trial controls retired in go-only runtime", async () => {
-    render(<DiagnosticsPanel embedded fillHeight parityContext={createTimelineParityContext()} />);
-
-    await waitFor(() => {
-      expect(screen.getByTestId("diagnostics-public-trial-toggle-media")).toBeTruthy();
-    });
-
-    fireEvent.click(screen.getByTestId("diagnostics-public-trial-toggle-media"));
-    expect(diagnosticsClientMocks.saveExtractorRolloutPolicy).not.toHaveBeenCalled();
-    expect(screen.getByTestId("diagnostics-public-trial-status-media").textContent).toContain(
-      "trial-ready before cutover"
+    expect(screen.getByTestId("diagnostics-python-fallback-status").textContent).toContain(
+      "Python fallback is unavailable"
     );
   });
 
-  it("keeps public promotion controls retired in go-only runtime", async () => {
-    render(<DiagnosticsPanel embedded fillHeight parityContext={createTimelineParityContext()} />);
-
-    await waitFor(() => {
-      expect(screen.getByTestId("diagnostics-public-promotion-toggle-media")).toBeTruthy();
-    });
-
-    fireEvent.click(screen.getByTestId("diagnostics-public-promotion-toggle-media"));
-    expect(diagnosticsClientMocks.saveExtractorRolloutPolicy).not.toHaveBeenCalled();
-    expect(screen.getByTestId("diagnostics-public-promotion-status-media").textContent).toContain(
-      "Historical promotion evidence shows this family was ready at cutover"
-    );
-  });
-
-  it("keeps private trial controls retired in go-only runtime", async () => {
-    render(<DiagnosticsPanel embedded fillHeight parityContext={createTimelineParityContext()} />);
-
-    await waitFor(() => {
-      expect(screen.getByTestId("diagnostics-private-trial-toggle-bookmarks")).toBeTruthy();
-    });
-
-    fireEvent.click(screen.getByTestId("diagnostics-private-trial-toggle-bookmarks"));
-    expect(diagnosticsClientMocks.saveExtractorRolloutPolicy).not.toHaveBeenCalled();
-    expect(screen.getByTestId("diagnostics-private-trial-status-bookmarks").textContent).toContain(
-      "trial-ready before cutover"
-    );
-  });
-
-  it("keeps private promotion controls retired in go-only runtime", async () => {
-    render(<DiagnosticsPanel embedded fillHeight parityContext={createTimelineParityContext()} />);
-
-    await waitFor(() => {
-      expect(screen.getByTestId("diagnostics-private-promotion-toggle-bookmarks")).toBeTruthy();
-    });
-
-    fireEvent.click(screen.getByTestId("diagnostics-private-promotion-toggle-bookmarks"));
-    expect(diagnosticsClientMocks.saveExtractorRolloutPolicy).not.toHaveBeenCalled();
-    expect(screen.getByTestId("diagnostics-private-promotion-status-bookmarks").textContent).toContain(
-      "Historical promotion evidence shows this family was ready at cutover"
-    );
-  });
-
-  it("keeps blocked public family toggles disabled until ready", async () => {
+  it("renders support matrix safely when legacy snapshots omit private auto pinned arrays", async () => {
     const snapshot = createBaseSnapshot();
-    snapshot.rollout_policy.public_trials.timeline = { armed: false };
-    snapshot.public_trial_states.timeline = {
-      armed: false,
-      gate: "blocked",
-      active: false,
-      inactive_reason: "armed but inactive because the family gate is blocked",
-    };
-    diagnosticsClientMocks.setSnapshot(snapshot);
-
-    render(<DiagnosticsPanel embedded fillHeight parityContext={createTimelineParityContext()} />);
-
-    await waitFor(() => {
-      expect(screen.getByTestId("diagnostics-public-trial-toggle-timeline")).toBeTruthy();
-    });
-
-    expect(screen.getByTestId("diagnostics-public-trial-toggle-timeline")).toHaveProperty(
-      "disabled",
-      true
-    );
-    expect(screen.getByTestId("diagnostics-public-promotion-toggle-timeline")).toHaveProperty("disabled", true);
-  });
-
-  it("keeps non-ready public promotion toggles disabled until promotion gate is ready", async () => {
-    render(<DiagnosticsPanel embedded fillHeight parityContext={createTimelineParityContext()} />);
-
-    await waitFor(() => {
-      expect(screen.getByTestId("diagnostics-public-promotion-toggle-date_range")).toBeTruthy();
-    });
-
-    expect(screen.getByTestId("diagnostics-public-promotion-toggle-date_range")).toHaveProperty(
-      "disabled",
-      true
-    );
-  });
-
-  it("disables add current context once controls are retired", async () => {
-    const snapshot = createBaseSnapshot();
-    snapshot.runbook_config = { updated_at: "2026-04-15T06:09:00Z", presets: [] };
-    snapshot.recent_validation_reports = [];
-    diagnosticsClientMocks.setSnapshot(snapshot);
-
-    render(<DiagnosticsPanel embedded fillHeight parityContext={createTimelineParityContext()} />);
-
-    await waitFor(() => {
-      expect(screen.getByTestId("diagnostics-add-current-context")).toHaveProperty("disabled", true);
-    });
-
-    fireEvent.click(screen.getByTestId("diagnostics-add-current-context"));
-    expect(diagnosticsClientMocks.saveExtractorRunbookConfig).not.toHaveBeenCalled();
-  });
-
-  it("renders runbook presets as read-only historical evidence", async () => {
-    render(<DiagnosticsPanel embedded fillHeight parityContext={createTimelineParityContext()} />);
-
-    await waitFor(() => {
-      expect(screen.getByTestId("diagnostics-runbook-label-preset-bookmarks")).toBeTruthy();
-    });
-
-    fireEvent.change(screen.getByTestId("diagnostics-runbook-label-preset-bookmarks"), {
-      target: { value: "Bookmarks release gate" },
-    });
-    fireEvent.click(screen.getByTestId("diagnostics-runbook-save-preset-bookmarks"));
-    expect(diagnosticsClientMocks.saveExtractorRunbookConfig).not.toHaveBeenCalled();
-
-    fireEvent.click(screen.getByTestId("diagnostics-runbook-toggle-preset-bookmarks"));
-    expect(diagnosticsClientMocks.saveExtractorRunbookConfig).not.toHaveBeenCalled();
-
-    fireEvent.click(screen.getByTestId("diagnostics-runbook-delete-preset-bookmarks"));
-    expect(diagnosticsClientMocks.saveExtractorRunbookConfig).not.toHaveBeenCalled();
-    expect(screen.getByTestId("diagnostics-runbook-save-preset-bookmarks")).toHaveProperty("disabled", true);
-    expect(screen.getByTestId("diagnostics-runbook-toggle-preset-bookmarks")).toHaveProperty("disabled", true);
-    expect(screen.getByTestId("diagnostics-runbook-delete-preset-bookmarks")).toHaveProperty("disabled", true);
-  });
-
-  it("renders validation reports as historical evidence without allowing fresh runs", async () => {
-    const snapshot = createBaseSnapshot();
-    snapshot.runbook_config.presets = [
-      ...snapshot.runbook_config.presets,
-      {
-        id: "preset-public",
-        label: "Public NASA date range",
-        enabled: true,
-        request_kind: "date_range",
-        scope: "public",
-        username: "nasa",
-        media_type: "image",
-        start_date: "2026-04-01",
-        end_date: "2026-04-02",
-        retweets: false,
+    diagnosticsClientMocks.setSnapshot({
+      ...snapshot,
+      support_matrix: {
+        ...snapshot.support_matrix,
+        private_auto_pinned_timeline_types: undefined,
       },
-    ];
-    diagnosticsClientMocks.setSnapshot(snapshot);
-
-    render(
-      <DiagnosticsPanel
-        embedded
-        fillHeight
-        parityContext={createTimelineParityContext()}
-        runbookTokens={{ public_auth_token: "public-token", private_auth_token: "private-token" }}
-      />
-    );
-
-    await waitFor(() => {
-      expect(screen.getByTestId("diagnostics-run-validation")).toHaveProperty("disabled", true);
     });
 
-    fireEvent.click(screen.getByTestId("diagnostics-run-validation"));
-    expect(diagnosticsClientMocks.runExtractorValidationRunbook).not.toHaveBeenCalled();
-    expect(screen.getByTestId("diagnostics-validation-reports").textContent).toContain("report-001");
+    render(<DiagnosticsPanel embedded fillHeight parityContext={createTimelineParityContext()} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("diagnostics-extractor-mode").textContent).toContain("Mode: go");
+    });
+
+    expect(screen.getByTestId("diagnostics-support-summary-panel").textContent).toContain("Private auto pinned");
+    expect(screen.getByTestId("diagnostics-extractor-panel").textContent).toContain("none");
   });
 
-  it("renders live validation reports as historical evidence without allowing fresh runs", async () => {
-    const snapshot = createBaseSnapshot();
-    snapshot.runbook_config.presets = [
-      {
-        id: "preset-public-media",
-        label: "Public NASA media",
-        enabled: true,
-        request_kind: "timeline",
-        scope: "public",
-        username: "nasa",
-        timeline_type: "media",
-        media_type: "all",
-        retweets: false,
-      },
-    ];
-    snapshot.public_family_gates.media = {
-      gate: "ready",
-      enabled_cases: 1,
-      passed_cases: 1,
-      mismatch_cases: 0,
-      failed_cases: 0,
-      invalid_cases: 0,
-    };
-    diagnosticsClientMocks.setSnapshot(snapshot);
-
-    render(
-      <DiagnosticsPanel
-        embedded
-        fillHeight
-        parityContext={createTimelineParityContext()}
-        runbookTokens={{ public_auth_token: "public-token", private_auth_token: "private-token" }}
-      />
-    );
+  it("runs support actions from the simplified panel", async () => {
+    render(<DiagnosticsPanel embedded fillHeight parityContext={createTimelineParityContext()} />);
 
     await waitFor(() => {
-      expect(screen.getByTestId("diagnostics-run-live-validation")).toHaveProperty("disabled", true);
+      expect(screen.getByTestId("diagnostics-export-support-bundle")).toBeTruthy();
     });
 
-    fireEvent.click(screen.getByTestId("diagnostics-run-live-validation"));
-    expect(diagnosticsClientMocks.runExtractorLiveValidationSession).not.toHaveBeenCalled();
-    expect(screen.getByTestId("diagnostics-live-reports").textContent).toContain("live-001");
-    expect(screen.getByTestId("diagnostics-public-trial-status-media").textContent).toContain(
-      "trial-ready before cutover"
-    );
-  });
+    diagnosticsClientMocks.exportSupportBundle.mockResolvedValue("/tmp/support.zip");
+    diagnosticsClientMocks.createDatabaseBackup.mockResolvedValue("/tmp/backup.db");
+    diagnosticsClientMocks.restoreDatabaseBackup.mockResolvedValue({
+      success: true,
+      message: "Restore complete",
+      requires_restart: false,
+    });
 
-  it("retires single-context parity in go-only runtime", async () => {
-    const parityContext: DiagnosticsParityContext = {
-      enabled: true,
-      request_kind: "date_range",
-      scope: "public",
-      summary_label: "Public @nasa · 2026-04-01..2026-04-02 · image",
-      date_range_request: {
-        username: "nasa",
-        auth_token: "public-token",
-        start_date: "2026-04-01",
-        end_date: "2026-04-02",
-        media_filter: "image",
-        retweets: false,
-      },
-    };
-
-    render(<DiagnosticsPanel embedded fillHeight parityContext={parityContext} />);
+    fireEvent.click(screen.getByTestId("diagnostics-export-support-bundle"));
 
     await waitFor(() => {
-      expect(screen.getByTestId("diagnostics-run-parity")).toHaveProperty("disabled", true);
+      expect(diagnosticsClientMocks.exportSupportBundle).toHaveBeenCalled();
     });
 
-    fireEvent.click(screen.getByTestId("diagnostics-run-parity"));
-    expect(diagnosticsClientMocks.compareDateRangeExtractorParity).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId("diagnostics-create-backup"));
+
+    await waitFor(() => {
+      expect(diagnosticsClientMocks.createDatabaseBackup).toHaveBeenCalled();
+    });
+
+    fireEvent.click(screen.getByTestId("diagnostics-restore-backup"));
+
+    await waitFor(() => {
+      expect(diagnosticsClientMocks.restoreDatabaseBackup).toHaveBeenCalled();
+    });
+
+    fireEvent.click(screen.getByTestId("diagnostics-open-app-data"));
+
+    await waitFor(() => {
+      expect(diagnosticsClientMocks.openAppDataFolder).toHaveBeenCalled();
+    });
   });
 });

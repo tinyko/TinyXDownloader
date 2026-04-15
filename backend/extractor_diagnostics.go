@@ -11,13 +11,13 @@ import (
 const extractorDiagnosticsHistoryLimit = 20
 
 type ExtractorSupportMatrixSummary struct {
-	PublicMediaTypes            []string `json:"public_media_types,omitempty"`
-	PublicTimelineTypes         []string `json:"public_timeline_types,omitempty"`
-	PublicTimelineMediaTypes    []string `json:"public_timeline_media_types,omitempty"`
-	PublicDateRangeMediaFilters []string `json:"public_date_range_media_filters,omitempty"`
-	PrivateExplicitGoTimeline   []string `json:"private_explicit_go_timeline_types,omitempty"`
-	PrivateExplicitGoMediaTypes []string `json:"private_explicit_go_media_types,omitempty"`
-	PrivateAutoPinnedTimeline   []string `json:"private_auto_pinned_timeline_types,omitempty"`
+	PublicMediaTypes            []string `json:"public_media_types"`
+	PublicTimelineTypes         []string `json:"public_timeline_types"`
+	PublicTimelineMediaTypes    []string `json:"public_timeline_media_types"`
+	PublicDateRangeMediaFilters []string `json:"public_date_range_media_filters"`
+	PrivateExplicitGoTimeline   []string `json:"private_explicit_go_timeline_types"`
+	PrivateExplicitGoMediaTypes []string `json:"private_explicit_go_media_types"`
+	PrivateAutoPinnedTimeline   []string `json:"private_auto_pinned_timeline_types"`
 	RawSearchTimelineSupported  bool     `json:"raw_search_timeline_supported"`
 }
 

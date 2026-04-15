@@ -28,7 +28,7 @@ export function WorkspaceDrawers({
       <Dialog open={diagnosticsOpen} onOpenChange={onDiagnosticsOpenChange}>
         <DialogContent className="left-auto right-0 top-0 h-full w-full max-w-[min(100vw,44rem)] translate-x-0 translate-y-0 rounded-none border-y-0 border-r-0 p-0 sm:max-w-[44rem]">
           <DialogTitle className="sr-only">Diagnostics</DialogTitle>
-          <div className="flex h-full min-h-0 flex-col overflow-hidden px-5 pb-5 pr-14 pt-5">
+          <div className="flex h-full min-h-0 flex-col overflow-y-auto px-5 pb-5 pr-14 pt-5">
             {diagnosticsContent}
           </div>
         </DialogContent>
