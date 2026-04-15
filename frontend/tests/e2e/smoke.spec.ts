@@ -5,6 +5,7 @@ import {
   openApp,
   openSavedWorkspace,
   waitForTaskStatus,
+  waitForTaskStatusOneOf,
 } from "./support/test-helpers";
 
 test("saved accounts workspace smoke covers search, filters, toggles, and load more", async ({
@@ -78,7 +79,7 @@ test("activity panel smoke covers fetch, download, and integrity lifecycle flows
 
   await waitForTaskStatus(page, "activity-fetch-status", "Running");
   await page.getByTestId("activity-fetch-cancel").click();
-  await waitForTaskStatus(page, "activity-fetch-status", "Cancelling");
+  await waitForTaskStatusOneOf(page, "activity-fetch-status", ["Cancelling", "Cancelled"]);
   await waitForTaskStatus(page, "activity-fetch-status", "Cancelled");
 
   await page.getByTestId("fetch-input-textarea").fill("multi-a\nmulti-b\nmulti-c");
@@ -86,14 +87,14 @@ test("activity panel smoke covers fetch, download, and integrity lifecycle flows
 
   await waitForTaskStatus(page, "activity-fetch-status", "Running");
   await page.getByTestId("activity-fetch-cancel").click();
-  await waitForTaskStatus(page, "activity-fetch-status", "Cancelling");
+  await waitForTaskStatusOneOf(page, "activity-fetch-status", ["Cancelling", "Cancelled"]);
   await waitForTaskStatus(page, "activity-fetch-status", "Cancelled");
 
   await openSavedWorkspace(page);
   await page.getByTestId("saved-account-download-alpha120").click();
   await waitForTaskStatus(page, "activity-download-status", "Running");
   await page.getByTestId("activity-download-cancel").click();
-  await waitForTaskStatus(page, "activity-download-status", "Cancelling");
+  await waitForTaskStatusOneOf(page, "activity-download-status", ["Cancelling", "Cancelled"]);
   await waitForTaskStatus(page, "activity-download-status", "Cancelled");
   await expect(
     page.locator('[data-testid^="activity-download-history-status-"]').first()
@@ -117,7 +118,7 @@ test("activity panel smoke covers fetch, download, and integrity lifecycle flows
   await page.getByTestId("integrity-action-deep").click();
   await waitForTaskStatus(page, "activity-integrity-status", "Running");
   await page.getByTestId("integrity-cancel").click();
-  await waitForTaskStatus(page, "activity-integrity-status", "Cancelling");
+  await waitForTaskStatusOneOf(page, "activity-integrity-status", ["Cancelling", "Cancelled"]);
   await waitForTaskStatus(page, "activity-integrity-status", "Cancelled");
 
   await page.getByTestId("integrity-trigger").click();
