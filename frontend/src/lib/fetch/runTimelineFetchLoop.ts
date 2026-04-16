@@ -22,6 +22,8 @@ import { main } from "../../../wailsjs/go/models";
 export type TimelineFetchStopReason = "continue" | "stopped" | "timeout";
 export type TimelineFetchExitReason = "completed" | "stopped" | "timeout" | "error";
 
+const MAX_CONSECUTIVE_EMPTY_MEDIA_CURSOR_PAGES = 5;
+
 export interface TimelineFetchBatchState {
   data: TwitterResponse;
   accountInfo: TwitterResponse["account_info"] | null;
@@ -73,6 +75,20 @@ function isExtractorCancellationError(error: unknown) {
   return message.toLowerCase().includes("extractor canceled");
 }
 
+function shouldStopAfterEmptyMediaCursorPages(
+  scope: FetchScope,
+  consecutiveEmptyPages: number
+) {
+  const timelineType = (scope.timelineType || "timeline").toLowerCase();
+  const mediaType = (scope.mediaType || "all").toLowerCase();
+
+  return (
+    timelineType === "media" &&
+    mediaType === "all" &&
+    consecutiveEmptyPages >= MAX_CONSECUTIVE_EMPTY_MEDIA_CURSOR_PAGES
+  );
+}
+
 function buildTimelineFetchLoopResult(
   reason: TimelineFetchExitReason,
   accountInfo: TwitterResponse["account_info"] | null,
@@ -121,6 +137,7 @@ export async function runTimelineFetchLoop({
   let hasMore = true;
   let page = 0;
   let overlapReached = false;
+  let consecutiveEmptyCursorPages = 0;
 
   const persistPartialState = async () => {
     const currentTotalFetched = incrementalBaseCount + accumulator.timeline.length;
@@ -199,7 +216,16 @@ export async function runTimelineFetchLoop({
 
       cursor = data.cursor;
       hasMore = Boolean(data.cursor) && !data.completed;
+      if (hasMore && data.timeline.length === 0) {
+        consecutiveEmptyCursorPages += 1;
+      } else {
+        consecutiveEmptyCursorPages = 0;
+      }
       if (overlapReached) {
+        hasMore = false;
+        cursor = undefined;
+      }
+      if (shouldStopAfterEmptyMediaCursorPages(scope, consecutiveEmptyCursorPages)) {
         hasMore = false;
         cursor = undefined;
       }
