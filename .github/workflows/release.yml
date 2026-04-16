@@ -25,6 +25,7 @@ jobs:
       MACOS_TEAM_ID: ${{ vars.MACOS_TEAM_ID }}
       MACOS_NOTARY_PROFILE: ${{ vars.MACOS_NOTARY_PROFILE }}
       MACOS_CERTIFICATE_P12: ${{ secrets.MACOS_CERTIFICATE_P12 }}
+      MACOS_CERTIFICATE_PEM: ${{ secrets.MACOS_CERTIFICATE_PEM }}
       MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
       MACOS_KEYCHAIN_PASSWORD: ${{ secrets.MACOS_KEYCHAIN_PASSWORD }}
       MACOS_NOTARY_APPLE_ID: ${{ secrets.MACOS_NOTARY_APPLE_ID }}
@@ -67,7 +68,7 @@ jobs:
         shell: bash
         run: |
           missing=0
-          for name in MACOS_SIGN_IDENTITY MACOS_TEAM_ID MACOS_CERTIFICATE_P12 MACOS_CERTIFICATE_PASSWORD MACOS_KEYCHAIN_PASSWORD MACOS_NOTARY_APPLE_ID MACOS_NOTARY_PASSWORD; do
+          for name in MACOS_SIGN_IDENTITY MACOS_TEAM_ID MACOS_CERTIFICATE_P12 MACOS_CERTIFICATE_PEM MACOS_CERTIFICATE_PASSWORD MACOS_KEYCHAIN_PASSWORD MACOS_NOTARY_APPLE_ID MACOS_NOTARY_PASSWORD; do
             if [[ -z "${!name:-}" ]]; then
               echo "Missing required release signing variable: ${name}" >&2
               missing=1
@@ -79,6 +80,7 @@ jobs:
         shell: bash
         run: |
           certificate_path="$RUNNER_TEMP/developer-id-application.p12"
+          certificate_pem_path="$RUNNER_TEMP/developer-id-application.pem"
           keychain_path="$RUNNER_TEMP/tinyxdownloader-signing.keychain-db"
 
           security delete-keychain "$keychain_path" >/dev/null 2>&1 || true
@@ -89,6 +91,11 @@ jobs:
           security create-keychain -p "$MACOS_KEYCHAIN_PASSWORD" "$keychain_path"
           security set-keychain-settings -lut 21600 "$keychain_path"
           security unlock-keychain -p "$MACOS_KEYCHAIN_PASSWORD" "$keychain_path"
+          printf '%s' "$MACOS_CERTIFICATE_PEM" > "$certificate_pem_path"
+          security import "$certificate_pem_path" \
+            -k "$keychain_path" \
+            -T /usr/bin/codesign \
+            -T /usr/bin/security
           security import "$certificate_path" \
             -k "$keychain_path" \
             -P "$MACOS_CERTIFICATE_PASSWORD" \
@@ -101,7 +108,7 @@ jobs:
             "$keychain_path" >/dev/null
           security list-keychains -d user -s "$keychain_path" /Library/Keychains/System.keychain
           security default-keychain -s "$keychain_path"
-          rm -f "$certificate_path"
+          rm -f "$certificate_path" "$certificate_pem_path"
 
       - name: Verify signing configuration
         shell: bash
