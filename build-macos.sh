@@ -34,10 +34,23 @@ DMG_PATH="$RELEASE_DIR/${APP_NAME}-v${APP_VERSION}-macos-arm64.dmg"
 CHECKSUMS_PATH="$RELEASE_DIR/SHA256SUMS.txt"
 
 signing_enabled=false
-if [[ -n "${MACOS_SIGN_IDENTITY:-}" || -n "${MACOS_TEAM_ID:-}" || -n "${MACOS_NOTARY_PROFILE:-}" ]]; then
-  if [[ -z "${MACOS_SIGN_IDENTITY:-}" || -z "${MACOS_TEAM_ID:-}" || -z "${MACOS_NOTARY_PROFILE:-}" ]]; then
-    fail "Provide MACOS_SIGN_IDENTITY, MACOS_TEAM_ID, and MACOS_NOTARY_PROFILE together to enable signing"
+notary_mode=""
+if [[ -n "${MACOS_SIGN_IDENTITY:-}" || -n "${MACOS_TEAM_ID:-}" || -n "${MACOS_NOTARY_PROFILE:-}" || -n "${MACOS_NOTARY_APPLE_ID:-}" || -n "${MACOS_NOTARY_PASSWORD:-}" ]]; then
+  if [[ -z "${MACOS_SIGN_IDENTITY:-}" || -z "${MACOS_TEAM_ID:-}" ]]; then
+    fail "Provide MACOS_SIGN_IDENTITY and MACOS_TEAM_ID to enable signing"
   fi
+
+  if [[ -n "${MACOS_NOTARY_APPLE_ID:-}" || -n "${MACOS_NOTARY_PASSWORD:-}" ]]; then
+    if [[ -z "${MACOS_NOTARY_APPLE_ID:-}" || -z "${MACOS_NOTARY_PASSWORD:-}" ]]; then
+      fail "Provide MACOS_NOTARY_APPLE_ID and MACOS_NOTARY_PASSWORD together"
+    fi
+    notary_mode="apple-id"
+  elif [[ -n "${MACOS_NOTARY_PROFILE:-}" ]]; then
+    notary_mode="keychain-profile"
+  else
+    fail "Provide either MACOS_NOTARY_PROFILE or MACOS_NOTARY_APPLE_ID/MACOS_NOTARY_PASSWORD to enable notarization"
+  fi
+
   signing_enabled=true
 fi
 
@@ -72,9 +85,17 @@ if [[ "$signing_enabled" == true ]]; then
 
   log_step "Submitting app for notarization"
   echo "Using Apple Team ID: $MACOS_TEAM_ID"
-  "$XCRUN_BIN" notarytool submit "$submission_zip" \
-    --keychain-profile "$MACOS_NOTARY_PROFILE" \
-    --wait
+  if [[ "$notary_mode" == "apple-id" ]]; then
+    "$XCRUN_BIN" notarytool submit "$submission_zip" \
+      --apple-id "$MACOS_NOTARY_APPLE_ID" \
+      --password "$MACOS_NOTARY_PASSWORD" \
+      --team-id "$MACOS_TEAM_ID" \
+      --wait
+  else
+    "$XCRUN_BIN" notarytool submit "$submission_zip" \
+      --keychain-profile "$MACOS_NOTARY_PROFILE" \
+      --wait
+  fi
 
   log_step "Stapling notarization ticket"
   "$XCRUN_BIN" stapler staple "$APP_PATH"
