@@ -84,8 +84,10 @@ jobs:
           certificate_pem_path="$RUNNER_TEMP/developer-id-application.pem"
           developer_id_ca_path="$RUNNER_TEMP/developer-id-ca.pem"
           keychain_path="$RUNNER_TEMP/tinyxdownloader-signing.keychain-db"
+          original_keychains_path="$RUNNER_TEMP/tinyxdownloader-original-keychains.txt"
 
           security delete-keychain "$keychain_path" >/dev/null 2>&1 || true
+          security list-keychains -d user | sed -E 's/^ *"?([^"]+)"? *$/\1/' > "$original_keychains_path"
           if ! printf '%s' "$MACOS_CERTIFICATE_P12" | base64 --decode > "$certificate_path" 2>/dev/null; then
             printf '%s' "$MACOS_CERTIFICATE_P12" | base64 -D > "$certificate_path"
           fi
@@ -113,7 +115,13 @@ jobs:
             -s \
             -k "$MACOS_KEYCHAIN_PASSWORD" \
             "$keychain_path" >/dev/null
+          original_keychains=()
+          while IFS= read -r original_keychain; do
+            [[ -n "$original_keychain" ]] && original_keychains+=("$original_keychain")
+          done < "$original_keychains_path"
+          security list-keychains -d user -s "$keychain_path" "${original_keychains[@]}"
           echo "MACOS_SIGN_KEYCHAIN=$keychain_path" >> "$GITHUB_ENV"
+          echo "MACOS_ORIGINAL_KEYCHAINS_FILE=$original_keychains_path" >> "$GITHUB_ENV"
           rm -f "$certificate_path" "$certificate_pem_path" "$developer_id_ca_path"
 
       - name: Verify signing configuration
@@ -166,7 +174,10 @@ jobs:
         run: ./scripts/desktop-smoke.sh
 
       - name: Build signed macOS release
-        run: ./build-macos.sh
+        shell: bash
+        run: |
+          security unlock-keychain -p "$MACOS_KEYCHAIN_PASSWORD" "$MACOS_SIGN_KEYCHAIN"
+          ./build-macos.sh
 
       - name: Extract release notes
         run: |
@@ -206,4 +217,13 @@ jobs:
         shell: bash
         run: |
           keychain_path="$RUNNER_TEMP/tinyxdownloader-signing.keychain-db"
+          if [[ -n "${MACOS_ORIGINAL_KEYCHAINS_FILE:-}" && -f "$MACOS_ORIGINAL_KEYCHAINS_FILE" ]]; then
+            original_keychains=()
+            while IFS= read -r original_keychain; do
+              [[ -n "$original_keychain" && -e "$original_keychain" ]] && original_keychains+=("$original_keychain")
+            done < "$MACOS_ORIGINAL_KEYCHAINS_FILE"
+            if [[ "${#original_keychains[@]}" -gt 0 ]]; then
+              security list-keychains -d user -s "${original_keychains[@]}" >/dev/null
+            fi
+          fi
           security delete-keychain "$keychain_path" >/dev/null 2>&1 || true
