@@ -5,6 +5,10 @@ const TRANSIENT_TIMELINE_ERROR_PATTERNS = [
   "unable to retrieve tweets from this timeline",
   "rate limit",
   "429",
+  "502",
+  "503",
+  "504",
+  "temporarily unavailable",
 ];
 
 function sleep(ms: number): Promise<void> {

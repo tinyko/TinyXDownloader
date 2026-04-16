@@ -310,6 +310,7 @@ func TestXSessionClassifyHTTPErrorTreatsStatusAsFallback(t *testing.T) {
 		{name: "forbidden", stage: "fetch", statusCode: 403, endpoint: xUserMediaPath, code: "http_forbidden"},
 		{name: "guest not found", stage: "fetch", statusCode: 404, endpoint: xUserMediaPath, code: "http_not_found"},
 		{name: "rate limited", stage: "fetch", statusCode: 429, endpoint: xUserMediaPath, code: "http_rate_limited"},
+		{name: "service unavailable", stage: "fetch", statusCode: 503, endpoint: xUserMediaPath, code: "http_transient_server_error"},
 		{name: "server error", stage: "fetch", statusCode: 500, endpoint: xUserMediaPath, body: []byte(`{"errors":[{"message":"boom"}]}`), code: "http_status"},
 	}
 
@@ -428,6 +429,40 @@ func TestXAPISessionDoJSONRetriesRateLimitUntilSuccess(t *testing.T) {
 	}
 	if len(sleeps) != 1 || sleeps[0] != 4*time.Second {
 		t.Fatalf("expected one 4s rate-limit wait, got %v", sleeps)
+	}
+	if got := payload["ok"]; got != true {
+		t.Fatalf("expected successful payload, got %#v", payload)
+	}
+}
+
+func TestXAPISessionDoJSONRetriesTransientServerErrorsUntilSuccess(t *testing.T) {
+	var sleeps []time.Duration
+	attempts := 0
+	session := newXAPITestSession(t, func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		if attempts == 1 {
+			http.Error(w, "service unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		writeJSONResponse(t, w, map[string]any{"ok": true})
+	})
+	session.owner = &xAPIClient{
+		sleep: func(_ context.Context, delay time.Duration) error {
+			sleeps = append(sleeps, delay)
+			return nil
+		},
+		retryCount: 4,
+	}
+
+	var payload map[string]any
+	if err := session.doJSON(context.Background(), "fetch", http.MethodGet, xAPIRootURL, xUserMediaPath, nil, true, &payload); err != nil {
+		t.Fatalf("doJSON returned error: %v", err)
+	}
+	if attempts != 2 {
+		t.Fatalf("expected 2 attempts, got %d", attempts)
+	}
+	if len(sleeps) != 1 || sleeps[0] != xTransientHTTPRetryBase {
+		t.Fatalf("expected one transient retry delay, got %v", sleeps)
 	}
 	if got := payload["ok"]; got != true {
 		t.Fatalf("expected successful payload, got %#v", payload)

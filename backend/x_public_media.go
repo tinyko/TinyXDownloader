@@ -30,6 +30,8 @@ const (
 	xRateLimitCooldown      = 60 * time.Second
 	xRateLimitSafetyMargin  = time.Second
 	xRateLimitRetryCount    = 4
+	xTransientHTTPRetryBase = 1500 * time.Millisecond
+	xTransientHTTPRetryMax  = 5 * time.Second
 	xFirefoxLinuxUserAgent  = "Mozilla/5.0 (X11; Linux x86_64; rv:140.0) Gecko/20100101 Firefox/140.0"
 	xUserByScreenNamePath   = "/graphql/ck5KkZ8t5cOmoLssopN99Q/UserByScreenName"
 	xUserMediaPath          = "/graphql/jCRhbOzdgOHp6u9H4g2tEg/UserMedia"
@@ -648,6 +650,12 @@ func (s *xAPISession) doJSON(
 			s.owner.noteRateLimitedUntil(s.owner.resolveRateLimitUntil(resp.Header))
 			continue
 		}
+		if xIsTransientHTTPStatus(resp.StatusCode) && attempt < maxRetries {
+			if err := s.owner.sleepForTransientHTTPRetry(ctx, resp.Header, attempt); err != nil {
+				return xWrapFallback(stage, "request_server_retry_wait_failed", "x api transient retry wait was canceled", err)
+			}
+			continue
+		}
 		if resp.StatusCode >= http.StatusBadRequest {
 			return s.classifyHTTPError(stage, resp.StatusCode, endpoint, body, resp.Header)
 		}
@@ -725,6 +733,12 @@ func (s *xAPISession) ensureGuestToken(ctx context.Context, stage string) (strin
 			s.owner.noteRateLimitedUntil(s.owner.resolveRateLimitUntil(resp.Header))
 			continue
 		}
+		if xIsTransientHTTPStatus(resp.StatusCode) && attempt < maxRetries {
+			if err := s.owner.sleepForTransientHTTPRetry(ctx, resp.Header, attempt); err != nil {
+				return "", xWrapFallback(stage, "guest_server_retry_wait_failed", "guest token transient retry wait was canceled", err)
+			}
+			continue
+		}
 		if resp.StatusCode >= http.StatusBadRequest {
 			return "", s.classifyHTTPError(stage, resp.StatusCode, xGuestActivatePath, body, resp.Header)
 		}
@@ -779,6 +793,8 @@ func (s *xAPISession) classifyHTTPError(stage string, statusCode int, endpoint s
 		return xWrapFallback(stage, "http_not_found", "x api endpoint returned not found", xStatusError(statusCode, message))
 	case http.StatusTooManyRequests:
 		return xWrapFallback(stage, "http_rate_limited", xRateLimitedReason(s.owner.resolveRateLimitWait(headers)), xStatusError(statusCode, message))
+	case http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout:
+		return xWrapFallback(stage, "http_transient_server_error", fmt.Sprintf("x api temporarily unavailable with status %d", statusCode), xStatusError(statusCode, message))
 	default:
 		return xWrapFallback(stage, "http_status", fmt.Sprintf("x api request failed with status %d", statusCode), xStatusError(statusCode, message))
 	}
@@ -876,6 +892,37 @@ func (c *xAPIClient) resolveRateLimitWait(headers http.Header) time.Duration {
 		return xRateLimitSafetyMargin
 	}
 	return waitFor
+}
+
+func xIsTransientHTTPStatus(statusCode int) bool {
+	switch statusCode {
+	case http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout:
+		return true
+	default:
+		return false
+	}
+}
+
+func (c *xAPIClient) resolveTransientHTTPRetryDelay(headers http.Header, attempt int) time.Duration {
+	if retryAfter := xParseRetryAfter(headers); retryAfter > 0 {
+		return retryAfter + xRateLimitSafetyMargin
+	}
+	if attempt < 0 {
+		attempt = 0
+	}
+	delay := time.Duration(attempt+1) * xTransientHTTPRetryBase
+	if delay > xTransientHTTPRetryMax {
+		return xTransientHTTPRetryMax
+	}
+	return delay
+}
+
+func (c *xAPIClient) sleepForTransientHTTPRetry(ctx context.Context, headers http.Header, attempt int) error {
+	sleepFn := xContextSleep
+	if c != nil && c.sleep != nil {
+		sleepFn = c.sleep
+	}
+	return sleepFn(ctx, c.resolveTransientHTTPRetryDelay(headers, attempt))
 }
 
 func (c *xAPIClient) noteRateLimitedUntil(until time.Time) {
