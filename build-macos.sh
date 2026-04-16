@@ -102,7 +102,7 @@ cleanup_dmg_staging_dir() {
 }
 trap cleanup_dmg_staging_dir EXIT
 
-cp -R "$APP_PATH" "$dmg_staging_dir/"
+"$DITTO_BIN" "$APP_PATH" "$dmg_staging_dir/$(basename "$APP_PATH")"
 ln -s /Applications "$dmg_staging_dir/Applications"
 "$HDIUTIL_BIN" create \
   -volname "$APP_NAME" \
