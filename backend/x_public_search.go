@@ -34,11 +34,12 @@ type xPublicSearchDiagnosticLogEntry struct {
 func (c *xAPIClient) extractPublicSearchDateRange(ctx context.Context, req DateRangeRequest) (response *TwitterResponse, err error) {
 	startedAt := time.Now()
 	normalizedFilter := xNormalizeDateRangeMediaFilter(req.MediaFilter)
+	authResolution := xResolvePublicAuthToken(req.AuthToken)
 	logEntry := xPublicSearchDiagnosticLogEntry{
 		Event:       "x_public_search_request",
 		Username:    cleanUsername(req.Username),
 		MediaFilter: normalizedFilter,
-		AuthMode:    xAuthMode(req.AuthToken),
+		AuthMode:    authResolution.Mode,
 		Stage:       "lookup",
 	}
 
@@ -61,50 +62,66 @@ func (c *xAPIClient) extractPublicSearchDateRange(ctx context.Context, req DateR
 		return nil, err
 	}
 
-	session, err := c.newSession(strings.TrimSpace(req.AuthToken))
-	if err != nil {
-		return nil, err
-	}
+	runWithAuth := func(resolution xPublicAuthResolution) (*TwitterResponse, error) {
+		logEntry.AuthMode = resolution.Mode
+		logEntry.Stage = "lookup"
+		logEntry.FallbackCode = ""
+		logEntry.PartialParse = false
+		logEntry.PageCount = 0
+		logEntry.TweetCount = 0
+		logEntry.MediaItemCount = 0
+		logEntry.TextItemCount = 0
 
-	username := cleanUsername(req.Username)
-	var user xUserResult
-	userFound := false
-	if username != "" {
-		lookupUser, lookupErr := session.resolveUserByScreenName(ctx, username)
-		if lookupErr == nil {
-			user = lookupUser
-			userFound = true
+		session, sessionErr := c.newSession(resolution.Token)
+		if sessionErr != nil {
+			return nil, sessionErr
 		}
+
+		username := cleanUsername(req.Username)
+		var user xUserResult
+		userFound := false
+		if username != "" {
+			lookupUser, lookupErr := session.resolveUserByScreenName(ctx, username)
+			if lookupErr == nil {
+				user = lookupUser
+				userFound = true
+			}
+		}
+
+		filter := xNormalizeRequestedMediaType(req.MediaFilter)
+		textOnly := strings.EqualFold(strings.TrimSpace(req.MediaFilter), "text")
+		if textOnly {
+			filter = "all"
+		}
+
+		logEntry.Stage = "fetch"
+		parsed, pageCount, fetchErr := session.fetchSearchTimelineAll(ctx, query, xDateRangeSearchCount, xTimelineParseOptions{
+			Filter:          filter,
+			IncludeRetweets: req.Retweets,
+			TextOnly:        textOnly,
+		})
+		logEntry.PageCount = pageCount
+		if fetchErr != nil {
+			return nil, fetchErr
+		}
+		if parsed != nil {
+			logEntry.Stage = "normalize"
+			logEntry.TweetCount = parsed.RawTweetCount
+			logEntry.MediaItemCount = len(parsed.Media)
+		}
+
+		response, buildErr := buildPublicSearchDateRangeResponse(req, parsed, user, userFound)
+		if buildErr != nil {
+			return nil, buildErr
+		}
+		logEntry.TextItemCount = xCountTimelineEntryType(response.Timeline, "text")
+		return response, nil
 	}
 
-	filter := xNormalizeRequestedMediaType(req.MediaFilter)
-	textOnly := strings.EqualFold(strings.TrimSpace(req.MediaFilter), "text")
-	if textOnly {
-		filter = "all"
-	}
-
-	logEntry.Stage = "fetch"
-	parsed, pageCount, fetchErr := session.fetchSearchTimelineAll(ctx, query, xDateRangeSearchCount, xTimelineParseOptions{
-		Filter:          filter,
-		IncludeRetweets: req.Retweets,
-		TextOnly:        textOnly,
-	})
-	logEntry.PageCount = pageCount
-	if fetchErr != nil {
-		err = fetchErr
-		return nil, err
-	}
-	if parsed != nil {
-		logEntry.Stage = "normalize"
-		logEntry.TweetCount = parsed.RawTweetCount
-		logEntry.MediaItemCount = len(parsed.Media)
-	}
-
-	response, err = buildPublicSearchDateRangeResponse(req, parsed, user, userFound)
+	response, err = runWithAuth(authResolution)
 	if err != nil {
 		return nil, err
 	}
-	logEntry.TextItemCount = xCountTimelineEntryType(response.Timeline, "text")
 	return response, nil
 }
 

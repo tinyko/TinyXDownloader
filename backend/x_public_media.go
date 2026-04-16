@@ -63,6 +63,11 @@ type xAPIClient struct {
 	guestToken string
 }
 
+type xPublicAuthResolution struct {
+	Token string
+	Mode  string
+}
+
 type xAPISession struct {
 	owner      *xAPIClient
 	httpClient *http.Client
@@ -363,11 +368,12 @@ func newXAPIClient() (*xAPIClient, error) {
 
 func (c *xAPIClient) extractPublicMediaTimeline(ctx context.Context, req TimelineRequest) (response *TwitterResponse, err error) {
 	startedAt := time.Now()
+	authResolution := xResolvePublicAuthToken(req.AuthToken)
 	logEntry := xPublicMediaDiagnosticLogEntry{
 		Event:     "x_public_media_request",
 		Username:  cleanUsername(req.Username),
 		MediaType: xNormalizeRequestedMediaType(req.MediaType),
-		AuthMode:  xAuthMode(req.AuthToken),
+		AuthMode:  authResolution.Mode,
 		Stage:     "lookup",
 	}
 
@@ -385,37 +391,49 @@ func (c *xAPIClient) extractPublicMediaTimeline(ctx context.Context, req Timelin
 		appendXPublicMediaDiagnosticLog(logEntry)
 	}()
 
-	session, err := c.newSession(strings.TrimSpace(req.AuthToken))
-	if err != nil {
-		return nil, err
-	}
+	runWithAuth := func(resolution xPublicAuthResolution) (*TwitterResponse, error) {
+		logEntry.AuthMode = resolution.Mode
+		logEntry.Stage = "lookup"
+		logEntry.FallbackCode = ""
+		logEntry.PartialParse = false
+		logEntry.PageItemCount = 0
+		logEntry.MediaItemCount = 0
+		logEntry.CursorPresent = false
 
-	user, err := session.resolveUserByScreenName(ctx, cleanUsername(req.Username))
-	if err != nil {
-		return nil, err
-	}
-	logEntry.Stage = "fetch"
-
-	page, err := session.fetchUserMediaPage(ctx, user.RestID, xResolveTimelineCount(req.BatchSize), strings.TrimSpace(req.Cursor))
-	if err != nil {
-		return nil, err
-	}
-	logEntry.Stage = "parse"
-
-	parsed, err := parseXMediaTimelinePage(page, strings.TrimSpace(req.MediaType))
-	if err != nil {
-		if metadata, ok := xFallbackDetails(err); ok {
-			logEntry.PartialParse = metadata.PartialParse
+		session, sessionErr := c.newSession(resolution.Token)
+		if sessionErr != nil {
+			return nil, sessionErr
 		}
-		return nil, err
+
+		user, lookupErr := session.resolveUserByScreenName(ctx, cleanUsername(req.Username))
+		if lookupErr != nil {
+			return nil, lookupErr
+		}
+		logEntry.Stage = "fetch"
+
+		page, fetchErr := session.fetchUserMediaPage(ctx, user.RestID, xResolveTimelineCount(req.BatchSize), strings.TrimSpace(req.Cursor))
+		if fetchErr != nil {
+			return nil, fetchErr
+		}
+		logEntry.Stage = "parse"
+
+		parsed, parseErr := parseXMediaTimelinePage(page, strings.TrimSpace(req.MediaType))
+		if parseErr != nil {
+			if metadata, ok := xFallbackDetails(parseErr); ok {
+				logEntry.PartialParse = metadata.PartialParse
+			}
+			return nil, parseErr
+		}
+
+		logEntry.PageItemCount = parsed.RawItemCount
+		logEntry.MediaItemCount = len(parsed.Items)
+		logEntry.CursorPresent = strings.TrimSpace(parsed.Cursor) != ""
+		logEntry.Stage = "normalize"
+
+		return buildPublicMediaTimelineResponseFromParsed(req, user, parsed)
 	}
 
-	logEntry.PageItemCount = parsed.RawItemCount
-	logEntry.MediaItemCount = len(parsed.Items)
-	logEntry.CursorPresent = strings.TrimSpace(parsed.Cursor) != ""
-	logEntry.Stage = "normalize"
-
-	response, err = buildPublicMediaTimelineResponseFromParsed(req, user, parsed)
+	response, err = runWithAuth(authResolution)
 	return response, err
 }
 
@@ -1261,6 +1279,23 @@ func xAuthMode(authToken string) string {
 		return "auth"
 	}
 	return "guest"
+}
+
+func xResolvePublicAuthToken(authToken string) xPublicAuthResolution {
+	trimmed := strings.TrimSpace(authToken)
+	if trimmed != "" {
+		return xPublicAuthResolution{Token: trimmed, Mode: "auth"}
+	}
+
+	tokens, err := LoadStoredAuthTokens()
+	if err == nil {
+		stored := strings.TrimSpace(tokens.PublicToken)
+		if stored != "" {
+			return xPublicAuthResolution{Token: stored, Mode: "stored-auth"}
+		}
+	}
+
+	return xPublicAuthResolution{Mode: "guest"}
 }
 
 func xStatusError(statusCode int, message string) error {

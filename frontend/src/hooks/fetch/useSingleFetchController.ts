@@ -26,6 +26,25 @@ interface SingleFetchControllerOptions {
   onRecordTask?: (entry: FetchTaskHistoryInput) => void;
 }
 
+function resolveFetchErrorMessage(message: string, mode: FetchMode) {
+  const trimmed = message.trim();
+  const lower = trimmed.toLowerCase();
+
+  if (
+    mode === "public" &&
+    (lower.includes("additional anti-bot headers") ||
+      lower.includes("authenticated cookies"))
+  ) {
+    return "This public account currently requires a public auth token. Add one in Settings and try again.";
+  }
+
+  if (trimmed) {
+    return trimmed;
+  }
+
+  return "Failed to fetch media";
+}
+
 export function useSingleFetchController({
   username,
   setUsername,
@@ -123,13 +142,14 @@ export function useSingleFetchController({
         return;
       }
 
-      if (!authToken?.trim()) {
+      if (mode === "private" && !authToken?.trim()) {
         toast.error("Please enter your auth token");
         return;
       }
 
       const effectiveMediaType = mediaType || "all";
       const effectiveRetweets = retweets || false;
+      const resolvedAuthToken = authToken?.trim() ?? "";
 
       const singleUsername = parsedUsernames[0] || username.trim();
       if (!isBookmarks && singleUsername !== username) {
@@ -176,7 +196,7 @@ export function useSingleFetchController({
           retweets: effectiveRetweets,
           mode,
           privateType,
-          authToken: authToken.trim(),
+          authToken: resolvedAuthToken,
           singleUsername,
           cleanUsername,
           timelineType,
@@ -241,7 +261,7 @@ export function useSingleFetchController({
           }
         } else {
           setTaskStatus("failed");
-          toast.error("Failed to fetch media");
+          toast.error(resolveFetchErrorMessage(errorMsg, mode));
           if (!taskRecorded) {
             onRecordTask?.({
               username: cleanUsername,

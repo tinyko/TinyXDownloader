@@ -117,13 +117,14 @@ export function useFetchWorkspaceCoordinator({
         return;
       }
 
-      if (!authToken?.trim()) {
+      if (mode === "private" && !authToken?.trim()) {
         toast.error("Please enter your auth token");
         return;
       }
 
       const effectiveMediaType = mediaType || "all";
       const effectiveRetweets = retweets || false;
+      const resolvedAuthToken = authToken?.trim() ?? "";
       const shouldUseQueue = mode === "public" && parsedUsernames.length > 1 && !isResume;
 
       if (shouldUseQueue) {
@@ -155,7 +156,7 @@ export function useFetchWorkspaceCoordinator({
           privateType,
           mediaType: effectiveMediaType,
           retweets: effectiveRetweets,
-          authToken: authToken.trim(),
+          authToken: resolvedAuthToken,
         }, {
           source: "manual-fetch",
           title: `Fetching ${parsedUsernames.length} Accounts`,

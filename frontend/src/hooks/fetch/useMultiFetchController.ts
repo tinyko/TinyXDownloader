@@ -117,7 +117,7 @@ export function useMultiFetchController() {
         return;
       }
 
-      if (!resolvedAuthToken.trim()) {
+      if (queueMode === "private" && !resolvedAuthToken.trim()) {
         toast.error("Please enter your auth token");
         return;
       }

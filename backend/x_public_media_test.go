@@ -359,6 +359,41 @@ func TestXSessionClassifyHTTPErrorRateLimitedIncludesRetryAfter(t *testing.T) {
 	}
 }
 
+func TestXResolvePublicAuthTokenUsesStoredTokenWhenRequestTokenMissing(t *testing.T) {
+	t.Setenv(AppDataDirEnv, t.TempDir())
+	if err := SaveStoredAuthTokens(StoredAuthTokens{
+		PublicToken:  "stored-public-token",
+		PrivateToken: "private-token",
+	}); err != nil {
+		t.Fatalf("save stored auth tokens: %v", err)
+	}
+
+	resolution := xResolvePublicAuthToken("")
+	if resolution.Token != "stored-public-token" {
+		t.Fatalf("expected stored public token, got %q", resolution.Token)
+	}
+	if resolution.Mode != "stored-auth" {
+		t.Fatalf("expected stored-auth mode, got %q", resolution.Mode)
+	}
+}
+
+func TestXResolvePublicAuthTokenPrefersExplicitToken(t *testing.T) {
+	t.Setenv(AppDataDirEnv, t.TempDir())
+	if err := SaveStoredAuthTokens(StoredAuthTokens{
+		PublicToken: "stored-public-token",
+	}); err != nil {
+		t.Fatalf("save stored auth tokens: %v", err)
+	}
+
+	resolution := xResolvePublicAuthToken("explicit-token")
+	if resolution.Token != "explicit-token" {
+		t.Fatalf("expected explicit token, got %q", resolution.Token)
+	}
+	if resolution.Mode != "auth" {
+		t.Fatalf("expected auth mode, got %q", resolution.Mode)
+	}
+}
+
 func TestXAPISessionDoJSONRetriesRateLimitUntilSuccess(t *testing.T) {
 	fakeNow := time.Unix(1_700_000_000, 0)
 	var sleeps []time.Duration

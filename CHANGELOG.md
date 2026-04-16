@@ -1,5 +1,11 @@
 # Changelog
 
+## V1.3.4 - 2026-04-16
+
+- taught public media, public timeline, and public date-range fetches to reuse the saved public auth token automatically when a request omits an explicit token
+- only require manual auth token entry for private fetches, while surfacing clearer guidance when a public account still needs authenticated public access
+- added coverage for stored public token resolution so the new public-auth fallback path stays stable across future extractor changes
+
 ## V1.3.3 - 2026-04-16
 
 - reworked native X rate-limit handling to follow gallery-dl-style cooldowns driven by `x-rate-limit-reset`, low-budget preemption, and bounded backend retries instead of guessed frontend throttling

@@ -82,12 +82,13 @@ type xPublicTimelineDiagnosticLogEntry struct {
 func (c *xAPIClient) extractPublicTimeline(ctx context.Context, req TimelineRequest) (response *TwitterResponse, err error) {
 	startedAt := time.Now()
 	spec := buildTimelineExtractorSpec(req)
+	authResolution := xResolvePublicAuthToken(req.AuthToken)
 	logEntry := xPublicTimelineDiagnosticLogEntry{
 		Event:        "x_public_timeline_request",
 		Username:     cleanUsername(req.Username),
 		TimelineType: strings.TrimSpace(spec.timelineType),
 		MediaType:    strings.TrimSpace(req.MediaType),
-		AuthMode:     xAuthMode(req.AuthToken),
+		AuthMode:     authResolution.Mode,
 		Stage:        "lookup",
 	}
 
@@ -105,73 +106,81 @@ func (c *xAPIClient) extractPublicTimeline(ctx context.Context, req TimelineRequ
 		appendXPublicTimelineDiagnosticLog(logEntry)
 	}()
 
-	session, err := c.newSession(strings.TrimSpace(req.AuthToken))
-	if err != nil {
-		return nil, err
+	runWithAuth := func(resolution xPublicAuthResolution) (*TwitterResponse, error) {
+		logEntry.AuthMode = resolution.Mode
+		logEntry.Stage = "lookup"
+		logEntry.FallbackCode = ""
+		logEntry.PartialParse = false
+		logEntry.PageItemCount = 0
+		logEntry.MediaItemCount = 0
+		logEntry.MetadataCount = 0
+		logEntry.CursorPresent = false
+		logEntry.CursorStage = 0
+
+		session, sessionErr := c.newSession(resolution.Token)
+		if sessionErr != nil {
+			return nil, sessionErr
+		}
+
+		user, lookupErr := session.resolveUserByScreenName(ctx, cleanUsername(req.Username))
+		if lookupErr != nil {
+			return nil, lookupErr
+		}
+
+		filter := xNormalizeRequestedMediaType(req.MediaType)
+		textOnly := strings.EqualFold(strings.TrimSpace(req.MediaType), "text")
+		if textOnly {
+			filter = "all"
+		}
+
+		options := xTimelineParseOptions{
+			Filter:          filter,
+			IncludeRetweets: req.Retweets,
+			TextOnly:        textOnly,
+		}
+
+		switch strings.ToLower(strings.TrimSpace(spec.timelineType)) {
+		case "tweets":
+			logEntry.Stage = "fetch"
+			page, fetchErr := session.fetchUserTweetsPage(ctx, user.RestID, xResolveTimelinePageCount(req.BatchSize), strings.TrimSpace(req.Cursor), false)
+			if fetchErr != nil {
+				return nil, fetchErr
+			}
+			logEntry.Stage = "parse"
+			parsed, parseErr := parseXTimelinePage(page.Data.User.Result.Timeline.Timeline.Instructions, options)
+			if parseErr != nil {
+				return nil, parseErr
+			}
+			logEntry.PageItemCount = parsed.RawTweetCount
+			logEntry.MediaItemCount = len(parsed.Media)
+			logEntry.MetadataCount = len(parsed.Metadata)
+			logEntry.CursorPresent = strings.TrimSpace(parsed.Cursor) != ""
+			logEntry.Stage = "normalize"
+			return buildDirectTimelineResponse(req, user, spec, parsed)
+		case "with_replies":
+			logEntry.Stage = "fetch"
+			page, fetchErr := session.fetchUserTweetsPage(ctx, user.RestID, xResolveTimelinePageCount(req.BatchSize), strings.TrimSpace(req.Cursor), true)
+			if fetchErr != nil {
+				return nil, fetchErr
+			}
+			logEntry.Stage = "parse"
+			parsed, parseErr := parseXTimelinePage(page.Data.User.Result.Timeline.Timeline.Instructions, options)
+			if parseErr != nil {
+				return nil, parseErr
+			}
+			logEntry.PageItemCount = parsed.RawTweetCount
+			logEntry.MediaItemCount = len(parsed.Media)
+			logEntry.MetadataCount = len(parsed.Metadata)
+			logEntry.CursorPresent = strings.TrimSpace(parsed.Cursor) != ""
+			logEntry.Stage = "normalize"
+			return buildDirectTimelineResponse(req, user, spec, parsed)
+		default:
+			return c.extractStagedTimeline(ctx, req, spec, user, session, options, &logEntry)
+		}
 	}
 
-	user, err := session.resolveUserByScreenName(ctx, cleanUsername(req.Username))
-	if err != nil {
-		return nil, err
-	}
-
-	filter := xNormalizeRequestedMediaType(req.MediaType)
-	textOnly := strings.EqualFold(strings.TrimSpace(req.MediaType), "text")
-	if textOnly {
-		filter = "all"
-	}
-
-	options := xTimelineParseOptions{
-		Filter:          filter,
-		IncludeRetweets: req.Retweets,
-		TextOnly:        textOnly,
-	}
-
-	switch strings.ToLower(strings.TrimSpace(spec.timelineType)) {
-	case "tweets":
-		logEntry.Stage = "fetch"
-		page, fetchErr := session.fetchUserTweetsPage(ctx, user.RestID, xResolveTimelinePageCount(req.BatchSize), strings.TrimSpace(req.Cursor), false)
-		if fetchErr != nil {
-			err = fetchErr
-			return nil, err
-		}
-		logEntry.Stage = "parse"
-		parsed, parseErr := parseXTimelinePage(page.Data.User.Result.Timeline.Timeline.Instructions, options)
-		if parseErr != nil {
-			err = parseErr
-			return nil, err
-		}
-		logEntry.PageItemCount = parsed.RawTweetCount
-		logEntry.MediaItemCount = len(parsed.Media)
-		logEntry.MetadataCount = len(parsed.Metadata)
-		logEntry.CursorPresent = strings.TrimSpace(parsed.Cursor) != ""
-		logEntry.Stage = "normalize"
-		response, err = buildDirectTimelineResponse(req, user, spec, parsed)
-		return response, err
-	case "with_replies":
-		logEntry.Stage = "fetch"
-		page, fetchErr := session.fetchUserTweetsPage(ctx, user.RestID, xResolveTimelinePageCount(req.BatchSize), strings.TrimSpace(req.Cursor), true)
-		if fetchErr != nil {
-			err = fetchErr
-			return nil, err
-		}
-		logEntry.Stage = "parse"
-		parsed, parseErr := parseXTimelinePage(page.Data.User.Result.Timeline.Timeline.Instructions, options)
-		if parseErr != nil {
-			err = parseErr
-			return nil, err
-		}
-		logEntry.PageItemCount = parsed.RawTweetCount
-		logEntry.MediaItemCount = len(parsed.Media)
-		logEntry.MetadataCount = len(parsed.Metadata)
-		logEntry.CursorPresent = strings.TrimSpace(parsed.Cursor) != ""
-		logEntry.Stage = "normalize"
-		response, err = buildDirectTimelineResponse(req, user, spec, parsed)
-		return response, err
-	default:
-		response, err = c.extractStagedTimeline(ctx, req, spec, user, session, options, &logEntry)
-		return response, err
-	}
+	response, err = runWithAuth(authResolution)
+	return response, err
 }
 
 func (c *xAPIClient) extractStagedTimeline(
