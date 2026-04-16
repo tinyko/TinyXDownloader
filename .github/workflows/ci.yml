@@ -96,18 +96,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6.0.2
 
-      - name: Setup Go
-        uses: actions/setup-go@v6.4.0
-        with:
-          go-version-file: go.mod
-
       - name: Verify self-hosted toolchain
         shell: bash
         run: |
           source ./scripts/common.sh
           normalize_macos_toolchain
+          require_command go
           require_command node
           require_command pnpm
+          go version
           node --version
           pnpm --version
 
