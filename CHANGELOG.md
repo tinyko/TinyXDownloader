@@ -1,5 +1,11 @@
 # Changelog
 
+## V1.3.8 - 2026-04-16
+
+- retried transient X API server errors (`502`, `503`, and `504`) in the native extractor so temporary upstream outages do not immediately fail account fetches
+- classified temporary X server outages as retryable in the frontend fetch loop, including the `@silvergirlsEC` 503 case
+- added backend and frontend regression coverage for transient X server-error handling
+
 ## V1.3.7 - 2026-04-16
 
 - fixed public media fetches that could stall after X returned consecutive empty cursor pages by completing the fetch after a bounded empty-tail window
