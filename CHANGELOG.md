@@ -1,5 +1,10 @@
 # Changelog
 
+## V1.3.5 - 2026-04-16
+
+- fixed macOS DMG packaging to preserve stapled notarization tickets by copying the app bundle with `ditto`
+- rebuilt the signed macOS release artifacts after verifying both ZIP and DMG contents pass Gatekeeper as notarized Developer ID apps
+
 ## V1.3.4 - 2026-04-16
 
 - taught public media, public timeline, and public date-range fetches to reuse the saved public auth token automatically when a request omits an explicit token
