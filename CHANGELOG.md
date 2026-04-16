@@ -1,5 +1,11 @@
 # Changelog
 
+## V1.3.7 - 2026-04-16
+
+- fixed public media fetches that could stall after X returned consecutive empty cursor pages by completing the fetch after a bounded empty-tail window
+- added regression coverage for the `Awake_Kamuy`-style empty cursor tail so future fetch-loop changes do not reintroduce the hang
+- pinned the latest `pnpm` version across local package metadata and CI so Node tooling stays consistent between local builds and GitHub Actions
+
 ## V1.3.6 - 2026-04-16
 
 - simplified Support & Health so it only shows current extractor support and local maintenance actions instead of retired rollout, soak, phase, and fallback noise
