@@ -58,6 +58,28 @@ jobs:
       - name: Verify release tag exists
         run: git rev-parse "${{ steps.tag.outputs.value }}"
 
+      - name: Verify signing configuration
+        shell: bash
+        run: |
+          missing=0
+          for name in MACOS_SIGN_IDENTITY MACOS_TEAM_ID MACOS_NOTARY_PROFILE; do
+            if [[ -z "${!name:-}" ]]; then
+              echo "Missing required release signing variable: ${name}" >&2
+              missing=1
+            fi
+          done
+          [[ "$missing" -eq 0 ]] || exit 1
+
+          security find-identity -v -p codesigning | grep -F "$MACOS_SIGN_IDENTITY" >/dev/null || {
+            echo "Developer ID signing identity was not found on this runner: ${MACOS_SIGN_IDENTITY}" >&2
+            exit 1
+          }
+
+          xcrun notarytool history --keychain-profile "$MACOS_NOTARY_PROFILE" >/dev/null || {
+            echo "Notary keychain profile is not usable on this runner: ${MACOS_NOTARY_PROFILE}" >&2
+            exit 1
+          }
+
       - name: Prepare embedded assets
         shell: bash
         run: |
