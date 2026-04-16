@@ -1096,30 +1096,28 @@ describe("DiagnosticsPanel", () => {
     toastMocks.error.mockClear();
   });
 
-  it("renders the support and health summary with soak and audit evidence", async () => {
+  it("renders the simplified support and maintenance panel without rollout noise", async () => {
     render(<DiagnosticsPanel embedded fillHeight parityContext={createTimelineParityContext()} />);
 
     await waitFor(() => {
-      expect(screen.getByTestId("diagnostics-extractor-mode").textContent).toContain("Mode: go");
+      expect(screen.getByTestId("diagnostics-support-summary-panel").textContent).toContain("Public media: all");
     });
 
-    expect(screen.getByTestId("diagnostics-go-only-runtime").textContent).toContain("Go-only runtime is active");
-    expect(screen.getByTestId("diagnostics-build-flavor").textContent).toContain("go-only");
     expect(screen.getByTestId("diagnostics-support-summary-panel").textContent).toContain("Private auto pinned: none");
-    expect(screen.getByTestId("diagnostics-history-panel").textContent).toContain("report-001");
-    expect(screen.getByTestId("diagnostics-history-panel").textContent).toContain("live-001");
-    expect(screen.getByTestId("diagnostics-default-soak-media").textContent).toContain("Default Go");
-    expect(screen.getByTestId("diagnostics-default-soak-status-timeline").textContent).toContain(
-      "go runtime blocked on a current-release default-route soak failure"
-    );
-    expect(screen.getByTestId("diagnostics-phase7-ready").textContent).toContain("not ready");
+    expect(screen.getByTestId("diagnostics-maintenance-panel").textContent).toContain("Create Database Backup");
+    expect(screen.queryByTestId("diagnostics-go-only-runtime")).toBeNull();
+    expect(screen.queryByTestId("diagnostics-build-flavor")).toBeNull();
+    expect(screen.queryByTestId("diagnostics-history-panel")).toBeNull();
+    expect(screen.queryByTestId("diagnostics-default-soak-panel")).toBeNull();
+    expect(screen.queryByTestId("diagnostics-phase7-ready")).toBeNull();
+    expect(screen.queryByTestId("diagnostics-python-fallback-status")).toBeNull();
     expect(screen.queryByText("Debug Logs")).toBeNull();
     expect(screen.queryByTestId("diagnostics-run-parity")).toBeNull();
     expect(screen.queryByTestId("diagnostics-run-validation")).toBeNull();
     expect(screen.queryByTestId("diagnostics-run-live-validation")).toBeNull();
   });
 
-  it("shows the python deprecated notice and soak fallback state", async () => {
+  it("hides retired python and soak rollout details", async () => {
     diagnosticsClientMocks.setSnapshot({
       ...createBaseSnapshot(),
       current_mode: "python",
@@ -1129,15 +1127,14 @@ describe("DiagnosticsPanel", () => {
     render(<DiagnosticsPanel embedded fillHeight parityContext={createTimelineParityContext()} />);
 
     await waitFor(() => {
-      expect(
-        screen.getByText("python extractor is retired; the python mode alias now runs the go-only runtime")
-      ).toBeTruthy();
+      expect(screen.getByTestId("diagnostics-support-summary-panel").textContent).toContain("Public media: all");
     });
 
-    expect(screen.getByTestId("diagnostics-default-soak-bookmarks").textContent).toContain("Not on Go");
+    expect(screen.queryByText("python extractor is retired; the python mode alias now runs the go-only runtime")).toBeNull();
+    expect(screen.queryByTestId("diagnostics-default-soak-bookmarks")).toBeNull();
   });
 
-  it("shows go-only fallback status in the health summary", async () => {
+  it("does not surface retired fallback status in the health summary", async () => {
     diagnosticsClientMocks.setSnapshot({
       ...createBaseSnapshot(),
       current_mode: "python",
@@ -1151,18 +1148,13 @@ describe("DiagnosticsPanel", () => {
     render(<DiagnosticsPanel embedded fillHeight parityContext={createTimelineParityContext()} />);
 
     await waitFor(() => {
-      expect(screen.getByTestId("diagnostics-python-fallback-status").textContent).toContain(
-        "go-only build"
-      );
+      expect(screen.getByTestId("diagnostics-support-summary-panel").textContent).toContain("Public media: all");
     });
 
-    expect(screen.getByTestId("diagnostics-build-flavor").textContent).toContain("go-only");
-    expect(screen.getByTestId("diagnostics-python-fallback-availability").textContent).toContain(
-      "Python fallback unavailable"
-    );
-    expect(screen.getByTestId("diagnostics-python-fallback-status").textContent).toContain(
-      "Python fallback is unavailable"
-    );
+    expect(screen.queryByTestId("diagnostics-build-flavor")).toBeNull();
+    expect(screen.queryByTestId("diagnostics-python-fallback-availability")).toBeNull();
+    expect(screen.queryByTestId("diagnostics-python-fallback-status")).toBeNull();
+    expect(screen.queryByText("Python fallback unavailable")).toBeNull();
   });
 
   it("renders support matrix safely when legacy snapshots omit private auto pinned arrays", async () => {
@@ -1178,7 +1170,7 @@ describe("DiagnosticsPanel", () => {
     render(<DiagnosticsPanel embedded fillHeight parityContext={createTimelineParityContext()} />);
 
     await waitFor(() => {
-      expect(screen.getByTestId("diagnostics-extractor-mode").textContent).toContain("Mode: go");
+      expect(screen.getByTestId("diagnostics-support-summary-panel").textContent).toContain("Public media: all");
     });
 
     expect(screen.getByTestId("diagnostics-support-summary-panel").textContent).toContain("Private auto pinned");

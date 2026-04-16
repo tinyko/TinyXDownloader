@@ -1,5 +1,10 @@
 # Changelog
 
+## V1.3.6 - 2026-04-16
+
+- simplified Support & Health so it only shows current extractor support and local maintenance actions instead of retired rollout, soak, phase, and fallback noise
+- hardened the macOS release workflow for the self-hosted runner by using the installed Go toolchain directly and checking out the exact release tag for manual dispatches
+
 ## V1.3.5 - 2026-04-16
 
 - fixed macOS DMG packaging to preserve stapled notarization tickets by copying the app bundle with `ditto`

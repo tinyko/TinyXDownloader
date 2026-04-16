@@ -25,26 +25,6 @@ jobs:
       MACOS_TEAM_ID: ${{ vars.MACOS_TEAM_ID }}
       MACOS_NOTARY_PROFILE: ${{ vars.MACOS_NOTARY_PROFILE }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Setup Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-
-      - name: Verify self-hosted toolchain
-        shell: bash
-        run: |
-          source ./scripts/common.sh
-          normalize_macos_toolchain
-          require_command node
-          require_command pnpm
-          node --version
-          pnpm --version
-
       - name: Resolve release tag
         id: tag
         run: |
@@ -56,6 +36,24 @@ jobs:
             echo "release_tag is required for workflow_dispatch" >&2
             exit 1
           fi
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ steps.tag.outputs.value }}
+
+      - name: Verify self-hosted toolchain
+        shell: bash
+        run: |
+          source ./scripts/common.sh
+          normalize_macos_toolchain
+          require_command go
+          require_command node
+          require_command pnpm
+          go version
+          node --version
+          pnpm --version
 
       - name: Verify release tag exists
         run: git rev-parse "${{ steps.tag.outputs.value }}"
@@ -121,6 +119,7 @@ jobs:
         with:
           tag_name: ${{ steps.tag.outputs.value }}
           body_path: build/release/release-notes.md
+          overwrite_files: true
           files: |
             build/release/*.zip
             build/release/*.dmg
