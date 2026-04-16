@@ -66,13 +66,17 @@ rm -f "$ZIP_PATH" "$DMG_PATH" "$CHECKSUMS_PATH"
 
 if [[ "$signing_enabled" == true ]]; then
   log_step "Signing app bundle with Developer ID"
-  "$CODESIGN_BIN" \
+  codesign_args=(
     --force \
     --deep \
     --options runtime \
     --timestamp \
-    --sign "$MACOS_SIGN_IDENTITY" \
-    "$APP_PATH"
+    --sign "$MACOS_SIGN_IDENTITY"
+  )
+  if [[ -n "${MACOS_SIGN_KEYCHAIN:-}" ]]; then
+    codesign_args+=(--keychain "$MACOS_SIGN_KEYCHAIN")
+  fi
+  "$CODESIGN_BIN" "${codesign_args[@]}" "$APP_PATH"
 
   submission_zip="$(mktemp "${TMPDIR:-/tmp}/${OUTPUT_NAME}-notary-XXXXXX.zip")"
   cleanup_submission_zip() {

@@ -113,8 +113,7 @@ jobs:
             -s \
             -k "$MACOS_KEYCHAIN_PASSWORD" \
             "$keychain_path" >/dev/null
-          security list-keychains -d user -s "$keychain_path" /Library/Keychains/System.keychain
-          security default-keychain -s "$keychain_path"
+          echo "MACOS_SIGN_KEYCHAIN=$keychain_path" >> "$GITHUB_ENV"
           rm -f "$certificate_path" "$certificate_pem_path" "$developer_id_ca_path"
 
       - name: Verify signing configuration
@@ -122,7 +121,7 @@ jobs:
         run: |
           keychain_path="$RUNNER_TEMP/tinyxdownloader-signing.keychain-db"
 
-          security find-identity -v -p codesigning | grep -F "$MACOS_SIGN_IDENTITY" >/dev/null || {
+          security find-identity -v -p codesigning "$keychain_path" | grep -F "$MACOS_SIGN_IDENTITY" >/dev/null || {
             echo "Developer ID signing identity was not found on this runner: ${MACOS_SIGN_IDENTITY}" >&2
             exit 1
           }
@@ -207,6 +206,4 @@ jobs:
         shell: bash
         run: |
           keychain_path="$RUNNER_TEMP/tinyxdownloader-signing.keychain-db"
-          security default-keychain -s "$HOME/Library/Keychains/login.keychain-db" >/dev/null 2>&1 || true
-          security list-keychains -d user -s "$HOME/Library/Keychains/login.keychain-db" /Library/Keychains/System.keychain >/dev/null 2>&1 || true
           security delete-keychain "$keychain_path" >/dev/null 2>&1 || true
