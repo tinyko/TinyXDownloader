@@ -1,5 +1,10 @@
 # Changelog
 
+## V1.3.9 - 2026-04-16
+
+- retried temporary X GraphQL timeline envelope errors so media fetches like `@wasaby_fun01` do not stop after a recoverable tail-page error
+- added frontend regression coverage for media, timeline, and search timeline envelope error retry classification
+
 ## V1.3.8 - 2026-04-16
 
 - retried transient X API server errors (`502`, `503`, and `504`) in the native extractor so temporary upstream outages do not immediately fail account fetches

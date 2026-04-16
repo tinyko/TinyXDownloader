@@ -9,6 +9,9 @@ const TRANSIENT_TIMELINE_ERROR_PATTERNS = [
   "503",
   "504",
   "temporarily unavailable",
+  "x api returned media timeline errors",
+  "x api returned timeline errors",
+  "x api returned search timeline errors",
 ];
 
 function sleep(ms: number): Promise<void> {
