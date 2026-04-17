@@ -630,6 +630,12 @@ func (s *xAPISession) doJSON(
 
 		resp, err := s.httpClient.Do(req)
 		if err != nil {
+			if attempt < maxRetries && xIsRetryableRequestError(ctx, err) {
+				if sleepErr := s.owner.sleepForTransientHTTPRetry(ctx, nil, attempt); sleepErr != nil {
+					return xWrapFallback(stage, "request_retry_wait_failed", "x api request retry wait was canceled", sleepErr)
+				}
+				continue
+			}
 			return xWrapFallback(stage, "request_failed", "x api request failed", err)
 		}
 
@@ -721,6 +727,12 @@ func (s *xAPISession) ensureGuestToken(ctx context.Context, stage string) (strin
 
 		resp, err := s.httpClient.Do(req)
 		if err != nil {
+			if attempt < maxRetries && xIsRetryableRequestError(ctx, err) {
+				if sleepErr := s.owner.sleepForTransientHTTPRetry(ctx, nil, attempt); sleepErr != nil {
+					return "", xWrapFallback(stage, "guest_request_retry_wait_failed", "guest token request retry wait was canceled", sleepErr)
+				}
+				continue
+			}
 			return "", xWrapFallback(stage, "guest_request_failed", "guest token request failed", err)
 		}
 
@@ -901,6 +913,19 @@ func xIsTransientHTTPStatus(statusCode int) bool {
 	default:
 		return false
 	}
+}
+
+func xIsRetryableRequestError(ctx context.Context, err error) bool {
+	if err == nil {
+		return false
+	}
+	if ctx != nil && ctx.Err() != nil {
+		return false
+	}
+	if errors.Is(err, context.Canceled) {
+		return false
+	}
+	return true
 }
 
 func (c *xAPIClient) resolveTransientHTTPRetryDelay(headers http.Header, attempt int) time.Duration {

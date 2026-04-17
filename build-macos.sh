@@ -11,6 +11,28 @@ HDIUTIL_BIN="/usr/bin/hdiutil"
 SPCTL_BIN="/usr/sbin/spctl"
 SHASUM_BIN="/usr/bin/shasum"
 
+run_with_retries() {
+  local attempts="$1"
+  local delay_seconds="$2"
+  shift 2
+
+  local attempt=1
+  while true; do
+    if "$@"; then
+      return 0
+    fi
+
+    local status="$?"
+    if (( attempt >= attempts )); then
+      return "$status"
+    fi
+
+    log_step "Command failed (attempt ${attempt}/${attempts}); retrying in ${delay_seconds}s"
+    sleep "$delay_seconds"
+    attempt=$((attempt + 1))
+  done
+}
+
 [[ -x "$CODESIGN_BIN" ]] || fail "Missing macOS system codesign at $CODESIGN_BIN"
 [[ -x "$XCRUN_BIN" ]] || fail "Missing macOS system xcrun at $XCRUN_BIN"
 [[ -x "$DITTO_BIN" ]] || fail "Missing macOS system ditto at $DITTO_BIN"
@@ -76,7 +98,7 @@ if [[ "$signing_enabled" == true ]]; then
   if [[ -n "${MACOS_SIGN_KEYCHAIN:-}" ]]; then
     codesign_args+=(--keychain "$MACOS_SIGN_KEYCHAIN")
   fi
-  "$CODESIGN_BIN" "${codesign_args[@]}" "$APP_PATH"
+  run_with_retries 3 5 "$CODESIGN_BIN" "${codesign_args[@]}" "$APP_PATH"
 
   submission_zip="$(mktemp "${TMPDIR:-/tmp}/${OUTPUT_NAME}-notary-XXXXXX.zip")"
   cleanup_submission_zip() {
@@ -89,17 +111,21 @@ if [[ "$signing_enabled" == true ]]; then
 
   log_step "Submitting app for notarization"
   echo "Using Apple Team ID: $MACOS_TEAM_ID"
+  notary_submit_args=(notarytool submit "$submission_zip")
   if [[ "$notary_mode" == "apple-id" ]]; then
-    "$XCRUN_BIN" notarytool submit "$submission_zip" \
-      --apple-id "$MACOS_NOTARY_APPLE_ID" \
-      --password "$MACOS_NOTARY_PASSWORD" \
-      --team-id "$MACOS_TEAM_ID" \
+    notary_submit_args+=(
+      --apple-id "$MACOS_NOTARY_APPLE_ID"
+      --password "$MACOS_NOTARY_PASSWORD"
+      --team-id "$MACOS_TEAM_ID"
       --wait
+    )
   else
-    "$XCRUN_BIN" notarytool submit "$submission_zip" \
-      --keychain-profile "$MACOS_NOTARY_PROFILE" \
+    notary_submit_args+=(
+      --keychain-profile "$MACOS_NOTARY_PROFILE"
       --wait
+    )
   fi
+  run_with_retries 3 10 "$XCRUN_BIN" "${notary_submit_args[@]}"
 
   log_step "Stapling notarization ticket"
   "$XCRUN_BIN" stapler staple "$APP_PATH"

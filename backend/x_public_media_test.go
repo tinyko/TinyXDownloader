@@ -469,6 +469,43 @@ func TestXAPISessionDoJSONRetriesTransientServerErrorsUntilSuccess(t *testing.T)
 	}
 }
 
+func TestXAPISessionDoJSONRetriesRequestFailuresUntilSuccess(t *testing.T) {
+	var sleeps []time.Duration
+	attempts := 0
+	session := newXAPITestSession(t, func(w http.ResponseWriter, r *http.Request) {
+		writeJSONResponse(t, w, map[string]any{"ok": true})
+	})
+	baseTransport := session.httpClient.Transport
+	session.httpClient.Transport = roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		attempts++
+		if attempts == 1 {
+			return nil, errors.New("temporary network failure")
+		}
+		return baseTransport.RoundTrip(req)
+	})
+	session.owner = &xAPIClient{
+		sleep: func(_ context.Context, delay time.Duration) error {
+			sleeps = append(sleeps, delay)
+			return nil
+		},
+		retryCount: 4,
+	}
+
+	var payload map[string]any
+	if err := session.doJSON(context.Background(), "lookup", http.MethodGet, xAPIRootURL, xUserByScreenNamePath, nil, true, &payload); err != nil {
+		t.Fatalf("doJSON returned error: %v", err)
+	}
+	if attempts != 2 {
+		t.Fatalf("expected 2 attempts, got %d", attempts)
+	}
+	if len(sleeps) != 1 || sleeps[0] != xTransientHTTPRetryBase {
+		t.Fatalf("expected one transient retry delay, got %v", sleeps)
+	}
+	if got := payload["ok"]; got != true {
+		t.Fatalf("expected successful payload, got %#v", payload)
+	}
+}
+
 func TestXAPISessionDoJSONPreemptsLowRemainingRequests(t *testing.T) {
 	fakeNow := time.Unix(1_700_000_100, 0)
 	var sleeps []time.Duration
@@ -556,6 +593,12 @@ func decodeUserMediaEnvelope(t *testing.T, payload map[string]any) *xUserMediaEn
 		t.Fatalf("unmarshal fixture: %v", err)
 	}
 	return &envelope
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
 }
 
 func fixtureXUser() xUserResult {

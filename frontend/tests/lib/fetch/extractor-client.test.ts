@@ -14,6 +14,11 @@ describe("extractor client retry classification", () => {
         new Error("go-twitter: x api temporarily unavailable with status 504")
       )
     ).toBe(true);
+    expect(
+      isTransientTimelineFetchError(
+        new Error("failed to extract timeline: go-twitter: x api request failed")
+      )
+    ).toBe(true);
   });
 
   it("treats temporary X timeline envelope errors as transient", () => {

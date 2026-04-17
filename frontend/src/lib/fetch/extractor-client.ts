@@ -8,6 +8,7 @@ const TRANSIENT_TIMELINE_ERROR_PATTERNS = [
   "502",
   "503",
   "504",
+  "x api request failed",
   "temporarily unavailable",
   "x api returned media timeline errors",
   "x api returned timeline errors",

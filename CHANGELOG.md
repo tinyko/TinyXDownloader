@@ -1,5 +1,12 @@
 # Changelog
 
+## V1.3.10 - 2026-04-17
+
+- retried transient X network request failures in the native client so lookup/fetch timeouts do not immediately mark saved accounts incomplete
+- treated generic `x api request failed` timeline errors as retryable in the frontend fetch loop
+- retried transient Developer ID timestamp and Apple notarization upload failures during local and release macOS packaging
+- verified `@sakami22` and `@silvergirlsEC` can fetch again after the retry hardening
+
 ## V1.3.9 - 2026-04-16
 
 - retried temporary X GraphQL timeline envelope errors so media fetches like `@wasaby_fun01` do not stop after a recoverable tail-page error
