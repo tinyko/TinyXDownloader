@@ -103,19 +103,32 @@ jobs:
           git init "$GITHUB_WORKSPACE"
           cd "$GITHUB_WORKSPACE"
           git remote remove origin >/dev/null 2>&1 || true
-          git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
+          git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          fetched=0
           for attempt in 1 2 3 4 5; do
-            if git -c http.extraheader="AUTHORIZATION: bearer ${GH_TOKEN}" \
-              fetch --force --no-tags --prune origin "$GITHUB_SHA"; then
+            if git fetch --force --no-tags --prune origin "$GITHUB_SHA"; then
+              fetched=1
               break
-            fi
-            if [[ "$attempt" -eq 5 ]]; then
-              exit 1
             fi
             sleep $((attempt * 10))
           done
-          git checkout --force "$GITHUB_SHA"
-          git clean -ffdx
+          if [[ "$fetched" -eq 1 ]]; then
+            git checkout --force "$GITHUB_SHA"
+            git clean -ffdx
+          else
+            archive_path="$RUNNER_TEMP/tinyxdownloader-source.tgz"
+            find "$GITHUB_WORKSPACE" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+            curl -fsSL \
+              --retry 8 \
+              --retry-all-errors \
+              --connect-timeout 20 \
+              --max-time 180 \
+              -H "Authorization: Bearer ${GH_TOKEN}" \
+              -H "Accept: application/vnd.github+json" \
+              "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/tarball/$GITHUB_SHA" \
+              -o "$archive_path"
+            tar -xzf "$archive_path" -C "$GITHUB_WORKSPACE" --strip-components=1
+          fi
 
       - name: Verify self-hosted toolchain
         shell: bash

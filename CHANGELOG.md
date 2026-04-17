@@ -1,5 +1,10 @@
 # Changelog
 
+## V1.3.14 - 2026-04-17
+
+- added a GitHub API tarball checkout fallback for self-hosted macOS jobs when git transport keeps resetting
+- relaxed release checkout verification so tarball fallback workspaces do not require local git tag metadata
+
 ## V1.3.13 - 2026-04-17
 
 - retried manual `git fetch` checkout steps on self-hosted macOS jobs so transient GitHub HTTPS resets do not fail desktop smoke or release jobs
