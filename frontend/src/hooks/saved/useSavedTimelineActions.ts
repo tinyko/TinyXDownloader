@@ -6,10 +6,12 @@ import type { IndexedTimelineItem } from "@/hooks/media/useIndexedTimelinePrevie
 import { useDownloadItemStatusMap } from "@/hooks/download/useDownloadItemStatusMap";
 import type { SavedTimelineItem } from "@/types/api";
 import type {
-  DownloadSessionResultStatus,
+  DownloadSessionFailHandler,
+  DownloadSessionFinishHandler,
   GlobalDownloadSessionMeta,
   GlobalDownloadState,
 } from "@/types/download";
+import { buildDownloadResultSummary } from "@/lib/download/summary";
 import { backend, main } from "../../../wailsjs/go/models";
 import {
   DownloadMediaWithMetadata,
@@ -30,8 +32,8 @@ interface UseSavedTimelineActionsOptions {
   downloadState?: GlobalDownloadState | null;
   downloadMeta?: GlobalDownloadSessionMeta | null;
   onDownloadSessionStart?: (meta: GlobalDownloadSessionMeta) => void;
-  onDownloadSessionFinish?: (status?: DownloadSessionResultStatus) => void;
-  onDownloadSessionFail?: () => void;
+  onDownloadSessionFinish?: DownloadSessionFinishHandler;
+  onDownloadSessionFail?: DownloadSessionFailHandler;
 }
 
 export function useSavedTimelineActions({
@@ -160,15 +162,20 @@ export function useSavedTimelineActions({
           })
         );
         if (response.success) {
-          onDownloadSessionFinish?.(response.failed > 0 ? "failed" : "completed");
+          onDownloadSessionFinish?.(
+            response.failed > 0 ? "failed" : "completed",
+            buildDownloadResultSummary(response, response.message || "Download completed")
+          );
           markFolderRefresh();
           return;
         }
-        onDownloadSessionFail?.();
+        onDownloadSessionFail?.(
+          buildDownloadResultSummary(response, response.message || "Download failed")
+        );
         toast.error(response.message || "Download failed");
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : String(error);
-        onDownloadSessionFail?.();
+        onDownloadSessionFail?.({ message: errorMsg });
         toast.error(`Download failed: ${errorMsg}`);
       } finally {
         endSingleDownload();
@@ -222,16 +229,26 @@ export function useSavedTimelineActions({
           })
         );
         if (response.success) {
-          onDownloadSessionFinish?.(response.failed > 0 ? "failed" : "completed");
+          const message = response.message || "Selected items downloaded";
+          onDownloadSessionFinish?.(
+            response.failed > 0 ? "failed" : "completed",
+            buildDownloadResultSummary(response, message)
+          );
           markFolderRefresh();
-          toast.success("Selected items downloaded");
+          if (response.failed > 0) {
+            toast.warning(message);
+          } else {
+            toast.success("Selected items downloaded");
+          }
         } else {
-          onDownloadSessionFail?.();
+          onDownloadSessionFail?.(
+            buildDownloadResultSummary(response, response.message || "Download failed")
+          );
           toast.error(response.message || "Download failed");
         }
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : String(error);
-        onDownloadSessionFail?.();
+        onDownloadSessionFail?.({ message: errorMsg });
         toast.error(`Download failed: ${errorMsg}`);
       } finally {
         clearBulkDownload();
@@ -265,16 +282,26 @@ export function useSavedTimelineActions({
         })
       );
       if (response.success) {
-        onDownloadSessionFinish?.(response.failed > 0 ? "failed" : "completed");
+        const message = response.message || "Saved account download completed";
+        onDownloadSessionFinish?.(
+          response.failed > 0 ? "failed" : "completed",
+          buildDownloadResultSummary(response, message)
+        );
         markFolderRefresh();
-        toast.success("Saved account download completed");
+        if (response.failed > 0) {
+          toast.warning(message);
+        } else {
+          toast.success("Saved account download completed");
+        }
       } else {
-        onDownloadSessionFail?.();
+        onDownloadSessionFail?.(
+          buildDownloadResultSummary(response, response.message || "Download failed")
+        );
         toast.error(response.message || "Download failed");
       }
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
-      onDownloadSessionFail?.();
+      onDownloadSessionFail?.({ message: errorMsg });
       toast.error(`Download failed: ${errorMsg}`);
     }
   }, [

@@ -2,7 +2,8 @@ import { useCallback, useMemo, useState } from "react";
 
 import type { AccountInfo } from "@/types/api";
 import type {
-  DownloadSessionResultStatus,
+  DownloadSessionFailHandler,
+  DownloadSessionFinishHandler,
   GlobalDownloadSessionMeta,
   GlobalDownloadState,
 } from "@/types/download";
@@ -13,8 +14,8 @@ import { useMediaToolingState } from "@/hooks/media/useMediaToolingState";
 interface UseMediaWorkspaceActionsArgs {
   accountInfo: AccountInfo;
   onDownloadSessionStart?: (meta: GlobalDownloadSessionMeta) => void;
-  onDownloadSessionFinish?: (status?: DownloadSessionResultStatus) => void;
-  onDownloadSessionFail?: () => void;
+  onDownloadSessionFinish?: DownloadSessionFinishHandler;
+  onDownloadSessionFail?: DownloadSessionFailHandler;
   downloadState?: GlobalDownloadState | null;
   downloadMeta?: GlobalDownloadSessionMeta | null;
 }

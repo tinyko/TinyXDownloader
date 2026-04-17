@@ -9,6 +9,10 @@ import {
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  formatDownloadResultSummary,
+  hasDownloadResultSummary,
+} from "@/lib/download/summary";
 import type { GlobalDownloadHistoryItem } from "@/types/download";
 import type { MultiFetchSessionSummary } from "@/types/fetch";
 import type { FetchTaskHistoryItem } from "@/types/history";
@@ -71,6 +75,27 @@ function formatFetchOptions(entry: FetchTaskHistoryItem) {
     `${entry.totalItems.toLocaleString()} item(s)`,
     formatDuration(entry.durationMs),
   ].join(" • ");
+}
+
+function DownloadHistorySummary({ item }: { item: GlobalDownloadHistoryItem }) {
+  if (!hasDownloadResultSummary(item.summary)) {
+    return null;
+  }
+
+  const formattedSummary = formatDownloadResultSummary(item.summary);
+
+  return (
+    <div className="mt-2 rounded-xl border border-border/70 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+      {formattedSummary ? (
+        <p className="font-medium text-foreground">{formattedSummary}</p>
+      ) : null}
+      {item.summary?.message ? (
+        <p className={cn("break-words", formattedSummary ? "mt-1" : "")}>
+          {item.summary.message}
+        </p>
+      ) : null}
+    </div>
+  );
 }
 
 function SectionShell({
@@ -350,6 +375,7 @@ export function TaskHistoryWorkspace({
                       <p className="text-xs text-muted-foreground">
                         Finished {formatTimestamp(item.finishedAt)}
                       </p>
+                      <DownloadHistorySummary item={item} />
                     </div>
                     <div className="flex shrink-0 items-center gap-2">
                       <Badge className={cn("border", getStatusTone(item.status))}>

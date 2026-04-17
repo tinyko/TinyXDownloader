@@ -33,6 +33,7 @@ import { useGlobalDownloadMonitor } from "@/hooks/download/useGlobalDownloadMoni
 import { useGlobalIntegrityMonitor } from "@/hooks/integrity/useGlobalIntegrityMonitor";
 import { useWorkspaceChromeState } from "@/hooks/workspace/useWorkspaceChromeState";
 import { useWorkspaceSettingsState } from "@/hooks/workspace/useWorkspaceSettingsState";
+import { buildDownloadResultSummary } from "@/lib/download/summary";
 import type { DiagnosticsParityContext } from "@/types/diagnostics";
 
 // Wails bindings
@@ -389,16 +390,26 @@ function App() {
         if (response.failed > 0) {
           parts.push(`${response.failed} failed`);
         }
-        toast.success(parts.length > 0 ? parts.join(", ") : "Download completed");
-        handleDownloadSessionFinish(response.failed > 0 ? "failed" : "completed");
+        const message = parts.length > 0 ? parts.join(", ") : "Download completed";
+        if (response.failed > 0) {
+          toast.warning(message);
+        } else {
+          toast.success(message);
+        }
+        handleDownloadSessionFinish(
+          response.failed > 0 ? "failed" : "completed",
+          buildDownloadResultSummary(response, message)
+        );
       } else {
-        handleDownloadSessionFail();
+        handleDownloadSessionFail(
+          buildDownloadResultSummary(response, response.message || "Download failed")
+        );
         toast.error(response.message || "Download failed");
       }
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
       logger.error(`Multi-account download failed: ${errorMsg}`);
-      handleDownloadSessionFail();
+      handleDownloadSessionFail({ message: errorMsg });
       toast.error("Multi-account download failed");
     }
   }, [

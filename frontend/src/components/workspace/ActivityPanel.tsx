@@ -9,7 +9,15 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import type { GlobalDownloadHistoryItem, GlobalDownloadSessionMeta } from "@/types/download";
+import {
+  formatDownloadResultSummary,
+  hasDownloadResultSummary,
+} from "@/lib/download/summary";
+import type {
+  DownloadSessionResultSummary,
+  GlobalDownloadHistoryItem,
+  GlobalDownloadSessionMeta,
+} from "@/types/download";
 import type { DownloadIntegrityReport, DownloadIntegrityTaskStatus } from "@/types/settings";
 import type { TaskCardSummary, TaskLifecycleStatus } from "@/types/tasks";
 import { cn } from "@/lib/utils";
@@ -40,6 +48,7 @@ interface ActivityPanelProps {
   download: TaskCardSummary & {
     meta: GlobalDownloadSessionMeta | null;
     history: GlobalDownloadHistoryItem[];
+    summary: DownloadSessionResultSummary | null;
   };
   integrity: TaskCardSummary & {
     report: DownloadIntegrityReport | null;
@@ -126,6 +135,31 @@ function getStatusTone(status: TaskLifecycleStatus | null) {
     default:
       return "";
   }
+}
+
+function DownloadResultDetails({
+  summary,
+}: {
+  summary: DownloadSessionResultSummary | null | undefined;
+}) {
+  if (!hasDownloadResultSummary(summary)) {
+    return null;
+  }
+
+  const formattedSummary = formatDownloadResultSummary(summary);
+
+  return (
+    <div className="rounded-xl border border-border/70 bg-muted/30 p-2.5 text-xs text-muted-foreground">
+      {formattedSummary ? (
+        <p className="font-medium text-foreground">{formattedSummary}</p>
+      ) : null}
+      {summary?.message ? (
+        <p className={cn("break-words", formattedSummary ? "mt-1" : "")}>
+          {summary.message}
+        </p>
+      ) : null}
+    </div>
+  );
 }
 
 export function ActivityPanel({
@@ -296,16 +330,19 @@ export function ActivityPanel({
                 <p className="text-xs text-muted-foreground">
                   {download.progress.percent}% complete
                 </p>
-                <Button
-                  variant="destructive"
-                  className="h-10 w-full justify-center gap-2"
-                  onClick={() => void onStopDownload()}
-                  disabled={download.status === "cancelling"}
-                  data-testid="activity-download-cancel"
-                >
-                  <StopCircle className="h-4 w-4" />
-                  {download.status === "cancelling" ? "Cancelling..." : "Cancel Download"}
-                </Button>
+                <DownloadResultDetails summary={download.summary} />
+                {download.canCancel || download.status === "cancelling" ? (
+                  <Button
+                    variant="destructive"
+                    className="h-10 w-full justify-center gap-2"
+                    onClick={() => void onStopDownload()}
+                    disabled={download.status === "cancelling"}
+                    data-testid="activity-download-cancel"
+                  >
+                    <StopCircle className="h-4 w-4" />
+                    {download.status === "cancelling" ? "Cancelling..." : "Cancel Download"}
+                  </Button>
+                ) : null}
               </div>
             ) : (
               <p className="text-sm text-muted-foreground">
@@ -347,6 +384,9 @@ export function ActivityPanel({
                       {item.current.toLocaleString()} / {item.total.toLocaleString()} •{" "}
                       {new Date(item.finishedAt).toLocaleTimeString()}
                     </p>
+                    <div className="mt-2">
+                      <DownloadResultDetails summary={item.summary} />
+                    </div>
                   </div>
                 ))
               )}

@@ -7,7 +7,8 @@ import { SavedTimelinePreviewOverlay } from "@/components/saved-timeline/SavedTi
 import { SavedTimelineSummaryCard } from "@/components/saved-timeline/SavedTimelineSummaryCard";
 import { SavedTimelineToolbar } from "@/components/saved-timeline/SavedTimelineToolbar";
 import type {
-  DownloadSessionResultStatus,
+  DownloadSessionFailHandler,
+  DownloadSessionFinishHandler,
   GlobalDownloadSessionMeta,
   GlobalDownloadState,
 } from "@/types/download";
@@ -28,8 +29,8 @@ interface SavedTimelineWorkspaceProps {
   downloadState?: GlobalDownloadState | null;
   downloadMeta?: GlobalDownloadSessionMeta | null;
   onDownloadSessionStart?: (meta: GlobalDownloadSessionMeta) => void;
-  onDownloadSessionFinish?: (status?: DownloadSessionResultStatus) => void;
-  onDownloadSessionFail?: () => void;
+  onDownloadSessionFinish?: DownloadSessionFinishHandler;
+  onDownloadSessionFail?: DownloadSessionFailHandler;
 }
 
 export function SavedTimelineWorkspace({

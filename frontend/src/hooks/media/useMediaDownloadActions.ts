@@ -2,7 +2,8 @@ import { useCallback, useMemo } from "react";
 
 import type { AccountInfo, TimelineEntry } from "@/types/api";
 import type {
-  DownloadSessionResultStatus,
+  DownloadSessionFailHandler,
+  DownloadSessionFinishHandler,
   GlobalDownloadSessionMeta,
   GlobalDownloadState,
 } from "@/types/download";
@@ -13,6 +14,7 @@ import {
   getMediaAccountFolderName,
   openMediaFolder,
 } from "@/lib/media/client";
+import { buildDownloadResultSummary } from "@/lib/download/summary";
 import { formatNumberWithComma } from "@/lib/media/utils";
 import { logger } from "@/lib/logger";
 import { toastWithSound as toast } from "@/lib/toast-with-sound";
@@ -26,8 +28,8 @@ interface DownloadableItem {
 interface UseMediaDownloadActionsArgs {
   accountInfo: AccountInfo;
   onDownloadSessionStart?: (meta: GlobalDownloadSessionMeta) => void;
-  onDownloadSessionFinish?: (status?: DownloadSessionResultStatus) => void;
-  onDownloadSessionFail?: () => void;
+  onDownloadSessionFinish?: DownloadSessionFinishHandler;
+  onDownloadSessionFail?: DownloadSessionFailHandler;
   downloadState?: GlobalDownloadState | null;
   downloadMeta?: GlobalDownloadSessionMeta | null;
   onRefreshArtifacts?: () => void | Promise<void>;
@@ -100,7 +102,9 @@ export function useMediaDownloadActions({
         );
         if (!response.success) {
           logger.error(response.message);
-          onDownloadSessionFail?.();
+          onDownloadSessionFail?.(
+            buildDownloadResultSummary(response, response.message || "Download failed")
+          );
           toast.error("Download failed");
           return;
         }
@@ -124,16 +128,22 @@ export function useMediaDownloadActions({
         if (response.downloaded === 0 && response.failed === 0 && response.skipped > 0) {
           logger.info(message);
           toast.info(message);
+        } else if (response.failed > 0) {
+          logger.warning(message);
+          toast.warning(message);
         } else {
           logger.success(message);
           toast.success(message);
         }
-        onDownloadSessionFinish?.(response.failed > 0 ? "failed" : "completed");
+        onDownloadSessionFinish?.(
+          response.failed > 0 ? "failed" : "completed",
+          buildDownloadResultSummary(response, message)
+        );
         await refreshArtifacts();
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : String(error);
         logger.error(`Download failed: ${errorMsg}`);
-        onDownloadSessionFail?.();
+        onDownloadSessionFail?.({ message: errorMsg });
         toast.error("Download failed");
       } finally {
         clearBulkDownload();
@@ -165,16 +175,21 @@ export function useMediaDownloadActions({
 
         const response = await downloadMediaEntries(accountInfo, [item]);
         if (response.success) {
-          onDownloadSessionFinish?.(response.failed > 0 ? "failed" : "completed");
+          onDownloadSessionFinish?.(
+            response.failed > 0 ? "failed" : "completed",
+            buildDownloadResultSummary(response, response.message || "Download completed")
+          );
           await refreshArtifacts();
           return;
         }
 
-        onDownloadSessionFail?.();
+        onDownloadSessionFail?.(
+          buildDownloadResultSummary(response, response.message || "Download failed")
+        );
         toast.error(response.message || "Download failed");
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : String(error);
-        onDownloadSessionFail?.();
+        onDownloadSessionFail?.({ message: errorMsg });
         toast.error(`Download failed: ${errorMsg}`);
       } finally {
         endSingleDownload(1000);

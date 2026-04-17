@@ -5,6 +5,7 @@ import type {
   GlobalDownloadHistoryItem,
   GlobalDownloadSessionMeta,
   GlobalDownloadTaskState,
+  DownloadSessionResultSummary,
 } from "@/types/download";
 import type {
   FetchType,
@@ -58,6 +59,7 @@ interface FetchActivitySummary extends TaskCardSummary {
 interface DownloadActivitySummary extends TaskCardSummary {
   meta: GlobalDownloadSessionMeta | null;
   history: GlobalDownloadHistoryItem[];
+  summary: DownloadSessionResultSummary | null;
 }
 
 interface IntegrityActivitySummary extends TaskCardSummary {
@@ -172,9 +174,12 @@ export function useActivityPanelState({
     };
 
     const downloadStatus = globalDownloadTaskState.status;
+    const latestDownloadHistory = globalDownloadHistory[0] || null;
+    const downloadSummaryDetails =
+      globalDownloadTaskState.summary || latestDownloadHistory?.summary || null;
     const downloadSummary: DownloadActivitySummary = {
       status: downloadStatus,
-      title: globalDownloadMeta?.title || "Download Task",
+      title: globalDownloadMeta?.title || latestDownloadHistory?.title || "Download Task",
       description:
         downloadStatus === "running"
           ? "Download is in progress"
@@ -197,6 +202,7 @@ export function useActivityPanelState({
       canCancel: canCancelTask(downloadStatus),
       meta: globalDownloadMeta,
       history: globalDownloadHistory,
+      summary: downloadSummaryDetails,
     };
 
     const integrityStatus = normalizeIntegrityTaskStatus(integrityTaskStatus);

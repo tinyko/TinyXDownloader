@@ -195,7 +195,12 @@ describe("useGlobalDownloadMonitor", () => {
           percent: 33,
         })
       );
-      result.current.handleDownloadSessionFail();
+      result.current.handleDownloadSessionFail({
+        downloaded: 1,
+        skipped: 0,
+        failed: 2,
+        message: "1 downloaded, 2 failed",
+      });
       emitDownloadState?.(
         createDownloadState({
           in_progress: false,
@@ -209,6 +214,51 @@ describe("useGlobalDownloadMonitor", () => {
     await waitFor(() =>
       expect(result.current.globalDownloadHistory[0]?.status).toBe("failed")
     );
+    expect(result.current.globalDownloadHistory[0]?.summary?.failed).toBe(2);
+    expect(result.current.globalDownloadTaskState.summary?.message).toBe("1 downloaded, 2 failed");
+  });
+
+  it("finalizes failed history immediately when the backend idle event is missed", async () => {
+    const { result } = renderHook(() => useGlobalDownloadMonitor());
+
+    await waitFor(() =>
+      expect(window.go.main.App.GetDownloadStatus).toHaveBeenCalledTimes(1)
+    );
+
+    act(() => {
+      result.current.handleDownloadSessionStart({
+        source: "database-bulk",
+        title: "Bulk downloading 2 accounts",
+        subtitle: "5 saved item(s)",
+      });
+      emitDownloadState?.(
+        createDownloadState({
+          in_progress: true,
+          current: 5,
+          total: 5,
+          percent: 100,
+        })
+      );
+      result.current.handleDownloadSessionFinish("failed", {
+        downloaded: 4,
+        skipped: 0,
+        failed: 1,
+        message: "4 downloaded, 1 failed",
+      });
+    });
+
+    await waitFor(() =>
+      expect(result.current.globalDownloadHistory[0]?.status).toBe("failed")
+    );
+    expect(result.current.globalDownloadHistory).toHaveLength(1);
+    expect(result.current.globalDownloadHistory[0]?.summary?.failed).toBe(1);
+    expect(result.current.globalDownloadTaskState.status).toBe("failed");
+
+    act(() => {
+      emitDownloadState?.(createDownloadState());
+    });
+
+    expect(result.current.globalDownloadHistory).toHaveLength(1);
   });
 
   it("clears persisted download history on demand", async () => {

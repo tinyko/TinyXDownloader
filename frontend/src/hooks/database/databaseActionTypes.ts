@@ -1,6 +1,7 @@
 import type { AccountListItem, SavedAccountRef } from "@/types/database";
 import type {
-  DownloadSessionResultStatus,
+  DownloadSessionFailHandler,
+  DownloadSessionFinishHandler,
   GlobalDownloadSessionMeta,
   GlobalDownloadState,
 } from "@/types/download";
@@ -18,7 +19,7 @@ export interface UseDatabaseActionsOptions {
   onUpdateSelected?: (usernames: string[]) => void | Promise<void>;
   onStopDownload?: () => void | Promise<void>;
   onDownloadSessionStart?: (meta: GlobalDownloadSessionMeta) => void;
-  onDownloadSessionFinish?: (status?: DownloadSessionResultStatus) => void;
-  onDownloadSessionFail?: () => void;
+  onDownloadSessionFinish?: DownloadSessionFinishHandler;
+  onDownloadSessionFail?: DownloadSessionFailHandler;
   downloadState?: GlobalDownloadState | null;
 }

@@ -1,5 +1,11 @@
 # Changelog
 
+## V1.3.15 - 2026-04-18
+
+- fixed download task history so failed/completed sessions are recorded even when the final backend idle event is missed
+- surfaced download result summaries in Activity and Task History, including downloaded, skipped, failed counts, and backend messages
+- hid the download cancel action after terminal states and treated all-failed bulk download responses as failed tasks
+
 ## V1.3.14 - 2026-04-17
 
 - added a GitHub API tarball checkout fallback for self-hosted macOS jobs when git transport keeps resetting

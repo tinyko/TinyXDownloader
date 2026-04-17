@@ -10,6 +10,7 @@ export interface GlobalDownloadState {
 export interface GlobalDownloadTaskState {
   status: TaskLifecycleStatus | null;
   progress: GlobalDownloadState | null;
+  summary?: DownloadSessionResultSummary | null;
 }
 
 export interface GlobalDownloadSessionMeta {
@@ -23,6 +24,22 @@ export interface GlobalDownloadSessionMeta {
 
 export type DownloadSessionResultStatus = TaskTerminalStatus;
 
+export interface DownloadSessionResultSummary {
+  downloaded?: number;
+  skipped?: number;
+  failed?: number;
+  message?: string;
+}
+
+export type DownloadSessionFinishHandler = (
+  status?: DownloadSessionResultStatus,
+  summary?: DownloadSessionResultSummary
+) => void;
+
+export type DownloadSessionFailHandler = (
+  summary?: DownloadSessionResultSummary
+) => void;
+
 export interface GlobalDownloadHistoryItem {
   id: string;
   title: string;
@@ -31,4 +48,5 @@ export interface GlobalDownloadHistoryItem {
   current: number;
   total: number;
   finishedAt: number;
+  summary?: DownloadSessionResultSummary | null;
 }

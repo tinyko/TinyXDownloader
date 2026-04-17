@@ -6,6 +6,7 @@ import {
   isPrivateAccount,
 } from "@/lib/database/helpers";
 import type { AccountListItem } from "@/types/database";
+import { buildDownloadResultSummary } from "@/lib/download/summary";
 import { getSettings } from "@/lib/settings";
 import { toastWithSound as toast } from "@/lib/toast-with-sound";
 import type { UseDatabaseActionsOptions } from "@/hooks/database/databaseActionTypes";
@@ -98,7 +99,9 @@ export function useDatabaseDownloadActions({
       );
 
       if (!response.success) {
-        onDownloadSessionFail?.();
+        onDownloadSessionFail?.(
+          buildDownloadResultSummary(response, response.message || "Download failed")
+        );
         toast.error(response.message || "Download failed");
         return;
       }
@@ -126,13 +129,18 @@ export function useDatabaseDownloadActions({
 
       if (response.downloaded === 0 && response.failed === 0 && response.skipped > 0) {
         toast.info(message);
+      } else if (response.failed > 0) {
+        toast.warning(message);
       } else {
         toast.success(message);
       }
-      onDownloadSessionFinish?.(response.failed > 0 ? "failed" : "completed");
+      onDownloadSessionFinish?.(
+        response.failed > 0 ? "failed" : "completed",
+        buildDownloadResultSummary(response, message)
+      );
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
-      onDownloadSessionFail?.();
+      onDownloadSessionFail?.({ message: errorMsg });
       toast.error(`Download failed: ${errorMsg}`);
     }
   };
@@ -180,18 +188,15 @@ export function useDatabaseDownloadActions({
       );
     } catch (error) {
       console.error("Bulk download failed:", error);
-      onDownloadSessionFail?.();
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      onDownloadSessionFail?.({ message: errorMsg });
     }
 
     setIsBulkDownloading(false);
     setBulkDownloadCurrent(0);
     setBulkDownloadTotal(0);
 
-    if (
-      response?.success &&
-      (response.downloaded > 0 || response.skipped > 0) &&
-      !stopBulkDownloadRef.current
-    ) {
+    if (response?.success && !stopBulkDownloadRef.current) {
       await refreshFolderExistence();
       const parts: string[] = [];
       if (response.downloaded > 0) {
@@ -204,6 +209,9 @@ export function useDatabaseDownloadActions({
           }`
         );
       }
+      if (response.failed > 0) {
+        parts.push(`${response.failed} failed`);
+      }
       const message =
         parts.length > 0
           ? `${parts.join(", ")} from ${selectedAccounts.length} account${
@@ -213,14 +221,21 @@ export function useDatabaseDownloadActions({
               selectedAccounts.length !== 1 ? "s" : ""
             }`;
 
-      if (response.downloaded === 0 && response.skipped > 0) {
+      if (response.downloaded === 0 && response.failed === 0 && response.skipped > 0) {
         toast.info(message);
+      } else if (response.failed > 0) {
+        toast.warning(message);
       } else {
         toast.success(message);
       }
-      onDownloadSessionFinish?.(response.failed > 0 ? "failed" : "completed");
+      onDownloadSessionFinish?.(
+        response.failed > 0 ? "failed" : "completed",
+        buildDownloadResultSummary(response, message)
+      );
     } else if (response && !response.success && !stopBulkDownloadRef.current) {
-      onDownloadSessionFail?.();
+      onDownloadSessionFail?.(
+        buildDownloadResultSummary(response, response.message || "Bulk download failed")
+      );
       toast.error(response.message || "Bulk download failed");
     }
   };
