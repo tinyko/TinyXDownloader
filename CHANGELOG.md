@@ -1,5 +1,11 @@
 # Changelog
 
+## V1.3.12 - 2026-04-17
+
+- removed third-party action downloads from self-hosted macOS CI/release jobs by using local `git` checkout and `gh` release commands
+- kept desktop smoke artifacts archived locally in the runner workspace so GitHub action download failures no longer block smoke validation
+- bounded Developer ID signing and notarization waits so stalled Apple timestamp/notary requests can retry instead of hanging the release build
+
 ## V1.3.11 - 2026-04-17
 
 - made desktop smoke verification robust when the virtualized saved-account list does not render rows in self-hosted macOS runner sessions

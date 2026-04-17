@@ -45,10 +45,21 @@ jobs:
           fi
 
       - name: Checkout
-        uses: actions/checkout@v6.0.2
-        with:
-          fetch-depth: 0
-          ref: ${{ steps.tag.outputs.value }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="${{ steps.tag.outputs.value }}"
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git init "$GITHUB_WORKSPACE"
+          cd "$GITHUB_WORKSPACE"
+          git remote remove origin >/dev/null 2>&1 || true
+          git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
+          git -c http.extraheader="AUTHORIZATION: bearer ${GH_TOKEN}" \
+            fetch --force --tags origin "refs/tags/${tag}:refs/tags/${tag}"
+          git checkout --force "refs/tags/${tag}"
+          git clean -ffdx
 
       - name: Verify self-hosted toolchain
         shell: bash
@@ -202,15 +213,49 @@ jobs:
           }
 
       - name: Publish GitHub release
-        uses: softprops/action-gh-release@v3.0.0
-        with:
-          tag_name: ${{ steps.tag.outputs.value }}
-          body_path: build/release/release-notes.md
-          overwrite_files: true
-          files: |
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          source ./scripts/common.sh
+          tag="${{ steps.tag.outputs.value }}"
+          notes_path="build/release/release-notes.md"
+          files=(
             build/release/*.zip
             build/release/*.dmg
             build/release/SHA256SUMS.txt
+          )
+
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            run_with_retries 5 15 \
+              gh release edit "$tag" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "$tag" \
+              --notes-file "$notes_path"
+            run_with_retries 5 15 \
+              gh release upload "$tag" \
+              --repo "$GITHUB_REPOSITORY" \
+              --clobber \
+              "${files[@]}"
+          else
+            run_with_retries 5 15 \
+              gh release create "$tag" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "$tag" \
+              --notes-file "$notes_path" \
+              "${files[@]}" || {
+                run_with_retries 5 15 \
+                  gh release edit "$tag" \
+                  --repo "$GITHUB_REPOSITORY" \
+                  --title "$tag" \
+                  --notes-file "$notes_path"
+                run_with_retries 5 15 \
+                  gh release upload "$tag" \
+                  --repo "$GITHUB_REPOSITORY" \
+                  --clobber \
+                  "${files[@]}"
+              }
+          fi
 
       - name: Cleanup signing keychain
         if: always()

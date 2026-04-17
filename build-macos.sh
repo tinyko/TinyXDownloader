@@ -10,6 +10,7 @@ DITTO_BIN="/usr/bin/ditto"
 HDIUTIL_BIN="/usr/bin/hdiutil"
 SPCTL_BIN="/usr/sbin/spctl"
 SHASUM_BIN="/usr/bin/shasum"
+PERL_BIN="/usr/bin/perl"
 
 run_with_retries() {
   local attempts="$1"
@@ -33,12 +34,53 @@ run_with_retries() {
   done
 }
 
+run_with_timeout() {
+  local timeout_seconds="$1"
+  shift
+
+  "$PERL_BIN" -e 'alarm shift @ARGV; exec @ARGV; die "exec failed: $!\n";' \
+    "$timeout_seconds" \
+    "$@"
+}
+
+sign_app_bundle() {
+  find "$APP_PATH" -name "*.cstemp" -delete
+  run_with_timeout "${MACOS_CODESIGN_TIMEOUT_SECONDS:-120}" \
+    "$CODESIGN_BIN" "${codesign_args[@]}" "$APP_PATH"
+  local status="$?"
+  if (( status != 0 )); then
+    find "$APP_PATH" -name "*.cstemp" -delete
+  fi
+  return "$status"
+}
+
+submit_for_notarization() {
+  local output_path
+  output_path="$(mktemp "${TMPDIR:-/tmp}/${OUTPUT_NAME}-notary-submit-XXXXXX.log")"
+
+  run_with_timeout "${MACOS_NOTARY_TIMEOUT_SECONDS:-900}" \
+    "$XCRUN_BIN" "${notary_submit_args[@]}" 2>&1 | tee "$output_path"
+  local status="${PIPESTATUS[0]}"
+  if (( status != 0 )); then
+    rm -f "$output_path"
+    return "$status"
+  fi
+
+  if ! grep -F "status: Accepted" "$output_path" >/dev/null; then
+    rm -f "$output_path"
+    return 1
+  fi
+
+  rm -f "$output_path"
+}
+
 [[ -x "$CODESIGN_BIN" ]] || fail "Missing macOS system codesign at $CODESIGN_BIN"
 [[ -x "$XCRUN_BIN" ]] || fail "Missing macOS system xcrun at $XCRUN_BIN"
 [[ -x "$DITTO_BIN" ]] || fail "Missing macOS system ditto at $DITTO_BIN"
 [[ -x "$HDIUTIL_BIN" ]] || fail "Missing macOS system hdiutil at $HDIUTIL_BIN"
 [[ -x "$SPCTL_BIN" ]] || fail "Missing macOS system spctl at $SPCTL_BIN"
 [[ -x "$SHASUM_BIN" ]] || fail "Missing macOS system shasum at $SHASUM_BIN"
+[[ -x "$PERL_BIN" ]] || fail "Missing macOS system perl at $PERL_BIN"
 
 if [[ "$(host_os)" != "darwin" ]]; then
   fail "./build-macos.sh must be run on macOS"
@@ -98,7 +140,7 @@ if [[ "$signing_enabled" == true ]]; then
   if [[ -n "${MACOS_SIGN_KEYCHAIN:-}" ]]; then
     codesign_args+=(--keychain "$MACOS_SIGN_KEYCHAIN")
   fi
-  run_with_retries 3 5 "$CODESIGN_BIN" "${codesign_args[@]}" "$APP_PATH"
+  run_with_retries 3 5 sign_app_bundle
 
   submission_zip="$(mktemp "${TMPDIR:-/tmp}/${OUTPUT_NAME}-notary-XXXXXX.zip")"
   cleanup_submission_zip() {
@@ -125,7 +167,7 @@ if [[ "$signing_enabled" == true ]]; then
       --wait
     )
   fi
-  run_with_retries 3 10 "$XCRUN_BIN" "${notary_submit_args[@]}"
+  run_with_retries 3 10 submit_for_notarization
 
   log_step "Stapling notarization ticket"
   "$XCRUN_BIN" stapler staple "$APP_PATH"

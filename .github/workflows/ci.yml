@@ -94,7 +94,20 @@ jobs:
       SMOKE_OUTPUT_DIR: build/desktop-smoke
     steps:
       - name: Checkout
-        uses: actions/checkout@v6.0.2
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git init "$GITHUB_WORKSPACE"
+          cd "$GITHUB_WORKSPACE"
+          git remote remove origin >/dev/null 2>&1 || true
+          git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
+          git -c http.extraheader="AUTHORIZATION: bearer ${GH_TOKEN}" \
+            fetch --force --no-tags --prune origin "$GITHUB_SHA"
+          git checkout --force "$GITHUB_SHA"
+          git clean -ffdx
 
       - name: Verify self-hosted toolchain
         shell: bash
@@ -111,10 +124,13 @@ jobs:
       - name: Run desktop smoke
         run: ./scripts/desktop-smoke.sh
 
-      - name: Upload desktop smoke artifacts
+      - name: Archive desktop smoke artifacts
         if: always()
-        uses: actions/upload-artifact@v7.0.1
-        with:
-          name: desktop-smoke-artifacts
-          path: build/desktop-smoke
-          if-no-files-found: ignore
+        shell: bash
+        run: |
+          if [[ -d build/desktop-smoke ]]; then
+            tar -czf build/desktop-smoke-artifacts.tgz -C build desktop-smoke
+            ls -lh build/desktop-smoke-artifacts.tgz
+          else
+            echo "No desktop smoke artifacts were generated."
+          fi
