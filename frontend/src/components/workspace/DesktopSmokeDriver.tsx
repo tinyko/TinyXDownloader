@@ -116,9 +116,31 @@ async function resolveSavedAccountDownloadTarget(): Promise<string> {
     );
   }
 
-  const rowSelector = `[data-testid="saved-account-row-${firstAccount.username}"]`;
-  await waitForElement(rowSelector, 15_000);
-  return `[data-testid="saved-account-download-${firstAccount.username}"]`;
+  const downloadSelector = `[data-testid="saved-account-download-${firstAccount.username}"]`;
+  await waitForElement(
+    '[data-testid="saved-accounts-list"], [data-testid="saved-accounts-gallery"]',
+    30_000
+  );
+
+  const listToggle = queryElement<HTMLElement>('[data-testid="saved-view-list"]');
+  if (listToggle) {
+    pressElement(listToggle);
+  }
+
+  try {
+    await waitForElement(downloadSelector, 15_000);
+  } catch (error) {
+    const galleryToggle = queryElement<HTMLElement>('[data-testid="saved-view-gallery"]');
+    if (!galleryToggle) {
+      throw error;
+    }
+
+    pressElement(galleryToggle);
+    await waitForElement('[data-testid="saved-accounts-gallery"]', 5_000);
+    await waitForElement(downloadSelector, 15_000);
+  }
+
+  return downloadSelector;
 }
 
 async function closeTopDialog() {

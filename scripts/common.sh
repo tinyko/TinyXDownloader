@@ -59,6 +59,28 @@ require_command() {
   command -v "$1" >/dev/null 2>&1 || fail "Missing required command: $1"
 }
 
+run_with_retries() {
+  local attempts="$1"
+  local delay_seconds="$2"
+  shift 2
+
+  local attempt=1
+  while true; do
+    if "$@"; then
+      return 0
+    fi
+
+    local status="$?"
+    if (( attempt >= attempts )); then
+      return "$status"
+    fi
+
+    log_step "Command failed (attempt ${attempt}/${attempts}); retrying in ${delay_seconds}s"
+    sleep "$delay_seconds"
+    attempt=$((attempt + 1))
+  done
+}
+
 normalize_macos_toolchain() {
   if [[ "$(host_os)" != "darwin" ]]; then
     return 0
@@ -90,7 +112,7 @@ run_wails() {
 
   (
     cd "$ROOT_DIR"
-    go run "github.com/wailsapp/wails/v2/cmd/wails@${wails_version}" "$@"
+    run_with_retries 3 5 go run "github.com/wailsapp/wails/v2/cmd/wails@${wails_version}" "$@"
   )
 }
 

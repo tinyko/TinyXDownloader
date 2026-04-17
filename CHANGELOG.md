@@ -1,5 +1,10 @@
 # Changelog
 
+## V1.3.11 - 2026-04-17
+
+- made desktop smoke verification robust when the virtualized saved-account list does not render rows in self-hosted macOS runner sessions
+- added retry handling around Wails CLI invocations to absorb transient Go module proxy TLS/network failures during local and CI builds
+
 ## V1.3.10 - 2026-04-17
 
 - retried transient X network request failures in the native client so lookup/fetch timeouts do not immediately mark saved accounts incomplete
