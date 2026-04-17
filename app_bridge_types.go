@@ -112,11 +112,19 @@ type SavedAccountsIDsRequest struct {
 }
 
 type DownloadMediaResponse struct {
-	Success    bool   `json:"success"`
-	Downloaded int    `json:"downloaded"`
-	Skipped    int    `json:"skipped"`
-	Failed     int    `json:"failed"`
-	Message    string `json:"message"`
+	Success    bool                    `json:"success"`
+	Downloaded int                     `json:"downloaded"`
+	Skipped    int                     `json:"skipped"`
+	Failed     int                     `json:"failed"`
+	Message    string                  `json:"message"`
+	Failures   []DownloadFailureDetail `json:"failures,omitempty"`
+}
+
+type DownloadFailureDetail struct {
+	TweetID int64  `json:"tweet_id"`
+	Index   int    `json:"index"`
+	URL     string `json:"url"`
+	Error   string `json:"error"`
 }
 
 type DownloadStateResponse struct {
@@ -130,6 +138,7 @@ type DownloadItemStatus struct {
 	TweetID int64  `json:"tweet_id"`
 	Index   int    `json:"index"`
 	Status  string `json:"status"`
+	Error   string `json:"error,omitempty"`
 }
 
 type ConvertGIFsRequest struct {

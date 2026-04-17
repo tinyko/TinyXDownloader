@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"sync"
 	"twitterxmediabatchdownloader/backend"
 	"twitterxmediabatchdownloader/internal/desktop/smoke"
 
@@ -89,7 +90,7 @@ func (a *App) DownloadMediaWithMetadata(req DownloadMediaWithMetadataRequest) (D
 		}
 	}
 
-	downloaded, skipped, failed, err := a.runDownloadItems(items, outputDir, req.Username, req.Proxy, len(items))
+	downloaded, skipped, failed, failures, err := a.runDownloadItems(items, outputDir, req.Username, req.Proxy, len(items))
 	if err != nil {
 		return DownloadMediaResponse{
 			Success:    false,
@@ -97,6 +98,7 @@ func (a *App) DownloadMediaWithMetadata(req DownloadMediaWithMetadataRequest) (D
 			Skipped:    skipped,
 			Failed:     failed,
 			Message:    err.Error(),
+			Failures:   failures,
 		}, err
 	}
 
@@ -106,10 +108,11 @@ func (a *App) DownloadMediaWithMetadata(req DownloadMediaWithMetadataRequest) (D
 		Skipped:    skipped,
 		Failed:     failed,
 		Message:    fmt.Sprintf("Downloaded %d files, %d skipped, %d failed", downloaded, skipped, failed),
+		Failures:   failures,
 	}, nil
 }
 
-func (a *App) runDownloadItems(items []backend.MediaItem, outputDir, username, proxy string, totalItems int) (int, int, int, error) {
+func (a *App) runDownloadItems(items []backend.MediaItem, outputDir, username, proxy string, totalItems int) (int, int, int, []DownloadFailureDetail, error) {
 	progressCallback := func(current, _ int) {
 		percent := 0
 		if totalItems > 0 {
@@ -118,15 +121,29 @@ func (a *App) runDownloadItems(items []backend.MediaItem, outputDir, username, p
 		a.updateDownloadProgress(current, totalItems, percent)
 	}
 
-	itemStatusCallback := func(tweetID int64, index int, status string) {
+	var failuresMu sync.Mutex
+	failures := make([]DownloadFailureDetail, 0)
+	itemStatusCallback := func(item backend.MediaItem, index int, status string, errorMessage string) {
 		runtime.EventsEmit(a.ctx, "download-item-status", DownloadItemStatus{
-			TweetID: tweetID,
+			TweetID: item.TweetID,
 			Index:   index,
 			Status:  status,
+			Error:   errorMessage,
 		})
+		if status != "failed" {
+			return
+		}
+		failuresMu.Lock()
+		failures = append(failures, DownloadFailureDetail{
+			TweetID: item.TweetID,
+			Index:   index,
+			URL:     item.URL,
+			Error:   errorMessage,
+		})
+		failuresMu.Unlock()
 	}
 
-	return backend.DownloadMediaWithMetadataProgressAndStatus(
+	downloaded, skipped, failed, err := backend.DownloadMediaWithMetadataProgressAndStatus(
 		items,
 		outputDir,
 		username,
@@ -135,9 +152,10 @@ func (a *App) runDownloadItems(items []backend.MediaItem, outputDir, username, p
 		a.downloadCtx,
 		proxy,
 	)
+	return downloaded, skipped, failed, failures, err
 }
 
-func (a *App) runSavedScopeDownloads(payloads []*backend.ScopeMediaDownloadPayload, outputDir, proxy string, totalItems int) (int, int, int, error) {
+func (a *App) runSavedScopeDownloads(payloads []*backend.ScopeMediaDownloadPayload, outputDir, proxy string, totalItems int) (int, int, int, []DownloadFailureDetail, error) {
 	progressCallback := func(current, _ int) {
 		percent := 0
 		if totalItems > 0 {
@@ -146,15 +164,29 @@ func (a *App) runSavedScopeDownloads(payloads []*backend.ScopeMediaDownloadPaylo
 		a.updateDownloadProgress(current, totalItems, percent)
 	}
 
-	itemStatusCallback := func(tweetID int64, index int, status string) {
+	var failuresMu sync.Mutex
+	failures := make([]DownloadFailureDetail, 0)
+	itemStatusCallback := func(item backend.MediaItem, index int, status string, errorMessage string) {
 		runtime.EventsEmit(a.ctx, "download-item-status", DownloadItemStatus{
-			TweetID: tweetID,
+			TweetID: item.TweetID,
 			Index:   index,
 			Status:  status,
+			Error:   errorMessage,
 		})
+		if status != "failed" {
+			return
+		}
+		failuresMu.Lock()
+		failures = append(failures, DownloadFailureDetail{
+			TweetID: item.TweetID,
+			Index:   index,
+			URL:     item.URL,
+			Error:   errorMessage,
+		})
+		failuresMu.Unlock()
 	}
 
-	return backend.DownloadScopePayloadsProgressAndStatus(
+	downloaded, skipped, failed, err := backend.DownloadScopePayloadsProgressAndStatus(
 		payloads,
 		outputDir,
 		progressCallback,
@@ -162,6 +194,7 @@ func (a *App) runSavedScopeDownloads(payloads []*backend.ScopeMediaDownloadPaylo
 		a.downloadCtx,
 		proxy,
 	)
+	return downloaded, skipped, failed, failures, err
 }
 
 func (a *App) DownloadSavedScopes(req DownloadSavedScopesRequest) (DownloadMediaResponse, error) {
@@ -204,7 +237,7 @@ func (a *App) DownloadSavedScopes(req DownloadSavedScopesRequest) (DownloadMedia
 	}
 	defer a.finishDownloadSession()
 
-	downloaded, skipped, failed, err := a.runSavedScopeDownloads(payloads, outputDir, req.Proxy, totalItems)
+	downloaded, skipped, failed, failures, err := a.runSavedScopeDownloads(payloads, outputDir, req.Proxy, totalItems)
 	if err != nil {
 		return DownloadMediaResponse{
 			Success:    false,
@@ -212,6 +245,7 @@ func (a *App) DownloadSavedScopes(req DownloadSavedScopesRequest) (DownloadMedia
 			Skipped:    skipped,
 			Failed:     failed,
 			Message:    err.Error(),
+			Failures:   failures,
 		}, err
 	}
 
@@ -221,6 +255,7 @@ func (a *App) DownloadSavedScopes(req DownloadSavedScopesRequest) (DownloadMedia
 		Skipped:    skipped,
 		Failed:     failed,
 		Message:    fmt.Sprintf("Downloaded %d files, %d skipped, %d failed", downloaded, skipped, failed),
+		Failures:   failures,
 	}, nil
 }
 

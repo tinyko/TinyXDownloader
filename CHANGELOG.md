@@ -1,5 +1,11 @@
 # Changelog
 
+## V1.3.16 - 2026-04-18
+
+- hid duplicate count-only download messages so result summaries are shown once in Activity and Task History
+- returned per-item download failure samples from the backend, including tweet id, URL, and the underlying download error
+- displayed failure samples in the download task summary so failed items can be diagnosed without guessing from aggregate counts
+
 ## V1.3.15 - 2026-04-18
 
 - fixed download task history so failed/completed sessions are recorded even when the final backend idle event is missed

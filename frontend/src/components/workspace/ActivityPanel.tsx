@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import {
   formatDownloadResultSummary,
+  getDownloadResultMessage,
   hasDownloadResultSummary,
 } from "@/lib/download/summary";
 import type {
@@ -147,16 +148,30 @@ function DownloadResultDetails({
   }
 
   const formattedSummary = formatDownloadResultSummary(summary);
+  const message = getDownloadResultMessage(summary);
+  const failures = summary?.failures?.slice(0, 3) ?? [];
 
   return (
     <div className="rounded-xl border border-border/70 bg-muted/30 p-2.5 text-xs text-muted-foreground">
       {formattedSummary ? (
         <p className="font-medium text-foreground">{formattedSummary}</p>
       ) : null}
-      {summary?.message ? (
+      {message ? (
         <p className={cn("break-words", formattedSummary ? "mt-1" : "")}>
-          {summary.message}
+          {message}
         </p>
+      ) : null}
+      {failures.length > 0 ? (
+        <div className="mt-2 space-y-1">
+          <p className="font-medium text-foreground">Failure samples</p>
+          {failures.map((failure) => (
+            <p key={`${failure.index}-${failure.tweet_id}`} className="break-words">
+              #{failure.index + 1}
+              {failure.tweet_id ? ` tweet ${failure.tweet_id}` : ""}:{" "}
+              {failure.error || "download failed"}
+            </p>
+          ))}
+        </div>
       ) : null}
     </div>
   );

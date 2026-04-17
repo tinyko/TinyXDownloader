@@ -6,6 +6,7 @@ export interface DownloadItemStatusEvent {
   tweet_id: number;
   index: number;
   status: "success" | "failed" | "skipped";
+  error?: string;
 }
 
 interface PendingItemStatuses {

@@ -28,7 +28,7 @@ type MediaItem struct {
 type ProgressCallback func(current, total int)
 
 // ItemStatusCallback reports per-item status updates.
-type ItemStatusCallback func(tweetID int64, index int, status string)
+type ItemStatusCallback func(item MediaItem, index int, status string, errorMessage string)
 
 type downloadTask struct {
 	item       MediaItem

@@ -29,6 +29,14 @@ export interface DownloadSessionResultSummary {
   skipped?: number;
   failed?: number;
   message?: string;
+  failures?: DownloadFailureDetail[];
+}
+
+export interface DownloadFailureDetail {
+  tweet_id: number;
+  index: number;
+  url: string;
+  error: string;
 }
 
 export type DownloadSessionFinishHandler = (

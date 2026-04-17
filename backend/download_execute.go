@@ -172,11 +172,12 @@ func executeDownloadTasks(
 				}
 
 				var status string
+				var statusError string
 				if shouldSkip, err := shouldSkipExistingFile(ctx, sharedClient, task.item.URL, task.outputPath, task.item.Type); err == nil && shouldSkip {
 					status = "skipped"
 					if itemStatus != nil {
 						callbackMu.Lock()
-						itemStatus(task.item.TweetID, task.index, status)
+						itemStatus(task.item, task.index, status, "")
 						callbackMu.Unlock()
 					}
 					atomic.AddInt64(&skippedCount, 1)
@@ -187,6 +188,7 @@ func executeDownloadTasks(
 					if err := os.WriteFile(task.outputPath, []byte(task.item.Content), 0o644); err != nil {
 						atomic.AddInt64(&failedCount, 1)
 						status = "failed"
+						statusError = err.Error()
 					} else {
 						atomic.AddInt64(&downloadedCount, 1)
 						status = "success"
@@ -194,6 +196,7 @@ func executeDownloadTasks(
 				} else if err := downloadFileWithRetry(ctx, sharedClient, task.item.URL, task.outputPath); err != nil {
 					atomic.AddInt64(&failedCount, 1)
 					status = "failed"
+					statusError = err.Error()
 				} else {
 					tweetURL := fmt.Sprintf("https://x.com/i/status/%d", task.item.TweetID)
 					originalFilename := task.item.OriginalFilename
@@ -209,7 +212,7 @@ func executeDownloadTasks(
 
 				if itemStatus != nil {
 					callbackMu.Lock()
-					itemStatus(task.item.TweetID, task.index, status)
+					itemStatus(task.item, task.index, status, statusError)
 					callbackMu.Unlock()
 				}
 
