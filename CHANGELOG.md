@@ -1,5 +1,9 @@
 # Changelog
 
+## V1.3.13 - 2026-04-17
+
+- retried manual `git fetch` checkout steps on self-hosted macOS jobs so transient GitHub HTTPS resets do not fail desktop smoke or release jobs
+
 ## V1.3.12 - 2026-04-17
 
 - removed third-party action downloads from self-hosted macOS CI/release jobs by using local `git` checkout and `gh` release commands

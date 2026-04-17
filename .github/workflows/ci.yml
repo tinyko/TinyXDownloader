@@ -104,8 +104,16 @@ jobs:
           cd "$GITHUB_WORKSPACE"
           git remote remove origin >/dev/null 2>&1 || true
           git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
-          git -c http.extraheader="AUTHORIZATION: bearer ${GH_TOKEN}" \
-            fetch --force --no-tags --prune origin "$GITHUB_SHA"
+          for attempt in 1 2 3 4 5; do
+            if git -c http.extraheader="AUTHORIZATION: bearer ${GH_TOKEN}" \
+              fetch --force --no-tags --prune origin "$GITHUB_SHA"; then
+              break
+            fi
+            if [[ "$attempt" -eq 5 ]]; then
+              exit 1
+            fi
+            sleep $((attempt * 10))
+          done
           git checkout --force "$GITHUB_SHA"
           git clean -ffdx
 
