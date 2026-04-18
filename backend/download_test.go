@@ -151,6 +151,12 @@ func TestShouldSkipExistingFileKeepsExistingFileWithoutRemoteCheck(t *testing.T)
 	}
 }
 
+func TestShouldRetryDownloadTreatsConnectionResetAsTransient(t *testing.T) {
+	if !shouldRetryDownload(errors.New("read tcp 127.0.0.1: connection reset by peer")) {
+		t.Fatal("expected connection reset download errors to be retryable")
+	}
+}
+
 func TestSelectDownloadWorkerCountUsesVideoCapForVideoOnlyBatches(t *testing.T) {
 	tasks := []downloadTask{
 		{item: MediaItem{Type: "video"}},

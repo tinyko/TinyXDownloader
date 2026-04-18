@@ -200,6 +200,14 @@ describe("useGlobalDownloadMonitor", () => {
         skipped: 0,
         failed: 2,
         message: "1 downloaded, 2 failed",
+        failures: [
+          {
+            tweet_id: 123,
+            index: 2,
+            url: "https://pbs.twimg.com/media/example?format=jpg&name=orig",
+            error: "read: connection reset by peer",
+          },
+        ],
       });
       emitDownloadState?.(
         createDownloadState({
@@ -215,7 +223,11 @@ describe("useGlobalDownloadMonitor", () => {
       expect(result.current.globalDownloadHistory[0]?.status).toBe("failed")
     );
     expect(result.current.globalDownloadHistory[0]?.summary?.failed).toBe(2);
+    expect(result.current.globalDownloadHistory[0]?.summary?.failures).toHaveLength(1);
     expect(result.current.globalDownloadTaskState.summary?.message).toBe("1 downloaded, 2 failed");
+    expect(result.current.globalDownloadTaskState.summary?.failures?.[0]?.error).toBe(
+      "read: connection reset by peer"
+    );
   });
 
   it("finalizes failed history immediately when the backend idle event is missed", async () => {

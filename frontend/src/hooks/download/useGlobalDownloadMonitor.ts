@@ -20,6 +20,26 @@ function getSummaryTotal(summary: DownloadSessionResultSummary | null | undefine
   return (summary?.downloaded ?? 0) + (summary?.skipped ?? 0) + (summary?.failed ?? 0);
 }
 
+function mergeDownloadFailures(
+  current: DownloadSessionResultSummary["failures"] | null | undefined,
+  next: DownloadSessionResultSummary["failures"] | null | undefined
+) {
+  const merged = [...(current ?? []), ...(next ?? [])];
+  if (merged.length === 0) {
+    return undefined;
+  }
+
+  const seen = new Set<string>();
+  return merged.filter((failure) => {
+    const key = `${failure.index}:${failure.tweet_id}:${failure.url}:${failure.error}`;
+    if (seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
+}
+
 function mergeDownloadSummary(
   current: DownloadSessionResultSummary | null | undefined,
   next: DownloadSessionResultSummary | null | undefined
@@ -33,6 +53,7 @@ function mergeDownloadSummary(
     skipped: next?.skipped ?? current?.skipped,
     failed: next?.failed ?? current?.failed,
     message: next?.message || current?.message,
+    failures: mergeDownloadFailures(current?.failures, next?.failures),
   };
 }
 

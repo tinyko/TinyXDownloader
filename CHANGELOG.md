@@ -1,5 +1,11 @@
 # Changelog
 
+## V1.3.17 - 2026-04-18
+
+- preserved per-item download failure samples when global download history merges terminal summaries
+- reduced image-download concurrency and raised retry attempts to lower transient `pbs.twimg.com` connection-reset failures in large batches
+- added regression coverage for connection-reset retry classification and persisted failure details
+
 ## V1.3.16 - 2026-04-18
 
 - hid duplicate count-only download messages so result summaries are shown once in Activity and Task History

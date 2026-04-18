@@ -4,13 +4,13 @@ import "time"
 
 const (
 	MaxConcurrentDownloads      = 10
-	MaxConcurrentImageDownloads = 16
+	MaxConcurrentImageDownloads = 8
 	MaxConcurrentVideoDownloads = 3
 	partialDownloadSuffix       = ".part"
 	downloadRequestTimeout      = 30 * time.Minute
 	downloadConnectTimeout      = 15 * time.Second
 	downloadResponseHeaderWait  = 30 * time.Second
-	downloadRetryAttempts       = 3
+	downloadRetryAttempts       = 5
 )
 
 // MediaItem represents a media item with metadata for download.
